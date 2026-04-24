@@ -1,10 +1,11 @@
-import type { RobotPose, RobotStatus, SystemHealth } from "../types";
+import type { RobotPose, RobotStatus, StackStatus, SystemHealth } from "../types";
 import { formatNullable, formatNumber, formatStatusSummary } from "../utils/format";
 
 interface StatusSidebarProps {
   status: RobotStatus | null;
   pose: RobotPose | null;
   health: SystemHealth | null;
+  stack: StackStatus | null;
   backendConnected: boolean;
   websocketConnected: boolean;
 }
@@ -13,6 +14,7 @@ export function StatusSidebar({
   status,
   pose,
   health,
+  stack,
   backendConnected,
   websocketConnected,
 }: StatusSidebarProps) {
@@ -35,10 +37,26 @@ export function StatusSidebar({
 
       <section className="panel">
         <h2>系统状态</h2>
+        <StatusRow label="栈模式" value={formatNullable(stack?.mode)} />
         <StatusRow label="ready" value={status?.system_ready === true ? "true" : "false"} />
         <StatusRow label="定位" value={localizationLabel} />
         <StatusRow label="lidar" value={formatStatusSummary(status?.lidar_status)} />
         <StatusRow label="SDK" value={formatStatusSummary(status?.sdk_status)} />
+      </section>
+
+      <section className="panel">
+        <h2>节点状态</h2>
+        {stack?.nodes.length ? (
+          stack.nodes.map((node) => (
+            <StatusRow
+              key={node.key}
+              label={node.label}
+              value={node.running ? "running" : node.required ? "missing" : "optional"}
+            />
+          ))
+        ) : (
+          <StatusRow label="节点" value="未启动" />
+        )}
       </section>
 
       <section className="panel">

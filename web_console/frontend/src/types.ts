@@ -91,6 +91,34 @@ export interface InitialPoseResult {
   message: string;
 }
 
+export interface NodeCheck {
+  key: string;
+  label: string;
+  running: boolean;
+  required: boolean;
+  detail: string | null;
+}
+
+export interface SavedMapInfo {
+  map_id: string;
+  map_yaml: string;
+  created_at: string | null;
+  width: number | null;
+  height: number | null;
+  resolution: number | null;
+}
+
+export interface StackStatus {
+  mode: "stopped" | "starting" | "mapping" | "navigation" | string;
+  pid: number | null;
+  log_file: string | null;
+  selected_map_id: string | null;
+  selected_map_yaml: string | null;
+  nodes: NodeCheck[];
+  maps: SavedMapInfo[];
+  message: string | null;
+}
+
 export interface SystemHealth {
   backend_ok: boolean;
   ros_connected: boolean;

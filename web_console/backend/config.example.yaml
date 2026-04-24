@@ -38,3 +38,11 @@ navigation:
 health:
   pose_stale_sec: 2.0
   health_broadcast_hz: 1.0
+
+stack:
+  workspace: /home/unitree/a2_system_ws
+  network_interface: eth0
+  map_root: /home/unitree/a2_system_ws/runtime/maps
+  start_script: /home/unitree/a2_system_ws/install/a2_system/share/a2_system/start_real_stack.sh
+  stop_script: /home/unitree/a2_system_ws/install/a2_system/share/a2_system/stop_stack.sh
+  command_timeout_sec: 15.0

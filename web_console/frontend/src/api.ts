@@ -3,6 +3,8 @@ import type {
   InitialPoseResult,
   NavigationGoal,
   NavigationTaskState,
+  SavedMapInfo,
+  StackStatus,
   SystemHealth,
 } from "./types";
 
@@ -51,4 +53,48 @@ export async function sendInitialPose(goal: NavigationGoal): Promise<InitialPose
     body: JSON.stringify({ pose: goal }),
   });
   return handleJson<InitialPoseResult & { ok: boolean }>(response);
+}
+
+export async function fetchStackStatus(): Promise<StackStatus> {
+  return handleJson<StackStatus>(await fetch("/api/stack/status"));
+}
+
+export async function startMappingStack(): Promise<StackStatus> {
+  const response = await fetch("/api/stack/start-mapping", { method: "POST" });
+  const payload = await handleJson<{ ok: boolean; message: string; stack: StackStatus }>(response);
+  return payload.stack;
+}
+
+export async function startNavigationStack(mapId: string): Promise<StackStatus> {
+  const response = await fetch("/api/stack/start-navigation", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ map_id: mapId }),
+  });
+  const payload = await handleJson<{ ok: boolean; message: string; stack: StackStatus }>(response);
+  return payload.stack;
+}
+
+export async function stopStack(): Promise<StackStatus> {
+  const response = await fetch("/api/stack/stop", { method: "POST" });
+  const payload = await handleJson<{ ok: boolean; message: string; stack: StackStatus }>(response);
+  return payload.stack;
+}
+
+export async function fetchMaps(): Promise<SavedMapInfo[]> {
+  const payload = await handleJson<{ maps: SavedMapInfo[] }>(await fetch("/api/maps"));
+  return payload.maps;
+}
+
+export async function saveCurrentMap(mapId: string): Promise<{ map: SavedMapInfo; maps: SavedMapInfo[] }> {
+  const response = await fetch("/api/maps/save", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ map_id: mapId }),
+  });
+  return handleJson<{ ok: boolean; map: SavedMapInfo; maps: SavedMapInfo[] }>(response);
 }

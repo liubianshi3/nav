@@ -23,7 +23,12 @@ fi
 
 cd "${PROJECT_ROOT}"
 
-ARGS=(python -m backend.main --config "${CONFIG_PATH}")
+PYTHON_BIN="${PROJECT_ROOT}/.venv/bin/python"
+if [[ ! -x "${PYTHON_BIN}" ]]; then
+  PYTHON_BIN="$(command -v python3)"
+fi
+
+ARGS=("${PYTHON_BIN}" -m backend.main --config "${CONFIG_PATH}")
 if [[ -n "${HOST}" ]]; then
   ARGS+=(--host "${HOST}")
 fi

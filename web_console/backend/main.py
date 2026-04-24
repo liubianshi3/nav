@@ -11,8 +11,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_config
-from .models import DashboardSnapshot, InitialPoseRequest, NavigationGoalRequest
+from .models import DashboardSnapshot, InitialPoseRequest, NavigationGoalRequest, SaveMapRequest, StartNavigationRequest
 from .ros_bridge import RosBridgeError, RosRuntime
+from .stack_control import StackControlError, StackController
 from .utils import is_lan_or_loopback
 from .ws import WebSocketManager
 
@@ -21,10 +22,12 @@ def create_app(config_path: str | None = None) -> FastAPI:
     config = load_config(config_path)
     ws_manager = WebSocketManager()
     ros_runtime = RosRuntime(config, ws_manager)
+    stack_controller = StackController(config)
     app = FastAPI(title="A2 Web Console", version="0.1.0")
     app.state.config = config
     app.state.ws_manager = ws_manager
     app.state.ros_runtime = ros_runtime
+    app.state.stack_controller = stack_controller
 
     if config.server.cors_origins:
         app.add_middleware(
@@ -101,6 +104,49 @@ def create_app(config_path: str | None = None) -> FastAPI:
         except RosBridgeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, **jsonable_encoder(result)}
+
+    @app.get("/api/stack/status")
+    async def get_stack_status():
+        return stack_controller.status()
+
+    @app.post("/api/stack/stop")
+    async def stop_stack():
+        try:
+            result = await asyncio.to_thread(stack_controller.stop)
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}
+
+    @app.post("/api/stack/start-mapping")
+    async def start_mapping_stack():
+        try:
+            result = await asyncio.to_thread(stack_controller.start_mapping)
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}
+
+    @app.post("/api/stack/start-navigation")
+    async def start_navigation_stack(request: StartNavigationRequest):
+        try:
+            result = await asyncio.to_thread(stack_controller.start_navigation, request.map_id)
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}
+
+    @app.get("/api/maps")
+    async def list_maps():
+        return {"maps": jsonable_encoder(stack_controller.list_maps())}
+
+    @app.post("/api/maps/save")
+    async def save_map(request: SaveMapRequest):
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        try:
+            saved = await asyncio.to_thread(stack_controller.save_map, request.map_id, node.get_map_snapshot())
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, "map": jsonable_encoder(saved), "maps": jsonable_encoder(stack_controller.list_maps())}
 
     @app.websocket(config.server.websocket_path)
     async def websocket_endpoint(websocket: WebSocket):

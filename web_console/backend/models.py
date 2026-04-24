@@ -89,6 +89,14 @@ class InitialPoseRequest(BaseModel):
     pose: NavigationGoal
 
 
+class StartNavigationRequest(BaseModel):
+    map_id: str
+
+
+class SaveMapRequest(BaseModel):
+    map_id: str
+
+
 class NavigationTaskState(BaseModel):
     state: str = "idle"
     message: str | None = None
@@ -109,6 +117,34 @@ class SystemHealth(BaseModel):
     last_map_update: str | None = None
     last_pose_update: str | None = None
     last_error: str | None = None
+
+
+class NodeCheck(BaseModel):
+    key: str
+    label: str
+    running: bool = False
+    required: bool = True
+    detail: str | None = None
+
+
+class SavedMapInfo(BaseModel):
+    map_id: str
+    map_yaml: str
+    created_at: str | None = None
+    width: int | None = None
+    height: int | None = None
+    resolution: float | None = None
+
+
+class StackStatus(BaseModel):
+    mode: str = "stopped"
+    pid: int | None = None
+    log_file: str | None = None
+    selected_map_id: str | None = None
+    selected_map_yaml: str | None = None
+    nodes: list[NodeCheck] = Field(default_factory=list)
+    maps: list[SavedMapInfo] = Field(default_factory=list)
+    message: str | None = None
 
 
 class DashboardSnapshot(BaseModel):

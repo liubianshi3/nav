@@ -189,7 +189,9 @@ class RosBridgeNode(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, latched_qos)
+        self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, 10)
         self.create_subscription(PoseWithCovarianceStamped, ros.amcl_pose_topic, self._on_amcl_pose, latched_qos)
+        self.create_subscription(PoseWithCovarianceStamped, ros.amcl_pose_topic, self._on_amcl_pose, 10)
         self.create_subscription(Odometry, ros.odom_topic, self._on_odom, 20)
         self.create_subscription(TFMessage, ros.tf_topic, self._on_tf, 20)
         self.create_subscription(String, ros.real_report_topic, self._on_real_report, 10)
@@ -384,6 +386,10 @@ class RosBridgeNode(Node):
                 navigation=deep_copy_model(self.navigation),
                 health=deep_copy_model(self.health),
             )
+
+    def get_map_snapshot(self) -> MapSnapshot:
+        with self._lock:
+            return deep_copy_model(self.map_snapshot)
 
     def send_navigation_goal(self, request: NavigationGoalRequest) -> NavigationTaskState:
         with self._navigation_lock:

@@ -57,11 +57,22 @@ class HealthConfig:
 
 
 @dataclass
+class StackConfig:
+    workspace: str = "~/a2_system_ws"
+    network_interface: str = "eth0"
+    map_root: str = "~/a2_system_ws/runtime/maps"
+    start_script: str = "~/a2_system_ws/install/a2_system/share/a2_system/start_real_stack.sh"
+    stop_script: str = "~/a2_system_ws/install/a2_system/share/a2_system/stop_stack.sh"
+    command_timeout_sec: float = 15.0
+
+
+@dataclass
 class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     ros: RosTopicConfig = field(default_factory=RosTopicConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    stack: StackConfig = field(default_factory=StackConfig)
     config_path: Path | None = None
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1])
 

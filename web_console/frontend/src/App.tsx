@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
 
-import { cancelNavigationGoal, fetchHealth, fetchSnapshot, sendInitialPose, sendNavigationGoal } from "./api";
+import {
+  cancelNavigationGoal,
+  fetchHealth,
+  fetchMaps,
+  fetchSnapshot,
+  fetchStackStatus,
+  saveCurrentMap,
+  sendInitialPose,
+  sendNavigationGoal,
+  startMappingStack,
+  startNavigationStack,
+  stopStack,
+} from "./api";
 import { ControlSidebar } from "./components/ControlSidebar";
 import { MapCanvas } from "./components/MapCanvas";
 import { StatusSidebar } from "./components/StatusSidebar";
 import { useBackendSocket } from "./hooks/useBackendSocket";
-import type { BackendEvent, DashboardSnapshot, NavigationGoal } from "./types";
+import type { BackendEvent, DashboardSnapshot, NavigationGoal, SavedMapInfo, StackStatus } from "./types";
 
 function createEmptySnapshot(): DashboardSnapshot {
   return {
@@ -68,6 +80,15 @@ function createEmptySnapshot(): DashboardSnapshot {
 export default function App() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(createEmptySnapshot());
   const [selectedGoal, setSelectedGoal] = useState<NavigationGoal | null>(null);
+  const [stack, setStack] = useState<StackStatus | null>(null);
+  const [maps, setMaps] = useState<SavedMapInfo[]>([]);
+  const [selectedMapId, setSelectedMapId] = useState("");
+  const [saveMapId, setSaveMapId] = useState(() => {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `site_map_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  });
+  const [stackBusy, setStackBusy] = useState(false);
   const [backendConnected, setBackendConnected] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
@@ -99,10 +120,47 @@ export default function App() {
       })
       .catch(() => undefined);
 
+    fetchStackStatus()
+      .then((status) => {
+        if (cancelled) {
+          return;
+        }
+        setStack(status);
+        setMaps(status.maps);
+        if (!selectedMapId && status.selected_map_id) {
+          setSelectedMapId(status.selected_map_id);
+        }
+      })
+      .catch(() => undefined);
+
+    fetchMaps()
+      .then((items) => {
+        if (cancelled) {
+          return;
+        }
+        setMaps(items);
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedMapId]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      fetchStackStatus()
+        .then((status) => {
+          setStack(status);
+          setMaps(status.maps);
+          if (!selectedMapId && status.selected_map_id) {
+            setSelectedMapId(status.selected_map_id);
+          }
+        })
+        .catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [selectedMapId]);
 
   const { connected: websocketConnected, lastError: websocketError } = useBackendSocket({
     onEvent: (event: BackendEvent<unknown>) => {
@@ -144,11 +202,78 @@ export default function App() {
 
   const poseAgeMs = snapshot.pose.stamp ? Date.now() - Date.parse(snapshot.pose.stamp) : Number.POSITIVE_INFINITY;
   const canSendGoal =
+    stack?.mode === "navigation" &&
     snapshot.map.loaded &&
     snapshot.status.localization_ok === true &&
     snapshot.health.action_server_ready &&
     poseAgeMs < 10000;
-  const canSetInitialPose = snapshot.map.loaded && snapshot.navigation.state !== "navigating";
+  const canSetInitialPose = stack?.mode === "navigation" && snapshot.map.loaded && snapshot.navigation.state !== "navigating";
+
+  const refreshStack = async () => {
+    const status = await fetchStackStatus();
+    setStack(status);
+    setMaps(status.maps);
+    return status;
+  };
+
+  const runStackAction = async (action: () => Promise<StackStatus>, successMessage: string) => {
+    setStackBusy(true);
+    try {
+      const status = await action();
+      setStack(status);
+      setMaps(status.maps);
+      setLastSuccess(successMessage);
+      setLastError(null);
+      await refreshStack();
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "栈控制失败");
+    } finally {
+      setStackBusy(false);
+    }
+  };
+
+  const handleStartMapping = () => {
+    if (!window.confirm("启动建图模式会停止当前栈。确认继续？")) {
+      return;
+    }
+    void runStackAction(startMappingStack, "建图模式已启动");
+  };
+
+  const handleStartNavigation = () => {
+    if (!selectedMapId) {
+      setLastError("请先选择地图");
+      return;
+    }
+    if (!window.confirm(`启动导航模式会停止当前栈并加载地图 ${selectedMapId}。确认继续？`)) {
+      return;
+    }
+    void runStackAction(() => startNavigationStack(selectedMapId), "导航模式已启动");
+  };
+
+  const handleStopStack = () => {
+    if (!window.confirm("确认停止当前栈？")) {
+      return;
+    }
+    void runStackAction(stopStack, "当前栈已停止");
+  };
+
+  const handleSaveMap = async () => {
+    setStackBusy(true);
+    try {
+      const result = await saveCurrentMap(saveMapId);
+      setMaps(result.maps);
+      setSelectedMapId(result.map.map_id);
+      setLastSuccess(`地图已保存：${result.map.map_id}`);
+      setLastError(null);
+      await refreshStack();
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "保存地图失败");
+    } finally {
+      setStackBusy(false);
+    }
+  };
 
   const handleSetInitialPose = async () => {
     if (!selectedGoal) {
@@ -200,6 +325,7 @@ export default function App() {
         status={snapshot.status}
         pose={snapshot.pose}
         health={snapshot.health}
+        stack={stack}
         backendConnected={backendConnected}
         websocketConnected={websocketConnected}
       />
@@ -208,9 +334,15 @@ export default function App() {
         <header className="topbar">
           <div>
             <h1>A2 Web Console</h1>
-            <p>网页监控 + 点选导航 + 停止导航</p>
+            <p>建图模式 + 地图选择 + 点选导航</p>
           </div>
           <div className="topbar-indicators">
+            <button className="mode-button" disabled={stackBusy || stack?.mode === "mapping"} onClick={handleStartMapping}>
+              建图模式
+            </button>
+            <button className="mode-button" disabled={stackBusy || !selectedMapId || stack?.mode === "navigation"} onClick={handleStartNavigation}>
+              导航模式
+            </button>
             <span className={`indicator ${snapshot.status.system_ready ? "indicator-ok" : "indicator-warn"}`}>
               ready={String(snapshot.status.system_ready)}
             </span>
@@ -232,9 +364,20 @@ export default function App() {
 
       <ControlSidebar
         navigation={snapshot.navigation}
+        stack={stack}
+        maps={maps}
+        selectedMapId={selectedMapId}
+        saveMapId={saveMapId}
         selectedGoal={selectedGoal}
         canSendGoal={canSendGoal}
         canSetInitialPose={canSetInitialPose}
+        stackBusy={stackBusy}
+        onSelectedMapChange={setSelectedMapId}
+        onSaveMapIdChange={setSaveMapId}
+        onStartMapping={handleStartMapping}
+        onStartNavigation={handleStartNavigation}
+        onStopStack={handleStopStack}
+        onSaveMap={handleSaveMap}
         onSetInitialPose={handleSetInitialPose}
         onSendGoal={handleSendGoal}
         onCancelGoal={handleCancelGoal}
