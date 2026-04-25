@@ -51,7 +51,7 @@ export function StatusSidebar({
             <StatusRow
               key={node.key}
               label={node.label}
-              value={node.running ? "running" : node.required ? "missing" : "optional"}
+              value={node.state || (node.running ? "running" : node.required ? "missing" : "optional")}
             />
           ))
         ) : (

@@ -122,6 +122,7 @@ class SystemHealth(BaseModel):
 class NodeCheck(BaseModel):
     key: str
     label: str
+    state: str = "missing"
     running: bool = False
     required: bool = True
     detail: str | None = None

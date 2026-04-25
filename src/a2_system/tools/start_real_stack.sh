@@ -4,6 +4,7 @@ set -euo pipefail
 WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
 IFACE="${A2_NETWORK_INTERFACE:-}"
 EXTRA_ARGS=()
+export A2_WORKSPACE="${WORKSPACE}"
 
 if [[ $# -gt 0 ]]; then
   IFACE="$1"

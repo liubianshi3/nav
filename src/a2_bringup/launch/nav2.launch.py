@@ -17,7 +17,7 @@ def _launch_setup(context, *args, **kwargs):
     )
     enable_nav2_bringup = as_bool(LaunchConfiguration("enable_nav2_bringup").perform(context))
     real_localization_mode = (
-        LaunchConfiguration("real_localization_mode").perform(context).strip() or "manual_odom"
+        LaunchConfiguration("real_localization_mode").perform(context).strip() or "amcl"
     )
     map_yaml = LaunchConfiguration("map").perform(context).strip()
     gazebo_world = LaunchConfiguration("gazebo_world").perform(context).strip()
@@ -177,7 +177,7 @@ def generate_launch_description():
         DeclareLaunchArgument("use_mock", default_value="true"),
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("enable_nav2_bringup", default_value="false"),
-        DeclareLaunchArgument("real_localization_mode", default_value="manual_odom"),
+        DeclareLaunchArgument("real_localization_mode", default_value="amcl"),
         DeclareLaunchArgument("map", default_value=""),
         DeclareLaunchArgument("gazebo_world", default_value=""),
         OpaqueFunction(function=_launch_setup),

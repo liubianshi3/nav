@@ -1,0 +1,66 @@
+ARG NODE_IMAGE=node:20-bookworm-slim
+ARG ROS_IMAGE=ros:humble-ros-base-jammy
+
+FROM ${NODE_IMAGE} AS web-build
+WORKDIR /web
+
+COPY web_console/frontend/package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY web_console/frontend/ ./
+RUN npm run build && test -f /backend/static/index.html
+
+FROM ${ROS_IMAGE} AS runtime
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+ENV A2_WORKSPACE=/opt/a2_system_ws
+ENV UNITREE_SDK2_ROOT=/opt/unitree_robotics
+ENV CONFIG_PATH=/opt/a2_system_ws/web_console/backend/config.docker.yaml
+ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib:/opt/unitree_robotics/lib/x86_64
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    cmake \
+    curl \
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    procps \
+    python3-colcon-common-extensions \
+    python3-pip \
+    python3-setuptools \
+    python3-venv \
+    python3-yaml \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-sensor-msgs-py \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build with the same real Unitree SDK installed on the A2 host.
+# Build with:
+#   DOCKER_BUILDKIT=1 docker build --build-context unitree_sdk=/opt/unitree_robotics ...
+COPY --from=unitree_sdk / /opt/unitree_robotics/
+RUN test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake
+
+WORKDIR /opt/a2_system_ws
+COPY src ./src
+COPY web_console/backend ./web_console/backend
+COPY web_console/scripts ./web_console/scripts
+COPY web_console/systemd ./web_console/systemd
+COPY web_console/README.md ./web_console/README.md
+COPY --from=web-build /backend/static ./web_console/backend/static
+COPY docker/entrypoint.sh /usr/local/bin/a2-web-entrypoint
+
+RUN chmod +x /usr/local/bin/a2-web-entrypoint \
+    && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
+    && source /opt/ros/humble/setup.bash \
+    && colcon build --packages-skip fast_lio livox_ros_driver2 \
+    && pip3 install --no-cache-dir -r web_console/backend/requirements.txt \
+    && mkdir -p runtime/maps runtime/logs \
+    && rm -rf build log
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/a2-web-entrypoint"]

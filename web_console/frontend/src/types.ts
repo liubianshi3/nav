@@ -94,6 +94,7 @@ export interface InitialPoseResult {
 export interface NodeCheck {
   key: string;
   label: string;
+  state: string;
   running: boolean;
   required: boolean;
   detail: string | null;

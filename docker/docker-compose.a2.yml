@@ -1,0 +1,19 @@
+services:
+  a2-system-ws:
+    image: ${A2_DOCKER_IMAGE:-a2-system-ws:real}
+    init: true
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.real
+      additional_contexts:
+        unitree_sdk: ${UNITREE_SDK_PATH:-/opt/unitree_robotics}
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      A2_WORKSPACE: /opt/a2_system_ws
+      CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
+      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
+    volumes:
+      - ${A2_HOST_MAP_ROOT:-/home/unitree/a2_system_ws/runtime/maps}:/opt/a2_system_ws/runtime/maps
+      - ${A2_HOST_LOG_ROOT:-/home/unitree/a2_system_ws/runtime/logs}:/opt/a2_system_ws/runtime/logs

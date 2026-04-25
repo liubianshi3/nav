@@ -6,5 +6,5 @@ system:
   target_nav_stack: nav2
   target_slam_stack: external_odom
   prefer_sdk_bridge: true
-  map_root: ${HOME}/a2_system_ws/runtime/maps
-  log_root: ${HOME}/a2_system_ws/runtime/logs
+  map_root: ${A2_WORKSPACE}/runtime/maps
+  log_root: ${A2_WORKSPACE}/runtime/logs

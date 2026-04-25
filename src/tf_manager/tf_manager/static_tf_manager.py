@@ -29,6 +29,8 @@ class StaticTfManager(Node):
             return yaml.safe_load(handle) or {}
 
     def make_transform(self, parent, child, xyz, rpy):
+        if len(xyz) != 3 or len(rpy) != 3:
+            raise ValueError(f"Invalid TF spec for {parent}->{child}: xyz and rpy must contain 3 values")
         msg = TransformStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = parent
@@ -58,23 +60,42 @@ class StaticTfManager(Node):
         base_frame = tf_tree.get("base_frame", "base_link")
         footprint_frame = tf_tree.get("footprint_frame", "base_footprint")
         trunk_frame = tf_tree.get("body_semantic_frame", "trunk")
+        dynamic_frames = {
+            tf_tree.get("map_frame", "map"),
+            tf_tree.get("odom_frame", "odom"),
+        }
+        children_seen = set()
+        transforms = []
 
-        transforms = [
-            self.make_transform(footprint_frame, base_frame, [0.0, 0.0, self.base_height], [0.0, 0.0, 0.0]),
-            self.make_transform(base_frame, trunk_frame, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
-        ]
+        def add_transform(parent, child, xyz, rpy):
+            if not parent or not child:
+                self.get_logger().warn(f"Skipping TF with empty parent/child: parent='{parent}', child='{child}'")
+                return
+            if child in dynamic_frames:
+                self.get_logger().warn(f"Skipping static TF for dynamic frame '{child}'")
+                return
+            if child in children_seen:
+                self.get_logger().warn(f"Skipping duplicate static TF child frame '{child}'")
+                return
+            try:
+                transforms.append(self.make_transform(parent, child, xyz, rpy))
+                children_seen.add(child)
+            except (TypeError, ValueError) as exc:
+                self.get_logger().warn(str(exc))
+
+        add_transform(footprint_frame, base_frame, [0.0, 0.0, self.base_height], [0.0, 0.0, 0.0])
+        add_transform(base_frame, trunk_frame, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0])
 
         for sensor_name, spec in extrinsics.items():
-            transforms.append(
-                self.make_transform(
-                    spec.get("parent", base_frame),
-                    spec.get("child", sensor_name + "_link"),
-                    spec.get("xyz", [0.0, 0.0, 0.0]),
-                    spec.get("rpy", [0.0, 0.0, 0.0]),
-                )
+            add_transform(
+                spec.get("parent", base_frame),
+                spec.get("child", sensor_name + "_link"),
+                spec.get("xyz", [0.0, 0.0, 0.0]),
+                spec.get("rpy", [0.0, 0.0, 0.0]),
             )
 
-        self.broadcaster.sendTransform(transforms)
+        if transforms:
+            self.broadcaster.sendTransform(transforms)
 
 
 def main():

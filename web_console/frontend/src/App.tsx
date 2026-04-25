@@ -148,6 +148,9 @@ export default function App() {
   }, [selectedMapId]);
 
   useEffect(() => {
+    if (stackBusy) {
+      return undefined;
+    }
     const interval = window.setInterval(() => {
       fetchStackStatus()
         .then((status) => {
@@ -160,7 +163,7 @@ export default function App() {
         .catch(() => undefined);
     }, 2500);
     return () => window.clearInterval(interval);
-  }, [selectedMapId]);
+  }, [selectedMapId, stackBusy]);
 
   const { connected: websocketConnected, lastError: websocketError } = useBackendSocket({
     onEvent: (event: BackendEvent<unknown>) => {
@@ -208,11 +211,18 @@ export default function App() {
     snapshot.health.action_server_ready &&
     poseAgeMs < 10000;
   const canSetInitialPose = stack?.mode === "navigation" && snapshot.map.loaded && snapshot.navigation.state !== "navigating";
+  const stackTransitioning = stackBusy || stack?.mode === "starting" || stack?.mode === "stopping";
 
   const refreshStack = async () => {
-    const status = await fetchStackStatus();
+    const [status, health] = await Promise.all([
+      fetchStackStatus(),
+      fetchHealth().catch(() => null),
+    ]);
     setStack(status);
     setMaps(status.maps);
+    if (health) {
+      setSnapshot((current) => ({ ...current, health }));
+    }
     return status;
   };
 
@@ -337,10 +347,10 @@ export default function App() {
             <p>建图模式 + 地图选择 + 点选导航</p>
           </div>
           <div className="topbar-indicators">
-            <button className="mode-button" disabled={stackBusy || stack?.mode === "mapping"} onClick={handleStartMapping}>
+            <button className="mode-button" disabled={stackTransitioning || stack?.mode === "mapping"} onClick={handleStartMapping}>
               建图模式
             </button>
-            <button className="mode-button" disabled={stackBusy || !selectedMapId || stack?.mode === "navigation"} onClick={handleStartNavigation}>
+            <button className="mode-button" disabled={stackTransitioning || !selectedMapId || stack?.mode === "navigation"} onClick={handleStartNavigation}>
               导航模式
             </button>
             <span className={`indicator ${snapshot.status.system_ready ? "indicator-ok" : "indicator-warn"}`}>
@@ -371,7 +381,7 @@ export default function App() {
         selectedGoal={selectedGoal}
         canSendGoal={canSendGoal}
         canSetInitialPose={canSetInitialPose}
-        stackBusy={stackBusy}
+        stackBusy={stackTransitioning}
         onSelectedMapChange={setSelectedMapId}
         onSaveMapIdChange={setSaveMapId}
         onStartMapping={handleStartMapping}

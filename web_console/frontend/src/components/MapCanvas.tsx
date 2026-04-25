@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 
 import type { MapSnapshot, NavigationGoal, RobotPose } from "../types";
 import { clamp, mapPixelToWorld, worldToMapPixel } from "../utils/map";
@@ -39,6 +39,11 @@ export function MapCanvas({
   });
   const [view, setView] = useState<ViewState>({ zoom: 1.2, panX: 32, panY: 32 });
   const [hoverText, setHoverText] = useState("未悬停地图");
+  const viewRef = useRef(view);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   useEffect(() => {
     if (!map?.loaded) {
@@ -133,23 +138,38 @@ export function MapCanvas({
     }
   }, [map, pose, selectedGoal, activeGoal, view]);
 
-  const handleWheel = (event: ReactWheelEvent<HTMLCanvasElement>) => {
-    if (!map?.loaded) {
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
       return;
     }
-    event.preventDefault();
-    const nextZoom = clamp(view.zoom * (event.deltaY < 0 ? 1.1 : 0.9), 0.2, 12);
-    const rect = event.currentTarget.getBoundingClientRect();
-    const pointerX = event.clientX - rect.left;
-    const pointerY = event.clientY - rect.top;
-    const mapX = (pointerX - view.panX) / view.zoom;
-    const mapY = (pointerY - view.panY) / view.zoom;
-    setView({
-      zoom: nextZoom,
-      panX: pointerX - mapX * nextZoom,
-      panY: pointerY - mapY * nextZoom,
-    });
-  };
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!map?.loaded) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+
+      const currentView = viewRef.current;
+      const nextZoom = clamp(currentView.zoom * (event.deltaY < 0 ? 1.1 : 0.9), 0.2, 12);
+      const rect = canvas.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const mapX = (pointerX - currentView.panX) / currentView.zoom;
+      const mapY = (pointerY - currentView.panY) / currentView.zoom;
+      setView({
+        zoom: nextZoom,
+        panX: pointerX - mapX * nextZoom,
+        panY: pointerY - mapY * nextZoom,
+      });
+    };
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+    };
+  }, [map]);
 
   const handleMouseDown = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     dragRef.current = {
@@ -222,7 +242,6 @@ export function MapCanvas({
       <canvas
         ref={canvasRef}
         className={`map-canvas ${disabled ? "map-canvas-disabled" : ""}`}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

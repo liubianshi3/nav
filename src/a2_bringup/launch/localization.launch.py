@@ -14,7 +14,7 @@ def _launch_setup(context, *args, **kwargs):
     )
     enable_nav2_bringup = as_bool(LaunchConfiguration("enable_nav2_bringup").perform(context))
     real_localization_mode = (
-        LaunchConfiguration("real_localization_mode").perform(context).strip() or "manual_odom"
+        LaunchConfiguration("real_localization_mode").perform(context).strip() or "amcl"
     )
     use_mock = runtime_mode == "mock"
     use_sim_time = as_bool(LaunchConfiguration("use_sim_time").perform(context))
@@ -47,6 +47,11 @@ def _launch_setup(context, *args, **kwargs):
                     "map_frame": "map",
                     "odom_frame": "odom",
                     "base_frame": "base_link",
+                    "xy_variance_growth_per_meter": 0.03,
+                    "yaw_variance_growth_per_rad": 0.02,
+                    "max_xy_variance": 0.20,
+                    "max_yaw_variance": 0.15,
+                    "max_odom_age_sec": 1.0,
                     "use_sim_time": use_sim_time,
                 }],
             )
@@ -73,6 +78,6 @@ def generate_launch_description():
         DeclareLaunchArgument("use_mock", default_value="true"),
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("enable_nav2_bringup", default_value="false"),
-        DeclareLaunchArgument("real_localization_mode", default_value="manual_odom"),
+        DeclareLaunchArgument("real_localization_mode", default_value="amcl"),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/../config/network.yaml"
-FALLBACK_CONFIG_FILE="${HOME}/a2_system_ws/src/a2_system/config/network.yaml"
+WORKSPACE_ROOT="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/config/network.yaml"
+FALLBACK_CONFIG_FILE="${WORKSPACE_ROOT}/src/a2_system/config/network.yaml"
 CONFIG_FILE="${A2_NETWORK_CONFIG:-}"
 PREFERRED_IFACE="${1:-${A2_NETWORK_INTERFACE:-}}"
 

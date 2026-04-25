@@ -2,6 +2,11 @@ localization_gate:
   ros__parameters:
     input_pose_topic: /amcl_pose
     status_topic: /a2/localization_ok
-    max_pose_age_sec: 30.0
-    max_xy_variance: 0.25
-    max_yaw_variance: 0.2
+    status_report_topic: /a2/localization/status
+    max_pose_age_sec: 5.0
+    latch_valid_pose: true
+    latched_pose_timeout_sec: 30.0
+    pose_transient_local: true
+    allow_zero_stamp_as_now: true
+    max_xy_variance: 0.18
+    max_yaw_variance: 0.12

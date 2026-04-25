@@ -2,6 +2,12 @@
 
 Host-side ROS 2 Humble workspace for Unitree A2 + MID360, with mock/real mode parity and a Nav2-facing integration boundary.
 
+## A2 real1 启动
+
+如果你现在只关心那台 A2 上怎么先清干扰、再启动真实栈，先看这份：
+
+- [README_A2_Quickstart.md](./README_A2_Quickstart.md)
+
 ## Build
 
 ```bash

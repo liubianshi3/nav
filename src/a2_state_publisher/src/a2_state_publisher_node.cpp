@@ -1,4 +1,6 @@
+#include <array>
 #include <memory>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -27,6 +29,11 @@ public:
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", false);
     flatten_z_in_odom_ = declare_parameter<bool>("flatten_z_in_odom", true);
+    planarize_orientation_in_odom_ = declare_parameter<bool>("planarize_orientation_in_odom", true);
+    pose_covariance_diagonal_ = declare_parameter<std::vector<double>>(
+      "pose_covariance_diagonal", {0.03, 0.03, 0.05, 0.02, 0.02, 0.04});
+    twist_covariance_diagonal_ = declare_parameter<std::vector<double>>(
+      "twist_covariance_diagonal", {0.02, 0.02, 0.05, 0.02, 0.02, 0.04});
     joint_names_ = declare_parameter<std::vector<std::string>>(
       "joint_names",
       {"FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
@@ -76,14 +83,17 @@ private:
     odom.pose.pose.position.x = msg->position[0];
     odom.pose.pose.position.y = msg->position[1];
     odom.pose.pose.position.z = flatten_z_in_odom_ ? 0.0 : msg->position[2];
-    odom.pose.pose.orientation.x = msg->orientation_xyzw[0];
-    odom.pose.pose.orientation.y = msg->orientation_xyzw[1];
-    odom.pose.pose.orientation.z = msg->orientation_xyzw[2];
-    odom.pose.pose.orientation.w = msg->orientation_xyzw[3];
+    const auto odom_quat = odom_orientation(*msg);
+    odom.pose.pose.orientation.x = odom_quat[0];
+    odom.pose.pose.orientation.y = odom_quat[1];
+    odom.pose.pose.orientation.z = odom_quat[2];
+    odom.pose.pose.orientation.w = odom_quat[3];
     odom.twist.twist.linear.x = msg->velocity[0];
     odom.twist.twist.linear.y = msg->velocity[1];
     odom.twist.twist.linear.z = msg->velocity[2];
     odom.twist.twist.angular.z = msg->yaw_speed;
+    fill_covariance(odom.pose.covariance, pose_covariance_diagonal_);
+    fill_covariance(odom.twist.covariance, twist_covariance_diagonal_);
     odom_pub_->publish(odom);
 
     if (publish_joint_states_) {
@@ -104,11 +114,54 @@ private:
       transform.transform.translation.x = msg->position[0];
       transform.transform.translation.y = msg->position[1];
       transform.transform.translation.z = flatten_z_in_odom_ ? 0.0 : msg->position[2];
-      transform.transform.rotation.x = msg->orientation_xyzw[0];
-      transform.transform.rotation.y = msg->orientation_xyzw[1];
-      transform.transform.rotation.z = msg->orientation_xyzw[2];
-      transform.transform.rotation.w = msg->orientation_xyzw[3];
+      transform.transform.rotation.x = odom_quat[0];
+      transform.transform.rotation.y = odom_quat[1];
+      transform.transform.rotation.z = odom_quat[2];
+      transform.transform.rotation.w = odom_quat[3];
       tf_broadcaster_->sendTransform(transform);
+    }
+  }
+
+  static double yaw_from_quaternion(const a2_interfaces::msg::RobotState & msg)
+  {
+    const auto x = static_cast<double>(msg.orientation_xyzw[0]);
+    const auto y = static_cast<double>(msg.orientation_xyzw[1]);
+    const auto z = static_cast<double>(msg.orientation_xyzw[2]);
+    const auto w = static_cast<double>(msg.orientation_xyzw[3]);
+    const auto siny_cosp = 2.0 * (w * z + x * y);
+    const auto cosy_cosp = 1.0 - 2.0 * (y * y + z * z);
+    return std::atan2(siny_cosp, cosy_cosp);
+  }
+
+  static std::array<double, 4> yaw_to_quaternion(double yaw)
+  {
+    const auto half_yaw = yaw * 0.5;
+    return {0.0, 0.0, std::sin(half_yaw), std::cos(half_yaw)};
+  }
+
+  std::array<double, 4> odom_orientation(const a2_interfaces::msg::RobotState & msg) const
+  {
+    if (!planarize_orientation_in_odom_) {
+      return {
+        static_cast<double>(msg.orientation_xyzw[0]),
+        static_cast<double>(msg.orientation_xyzw[1]),
+        static_cast<double>(msg.orientation_xyzw[2]),
+        static_cast<double>(msg.orientation_xyzw[3])};
+    }
+    double yaw = static_cast<double>(msg.rpy[2]);
+    if (!std::isfinite(yaw)) {
+      yaw = yaw_from_quaternion(msg);
+    }
+    return yaw_to_quaternion(yaw);
+  }
+
+  static void fill_covariance(
+    std::array<double, 36> & covariance,
+    const std::vector<double> & diagonal)
+  {
+    covariance.fill(0.0);
+    for (std::size_t index = 0; index < 6U && index < diagonal.size(); ++index) {
+      covariance[index * 6U + index] = diagonal[index];
     }
   }
 
@@ -123,6 +176,9 @@ private:
   bool publish_tf_{true};
   bool publish_joint_states_{false};
   bool flatten_z_in_odom_{true};
+  bool planarize_orientation_in_odom_{true};
+  std::vector<double> pose_covariance_diagonal_;
+  std::vector<double> twist_covariance_diagonal_;
   std::vector<std::string> joint_names_;
 
   rclcpp::Subscription<a2_interfaces::msg::RobotState>::SharedPtr state_sub_;

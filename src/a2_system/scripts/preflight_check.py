@@ -20,6 +20,18 @@ def load_yaml(path: pathlib.Path):
         return yaml.safe_load(handle) or {}
 
 
+def default_config_dir() -> str:
+    script_path = pathlib.Path(__file__).resolve()
+    candidates = [
+        script_path.parent / "config",
+        script_path.parent.parent / "config",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return str(candidates[0])
+
+
 def run(cmd):
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
@@ -112,8 +124,7 @@ def main():
     parser = argparse.ArgumentParser(description="Preflight checks for the A2 host-side stack.")
     parser.add_argument(
         "--config-dir",
-        default=os.environ.get(
-            "A2_CONFIG_DIR", "/home/dell/a2_system_ws/src/a2_system/config"),
+        default=os.environ.get("A2_CONFIG_DIR", default_config_dir()),
         help="Directory containing YAML config templates.",
     )
     parser.add_argument(
@@ -137,7 +148,7 @@ def main():
 
     ros_distro = os.environ.get("ROS_DISTRO", "")
     rmw = os.environ.get("RMW_IMPLEMENTATION", "")
-    sdk_root = pathlib.Path(os.environ.get("UNITREE_SDK2_ROOT", "/home/dell/unitree_sdk2"))
+    sdk_root = pathlib.Path(os.environ.get("UNITREE_SDK2_ROOT", "/opt/unitree_robotics"))
     configured_iface = network_cfg.get("network", {}).get("network_interface", "")
     use_mock = sdk_cfg.get("a2_sdk_bridge", {}).get("ros__parameters", {}).get("use_mock", True)
     control_mock = motion_cfg.get("a2_control_bridge", {}).get("ros__parameters", {}).get("use_mock", True)

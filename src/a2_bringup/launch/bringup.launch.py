@@ -201,7 +201,7 @@ def generate_launch_description():
         DeclareLaunchArgument("network_interface", default_value=""),
         DeclareLaunchArgument("enable_nav2_bringup", default_value="false"),
         DeclareLaunchArgument("enable_control_bridge", default_value="false"),
-        DeclareLaunchArgument("real_localization_mode", default_value="manual_odom"),
+        DeclareLaunchArgument("real_localization_mode", default_value="amcl"),
         DeclareLaunchArgument("map", default_value=""),
         DeclareLaunchArgument("gazebo_world", default_value=""),
         DeclareLaunchArgument("gazebo_gui", default_value="false"),

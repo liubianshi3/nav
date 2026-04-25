@@ -16,7 +16,7 @@ ament_target_dependencies(a2_control_bridge_node
   std_msgs
   a2_system)
 
-set(UNITREE_SDK2_ROOT "/home/dell/unitree_sdk2" CACHE PATH "Path to unitree_sdk2 checkout")
+set(UNITREE_SDK2_ROOT "/opt/unitree_robotics" CACHE PATH "Path to unitree_sdk2 checkout")
 set(UNITREE_SDK2_CONFIG_HINTS
   "${UNITREE_SDK2_ROOT}/lib/cmake/unitree_sdk2"
   "$ENV{UNITREE_SDK2_ROOT}/lib/cmake/unitree_sdk2"
