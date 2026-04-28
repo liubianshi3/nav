@@ -12,7 +12,7 @@ from typing import Any
 
 import rclpy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
@@ -227,6 +227,11 @@ class RosBridgeNode(Node):
         self.pose_goal_publisher = self.create_publisher(
             PoseStamped,
             self.config.navigation.goal_topic,
+            10,
+        )
+        self.cancel_stop_publisher = self.create_publisher(
+            Twist,
+            self.config.navigation.cancel_stop_topic,
             10,
         )
         self.native_slam_publisher = None
@@ -737,11 +742,13 @@ class RosBridgeNode(Node):
             self.navigation.feedback = feedback
             self.navigation.updated_at = now_iso()
             if reached:
+                self._publish_pose_topic_stop("goal_reached")
                 self.navigation.state = "succeeded"
                 self.navigation.message = "3D 位姿目标已到达"
                 self._active_pose_goal = None
                 self._active_pose_goal_started_at = None
             elif timed_out:
+                self._publish_pose_topic_stop("goal_timeout")
                 self.navigation.state = "failed"
                 self.navigation.message = "3D 位姿目标超时"
                 self._active_pose_goal = None
@@ -950,6 +957,34 @@ class RosBridgeNode(Node):
         self._publish("navigation", dump_model(self.navigation))
         return deep_copy_model(self.navigation)
 
+    def _publish_pose_topic_stop(self, reason: str) -> None:
+        if self.config.navigation.cancel_retarget_current_pose:
+            pose = deep_copy_model(self.pose)
+            if pose.available and pose.x is not None and pose.y is not None:
+                stop_goal = PoseStamped()
+                stop_goal.header.frame_id = self.config.navigation.goal_frame
+                stop_goal.header.stamp = self.get_clock().now().to_msg()
+                stop_goal.pose.position.x = float(pose.x)
+                stop_goal.pose.position.y = float(pose.y)
+                yaw = float(pose.yaw or 0.0)
+                stop_goal.pose.orientation.z = math.sin(yaw / 2.0)
+                stop_goal.pose.orientation.w = math.cos(yaw / 2.0)
+                self.pose_goal_publisher.publish(stop_goal)
+        stop = Twist()
+        burst_count = max(1, int(self.config.navigation.cancel_stop_burst_count))
+        interval = max(0.0, float(self.config.navigation.cancel_stop_burst_interval_sec))
+        for _ in range(burst_count):
+            self.cancel_stop_publisher.publish(stop)
+            if interval > 0.0:
+                time.sleep(interval)
+        self.get_logger().info(
+            "Published 3D pose-topic stop. reason=%s goal_topic=%s stop_topic=%s burst=%d",
+            reason,
+            self.config.navigation.goal_topic,
+            self.config.navigation.cancel_stop_topic,
+            burst_count,
+        )
+
     def set_initial_pose(self, request: InitialPoseRequest) -> dict[str, Any]:
         with self._navigation_lock:
             if self.config.navigation.backend == "pose_topic_3d":
@@ -1052,17 +1087,19 @@ class RosBridgeNode(Node):
         with self._navigation_lock:
             if self.config.navigation.backend == "pose_topic_3d":
                 if self._active_pose_goal is None:
+                    self._publish_pose_topic_stop("cancel_without_active_goal")
                     with self._lock:
                         self.navigation.state = "idle"
-                        self.navigation.message = "当前没有活动 3D 位姿目标"
+                        self.navigation.message = "当前没有活动 3D 位姿目标，已发布停止信号"
                         self.navigation.updated_at = now_iso()
                     self._publish("navigation", dump_model(self.navigation))
                     return deep_copy_model(self.navigation)
+                self._publish_pose_topic_stop("cancel_requested")
                 with self._lock:
                     self._active_pose_goal = None
                     self._active_pose_goal_started_at = None
                     self.navigation.state = "canceled"
-                    self.navigation.message = "3D 位姿目标已在 Web 状态中取消"
+                    self.navigation.message = "3D 位姿目标已取消，并已发布停止信号"
                     self.navigation.updated_at = now_iso()
                 self._publish("navigation", dump_model(self.navigation))
                 return deep_copy_model(self.navigation)

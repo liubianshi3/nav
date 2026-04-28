@@ -29,6 +29,10 @@ navigation:
   action_name: /navigate_to_pose
   goal_topic: /goal_pose_
   goal_frame: map
+  cancel_stop_topic: /cmd_vel
+  cancel_stop_burst_count: 5
+  cancel_stop_burst_interval_sec: 0.05
+  cancel_retarget_current_pose: true
   initial_pose_topic: /initialpose
   action_wait_timeout_sec: 3.0
   goal_response_timeout_sec: 5.0

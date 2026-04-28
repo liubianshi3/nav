@@ -54,6 +54,10 @@ class NavigationConfig:
     action_name: str = "/navigate_to_pose"
     goal_topic: str = "/goal_pose_"
     goal_frame: str = "map"
+    cancel_stop_topic: str = "/cmd_vel"
+    cancel_stop_burst_count: int = 5
+    cancel_stop_burst_interval_sec: float = 0.05
+    cancel_retarget_current_pose: bool = True
     initial_pose_topic: str = "/initialpose"
     action_wait_timeout_sec: float = 3.0
     goal_response_timeout_sec: float = 5.0

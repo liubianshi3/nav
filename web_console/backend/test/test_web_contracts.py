@@ -28,6 +28,8 @@ def test_default_config_exposes_camera_topics():
     assert config.navigation.initial_pose_publish_interval_sec > 0.0
     assert config.navigation.backend == "pose_topic_3d"
     assert config.navigation.goal_topic == "/goal_pose_"
+    assert config.navigation.cancel_stop_topic == "/cmd_vel"
+    assert config.navigation.cancel_retarget_current_pose is True
     assert config.navigation.require_map_for_goal is False
     assert config.native_slam.enabled is True
     assert config.native_slam.request_topic == "/api/slam_operate/request"

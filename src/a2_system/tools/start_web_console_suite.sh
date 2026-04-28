@@ -424,3 +424,5 @@ echo
 log "Web console is ready"
 show_local_urls
 log "${STARTUP_HINT_MESSAGE}"
+log "3D dry-run preflight: ros2 run a2_system goal_pose_3d_smoke_test.py"
+log "3D short-goal test only in a clear area: ros2 run a2_system goal_pose_3d_smoke_test.py --execute --i-understand-robot-will-move"

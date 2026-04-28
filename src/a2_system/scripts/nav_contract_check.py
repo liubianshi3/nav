@@ -113,8 +113,15 @@ def check_nav2_stack(result: CheckResult) -> None:
 
 def check_localization(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "localization.yaml"), "localization_gate", "ros__parameters", default={})
-    result.require(params.get("input_pose_topic") == "/amcl_pose", "localization_gate must consume /amcl_pose")
-    result.require(bool(params.get("pose_transient_local", False)), "localization_gate must subscribe to AMCL with transient local QoS")
+    result.require(params.get("input_pose_topic") == "/odom", "localization_gate must consume /odom in 3D-first mode")
+    result.require(
+        params.get("input_pose_msg_type") == "nav_msgs/msg/Odometry",
+        "localization_gate must consume nav_msgs/msg/Odometry in 3D-first mode",
+    )
+    result.require(
+        not bool(params.get("pose_transient_local", True)),
+        "localization_gate must use volatile QoS for /odom in 3D-first mode",
+    )
     result.require(bool(params.get("latch_valid_pose", False)), "localization_gate must latch recently valid poses")
     result.require(float(params.get("max_pose_age_sec", 999.0)) <= 10.0, "max_pose_age_sec must be bounded for real readiness")
     result.require(float(params.get("latched_pose_timeout_sec", 999.0)) <= 60.0, "latched_pose_timeout_sec must be bounded")
@@ -139,6 +146,8 @@ def check_real_lidar(result: CheckResult) -> None:
 
 def check_goal_bridge(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "nav2.yaml"), "goal_bridge", "ros__parameters", default={})
+    result.require(params.get("navigation_backend") == "pose_topic_3d", "goal_bridge must default to pose_topic_3d")
+    result.require(params.get("pose_goal_topic") == "/goal_pose_", "goal_bridge pose_goal_topic must be /goal_pose_")
     result.require(params.get("map_frame") == "map", "goal_bridge map_frame must be map")
     result.require(bool(params.get("require_map_frame", False)), "goal_bridge must reject non-map goals by default")
     result.require(float(params.get("goal_timeout_sec", 0.0)) > 0.0, "goal_bridge must define goal_timeout_sec")
@@ -152,12 +161,23 @@ def check_scan_mission(result: CheckResult) -> None:
     scan_launch = (BRINGUP_DIR / "scan_mission.launch.py").read_text(encoding="utf-8")
     mock_launch = (BRINGUP_DIR / "scan_mission_mock.launch.py").read_text(encoding="utf-8")
 
-    result.require(params.get("navigate_action_name") == "/navigate_to_pose", "scan mission must target /navigate_to_pose")
+    result.require(params.get("navigation_backend") == "pose_topic_3d", "scan mission must default to pose_topic_3d")
+    result.require(params.get("pose_goal_topic") == "/goal_pose_", "scan mission pose goal topic must be /goal_pose_")
+    result.require(params.get("pose_topic") == "/odom", "scan mission must consume /odom pose in 3D-first mode")
+    result.require(
+        params.get("pose_msg_type") == "nav_msgs/msg/Odometry",
+        "scan mission pose_msg_type must be nav_msgs/msg/Odometry in 3D-first mode",
+    )
+    result.require(params.get("pointcloud_topic") == "/unitree/slam_lidar/points1", "scan mission must use front lidar pointcloud")
+    result.require(params.get("navigate_action_name") == "/navigate_to_pose", "scan mission must keep Nav2 action as fallback")
     result.require(params.get("mission_status_topic") == "/a2/scan_mission/status", "scan mission status topic must be stable")
     result.require(params.get("mission_report_topic") == "/a2/scan_mission/report", "scan mission report topic must be stable")
     result.require(params.get("goal_frame") == "map", "scan mission goals must be emitted in map frame")
     result.require(bool(params.get("require_map_frame", False)), "scan mission must require map frame by default")
-    result.require(bool(params.get("validate_waypoints_against_map", False)), "scan mission must validate waypoints against /map")
+    result.require(
+        not bool(params.get("validate_waypoints_against_map", True)),
+        "3D-first scan mission must not require 2D /map validation by default",
+    )
     result.require(not bool(params.get("allow_unknown_cells", True)), "scan mission must block unknown cells by default")
     result.require(int(params.get("occupied_threshold", 100)) <= 70, "scan mission occupied threshold must be <= 70")
     result.require(int(params.get("min_clearance_cells", -1)) >= 0, "scan mission min_clearance_cells must be >= 0")
@@ -236,8 +256,8 @@ def check_real_mapping_source_contract(result: CheckResult) -> None:
         "mapping.launch.py must support slam_toolbox",
     )
     result.require(
-        slam_params.get("mapping_stack_profile") == "slam_toolbox",
-        "slam.yaml must default mapping_stack_profile to slam_toolbox",
+        slam_params.get("mapping_stack_profile") == "front_lidar_pointcloud_3d",
+        "slam.yaml must default mapping_stack_profile to front_lidar_pointcloud_3d",
     )
     result.require(
         slam_toolbox_params.get("scan_topic") == "/scan",
@@ -277,16 +297,16 @@ def check_web_stack_contract(result: CheckResult) -> None:
         return
     text = stack_control.read_text(encoding="utf-8")
     result.require(
-        '("localization", "AMCL localization", "amcl")' in text,
-        "web navigation startup contract must wait for AMCL, not manual localization",
+        '("localization", "3D localization gate", "localization_gate")' in text,
+        "web 3D navigation startup contract must wait for localization_gate",
     )
     result.require(
         '"manual localization"' not in text,
         "web navigation startup contract must not require manual localization by default",
     )
     result.require(
-        '"A2_REAL_LOCALIZATION_MODE": "amcl"' in text,
-        "web navigation startup must explicitly set A2_REAL_LOCALIZATION_MODE=amcl",
+        '"A2_REAL_LOCALIZATION_MODE": "uslam_odom"' in text,
+        "web 3D navigation startup must explicitly set A2_REAL_LOCALIZATION_MODE=uslam_odom",
     )
 
 
