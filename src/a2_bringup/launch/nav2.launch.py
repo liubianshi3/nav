@@ -1,4 +1,5 @@
 from pathlib import Path
+import yaml
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
@@ -7,6 +8,24 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from a2_bringup.runtime_mode import normalize_runtime_mode, is_simulated_mode, as_bool
+
+
+def _load_yaml(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def _pointcloud_scan_input_topic(a2_system_share, runtime_mode):
+    if runtime_mode != "real":
+        return "/mid360/points"
+    params = _load_yaml(f"{a2_system_share}/config/real_lidar.yaml").get("real_lidar", {}).get(
+        "ros__parameters", {}
+    )
+    profile = params.get("profile", "")
+    driver_mode = params.get("driver_mode", "")
+    if profile == "unitree_native_fused" or driver_mode == "external_pointcloud":
+        return params.get("input_topic", "/unitree/slam_lidar/points1")
+    return params.get("output_topic", "/mid360/points")
 
 
 def _launch_setup(context, *args, **kwargs):
@@ -24,6 +43,7 @@ def _launch_setup(context, *args, **kwargs):
     use_sim_time = as_bool(LaunchConfiguration("use_sim_time").perform(context))
     use_sim_time_text = str(use_sim_time).lower()
     a2_system_share = get_package_share_directory("a2_system")
+    pointcloud_scan_input_topic = _pointcloud_scan_input_topic(a2_system_share, runtime_mode)
     if runtime_mode == "gazebo" and not map_yaml:
         gazebo_bridge_share = get_package_share_directory("gazebo_bridge")
         if gazebo_world:
@@ -78,6 +98,7 @@ def _launch_setup(context, *args, **kwargs):
                 executable="pointcloud_to_laserscan",
                 name="pointcloud_to_laserscan",
                 parameters=[f"{a2_system_share}/config/pointcloud_to_scan.yaml", {
+                    "input_topic": pointcloud_scan_input_topic,
                     "use_sim_time": use_sim_time,
                 }],
             )

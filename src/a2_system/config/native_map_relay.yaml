@@ -1,0 +1,8 @@
+native_map_relay:
+  ros__parameters:
+    profile: native_global_map
+    input_topic: /global_map
+    output_topic: /map
+    output_frame_id: map
+    publish_rate_hz: 1.0
+    status_topic: /a2/native_map/status

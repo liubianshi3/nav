@@ -1,4 +1,5 @@
 import os
+import yaml
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
@@ -8,6 +9,24 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 from a2_bringup.runtime_mode import as_bool, normalize_runtime_mode, use_sim_time_for_mode
+
+
+def _load_yaml(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def _real_lidar_consumer_topic(a2_system_share, runtime_mode):
+    if runtime_mode != "real":
+        return "/mid360/points"
+    params = _load_yaml(f"{a2_system_share}/config/real_lidar.yaml").get("real_lidar", {}).get(
+        "ros__parameters", {}
+    )
+    profile = params.get("profile", "")
+    driver_mode = params.get("driver_mode", "")
+    if profile == "unitree_native_fused" or driver_mode == "external_pointcloud":
+        return params.get("input_topic", "/unitree/slam_lidar/points1")
+    return params.get("output_topic", "/mid360/points")
 
 
 def _unitree_ddsc_env(runtime_mode):
@@ -50,6 +69,7 @@ def _launch_setup(context, *args, **kwargs):
     a2_system_share = get_package_share_directory("a2_system")
     bringup_share = get_package_share_directory("a2_bringup")
     unitree_ddsc_env = _unitree_ddsc_env(runtime_mode)
+    real_lidar_topic = _real_lidar_consumer_topic(a2_system_share, runtime_mode)
 
     actions = []
     if runtime_mode == "gazebo":
@@ -93,6 +113,16 @@ def _launch_setup(context, *args, **kwargs):
             parameters=[f"{a2_system_share}/config/state_bridge.yaml", {"use_sim_time": use_sim_time}],
         ),
         Node(
+            package="a2_system",
+            executable="task_manager.py",
+            name="task_manager",
+            parameters=[f"{a2_system_share}/config/task_manager.yaml", {
+                "use_mock": use_mock,
+                "runtime_mode": runtime_mode,
+                "use_sim_time": use_sim_time,
+            }],
+        ),
+        Node(
             package="a2_control_bridge",
             executable="a2_control_bridge_node",
             name="a2_control_bridge",
@@ -112,6 +142,7 @@ def _launch_setup(context, *args, **kwargs):
             executable="safety_supervisor",
             name="safety_supervisor",
             parameters=[f"{a2_system_share}/config/safety.yaml", {
+                "lidar_topic": real_lidar_topic,
                 "use_mock": use_mock,
                 "runtime_mode": runtime_mode,
                 "latch_map_ready": enable_nav2_bringup_bool,
@@ -158,6 +189,7 @@ def _launch_setup(context, *args, **kwargs):
                 "use_mock": use_mock_text,
                 "use_sim_time": use_sim_time_text,
                 "enable_nav2_bringup": enable_nav2_bringup,
+                "pointcloud_topic": real_lidar_topic,
             }.items(),
         ),
         IncludeLaunchDescription(

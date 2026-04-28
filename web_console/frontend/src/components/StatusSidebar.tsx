@@ -42,6 +42,7 @@ export function StatusSidebar({
         <StatusRow label="定位" value={localizationLabel} />
         <StatusRow label="lidar" value={formatStatusSummary(status?.lidar_status)} />
         <StatusRow label="SDK" value={formatStatusSummary(status?.sdk_status)} />
+        <StatusRow label="task mgr" value={formatStatusSummary(status?.task_manager_status)} />
       </section>
 
       <section className="panel">
@@ -79,6 +80,7 @@ export function StatusSidebar({
         <h2>健康检查</h2>
         <StatusRow label="map received" value={health?.map_received ? "true" : "false"} />
         <StatusRow label="pose received" value={health?.pose_received ? "true" : "false"} />
+        <StatusRow label="camera received" value={health?.camera_received ? "true" : "false"} />
         <StatusRow label="action ready" value={health?.action_server_ready ? "true" : "false"} />
         <StatusRow label="last error" value={formatNullable(health?.last_error)} />
       </section>

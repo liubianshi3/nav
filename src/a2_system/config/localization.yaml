@@ -1,6 +1,7 @@
 localization_gate:
   ros__parameters:
-    input_pose_topic: /amcl_pose
+    input_pose_topic: /uslam/localization/odom
+    input_pose_msg_type: nav_msgs/msg/Odometry
     status_topic: /a2/localization_ok
     status_report_topic: /a2/localization/status
     max_pose_age_sec: 5.0

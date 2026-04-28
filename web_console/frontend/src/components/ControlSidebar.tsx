@@ -48,6 +48,8 @@ export function ControlSidebar({
 }: ControlSidebarProps) {
   const isMapping = stack?.mode === "mapping";
   const isNavigation = stack?.mode === "navigation";
+  const selectedMap = maps.find((map) => map.map_id === selectedMapId) ?? null;
+  const pointcloudArtifact = selectedMap?.artifacts.find((artifact) => artifact.kind === "pointcloud_snapshot_3d") ?? null;
 
   return (
     <aside className="sidebar">
@@ -91,6 +93,22 @@ export function ControlSidebar({
         >
           启动导航模式
         </button>
+        {selectedMap ? (
+          <div className="map-asset-card">
+            <StatusMini label="representation" value={formatNullable(selectedMap.representation)} />
+            <StatusMini label="2D source" value={formatNullable(selectedMap.source_topic)} />
+            <StatusMini label="3D asset" value={selectedMap.has_pointcloud_3d ? "front lidar pcd" : "none"} />
+            <StatusMini label="3D topic" value={formatNullable(selectedMap.pointcloud_topic_3d)} />
+            <StatusMini
+              label="3D points"
+              value={
+                pointcloudArtifact?.points_saved === null || pointcloudArtifact?.points_saved === undefined
+                  ? "-"
+                  : String(pointcloudArtifact.points_saved)
+              }
+            />
+          </div>
+        ) : null}
         <label className="form-label" htmlFor="save-map-id">
           新地图名
         </label>
@@ -141,6 +159,8 @@ export function ControlSidebar({
 
       <section className="panel">
         <h2>最近提示</h2>
+        <p className="panel-message">{formatNullable(stack?.message, "暂无栈状态提示")}</p>
+        <p className="panel-message">{`log: ${formatNullable(stack?.log_file)}`}</p>
         <p className={`notice ${lastError ? "notice-error" : ""}`}>{formatNullable(lastError, "暂无错误")}</p>
         <p className={`notice ${lastSuccess ? "notice-success" : ""}`}>{formatNullable(lastSuccess, "暂无成功提示")}</p>
       </section>

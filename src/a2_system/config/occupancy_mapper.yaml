@@ -4,17 +4,17 @@ occupancy_mapper:
     pointcloud_topic: /mid360/points
     odom_topic: /odom
     frame_id: map
-    width: 300
-    height: 300
-    resolution: 0.1
+    width: 600
+    height: 600
+    resolution: 0.05
     origin_x: -15.0
     origin_y: -15.0
     publish_rate_hz: 2.0
-    point_stride: 6
+    point_stride: 3
     min_range: 0.3
-    max_range: 12.0
+    max_range: 10.0
     obstacle_min_z: 0.05
-    obstacle_max_z: 1.8
+    obstacle_max_z: 1.2
     hit_log_odds: 0.9
     miss_log_odds: 0.2
     min_log_odds: -2.0

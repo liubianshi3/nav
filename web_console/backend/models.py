@@ -22,6 +22,7 @@ class Pose2D(BaseModel):
 
 class MapSnapshot(BaseModel):
     loaded: bool = False
+    representation: str = "occupancy_grid_2d"
     frame_id: str | None = None
     width: int = 0
     height: int = 0
@@ -31,9 +32,21 @@ class MapSnapshot(BaseModel):
     data: list[int] = Field(default_factory=list)
 
 
+class PointCloudSnapshot(BaseModel):
+    loaded: bool = False
+    representation: str = "pointcloud_map_3d"
+    frame_id: str | None = None
+    stamp: str | None = None
+    source_topic: str | None = None
+    points: list[list[float]] = Field(default_factory=list)
+    points_total: int = 0
+    points_sampled: int = 0
+    sample_stride: int = 1
+
+
 class RobotPose(BaseModel):
     available: bool = False
-    source: str = "amcl_pose"
+    source: str = "localization_pose"
     frame_id: str | None = None
     stamp: str | None = None
     x: float | None = None
@@ -67,6 +80,7 @@ class RobotStatus(BaseModel):
     lidar_status: TextStatus = Field(default_factory=TextStatus)
     localization_status: TextStatus = Field(default_factory=TextStatus)
     map_manager_status: TextStatus = Field(default_factory=TextStatus)
+    task_manager_status: TextStatus = Field(default_factory=TextStatus)
     sdk_status: TextStatus = Field(default_factory=TextStatus)
     active_map: str | None = None
     velocity_linear_x: float | None = None
@@ -106,6 +120,19 @@ class NavigationTaskState(BaseModel):
     updated_at: str | None = None
 
 
+class CameraFrame(BaseModel):
+    available: bool = False
+    topic: str | None = None
+    frame_id: str | None = None
+    stamp: str | None = None
+    width: int | None = None
+    height: int | None = None
+    encoding: str | None = None
+    format: str | None = None
+    data_url: str | None = None
+    stale: bool = True
+
+
 class SystemHealth(BaseModel):
     backend_ok: bool = True
     ros_connected: bool = False
@@ -114,8 +141,10 @@ class SystemHealth(BaseModel):
     action_server_ready: bool = False
     map_received: bool = False
     pose_received: bool = False
+    camera_received: bool = False
     last_map_update: str | None = None
     last_pose_update: str | None = None
+    last_camera_update: str | None = None
     last_error: str | None = None
 
 
@@ -128,13 +157,31 @@ class NodeCheck(BaseModel):
     detail: str | None = None
 
 
+class MapArtifactInfo(BaseModel):
+    kind: str
+    path: str
+    topic: str | None = None
+    frame_id: str | None = None
+    resolution: float | None = None
+    stamp_sec: int | None = None
+    stamp_nanosec: int | None = None
+    points_total: int | None = None
+    points_saved: int | None = None
+    sample_stride: int | None = None
+
+
 class SavedMapInfo(BaseModel):
     map_id: str
     map_yaml: str
     created_at: str | None = None
+    representation: str | None = None
+    source_topic: str | None = None
+    pointcloud_topic_3d: str | None = None
+    has_pointcloud_3d: bool = False
     width: int | None = None
     height: int | None = None
     resolution: float | None = None
+    artifacts: list[MapArtifactInfo] = Field(default_factory=list)
 
 
 class StackStatus(BaseModel):
@@ -150,7 +197,9 @@ class StackStatus(BaseModel):
 
 class DashboardSnapshot(BaseModel):
     map: MapSnapshot = Field(default_factory=MapSnapshot)
+    pointcloud: PointCloudSnapshot = Field(default_factory=PointCloudSnapshot)
     pose: RobotPose = Field(default_factory=RobotPose)
     status: RobotStatus = Field(default_factory=RobotStatus)
     navigation: NavigationTaskState = Field(default_factory=NavigationTaskState)
+    camera: CameraFrame = Field(default_factory=CameraFrame)
     health: SystemHealth = Field(default_factory=SystemHealth)

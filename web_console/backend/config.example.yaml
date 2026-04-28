@@ -8,8 +8,9 @@ server:
 
 ros:
   map_topic: /map
-  pointcloud_topic: /mid360/points
-  amcl_pose_topic: /amcl_pose
+  pointcloud_topic: /unitree/slam_lidar/points1
+  localization_pose_topic: /uslam/localization/odom
+  localization_pose_msg_type: nav_msgs/msg/Odometry
   odom_topic: /odom
   tf_topic: /tf
   tf_static_topic: /tf_static
@@ -19,8 +20,17 @@ ros:
   localization_status_topic: /a2/localization/status
   map_manager_status_topic: /a2/map_manager/status
   map_manager_active_map_topic: /a2/map_manager/active_map
+  task_manager_status_topic: /a2/task_manager/status
   sdk_status_topic: /a2/sdk/status
   raw_state_topic: /a2/raw_state
+  camera_image_topic: /camera/image_raw
+  camera_compressed_topic: /camera/image_raw/compressed
+
+camera:
+  enabled: true
+  prefer_compressed: true
+  max_broadcast_hz: 2.0
+  jpeg_quality: 70
 
 navigation:
   action_name: /navigate_to_pose
@@ -28,6 +38,8 @@ navigation:
   action_wait_timeout_sec: 3.0
   goal_response_timeout_sec: 5.0
   cancel_timeout_sec: 3.0
+  initial_pose_wait_timeout_sec: 8.0
+  initial_pose_publish_interval_sec: 0.4
   allow_send_goal: true
   occupancy_block_threshold: 65
   goal_snap_radius_m: 1.5
@@ -38,6 +50,14 @@ navigation:
 health:
   pose_stale_sec: 2.0
   health_broadcast_hz: 1.0
+
+native_slam:
+  enabled: true
+  request_topic: /api/slam_operate/request
+  response_topic: /api/slam_operate/response
+  response_timeout_sec: 5.0
+  mapping_type: indoor
+  save_root: /home/unitree/dist/maps
 
 stack:
   workspace: /home/unitree/a2_system_ws

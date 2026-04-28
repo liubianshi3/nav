@@ -5,4 +5,5 @@ real_lidar:
     input_topic: /unitree/slam_lidar/points1
     output_topic: /mid360/points
     output_frame_id: lidar_link
+    restamp_on_receive: true
     stale_timeout_sec: 1.0

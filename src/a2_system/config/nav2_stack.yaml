@@ -17,7 +17,7 @@ amcl:
     laser_max_range: 20.0
     laser_min_range: 0.1
     laser_model_type: "likelihood_field"
-    max_beams: 90
+    max_beams: 120
     max_particles: 2500
     min_particles: 500
     odom_frame_id: "odom"
@@ -31,8 +31,8 @@ amcl:
     sigma_hit: 0.2
     tf_broadcast: true
     transform_tolerance: 0.5
-    update_min_a: 0.08
-    update_min_d: 0.05
+    update_min_a: 0.05
+    update_min_d: 0.03
     z_hit: 0.5
     z_max: 0.05
     z_rand: 0.45
@@ -82,34 +82,34 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.08
-      yaw_goal_tolerance: 0.10
+      xy_goal_tolerance: 0.06
+      yaw_goal_tolerance: 0.08
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 0.28
+      max_vel_x: 0.22
       max_vel_y: 0.0
-      max_vel_theta: 0.55
+      max_vel_theta: 0.45
       min_speed_xy: 0.0
-      max_speed_xy: 0.28
+      max_speed_xy: 0.22
       min_speed_theta: 0.0
-      acc_lim_x: 0.8
+      acc_lim_x: 0.6
       acc_lim_y: 0.0
-      acc_lim_theta: 1.2
+      acc_lim_theta: 1.0
       decel_lim_x: -0.8
       decel_lim_y: 0.0
       decel_lim_theta: -1.4
       vx_samples: 24
       vy_samples: 1
       vtheta_samples: 28
-      sim_time: 2.0
+      sim_time: 1.6
       linear_granularity: 0.025
       angular_granularity: 0.015
       transform_tolerance: 0.2
-      xy_goal_tolerance: 0.08
-      trans_stopped_velocity: 0.03
+      xy_goal_tolerance: 0.06
+      trans_stopped_velocity: 0.02
       short_circuit_trajectory_evaluation: true
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
@@ -120,7 +120,7 @@ controller_server:
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
+      RotateToGoal.scale: 40.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
 
@@ -228,6 +228,7 @@ lifecycle_manager_navigation:
   ros__parameters:
     use_sim_time: false
     autostart: true
+    bond_timeout: 12.0
     node_names:
       - planner_server
       - smoother_server
@@ -241,6 +242,7 @@ lifecycle_manager_localization:
   ros__parameters:
     use_sim_time: false
     autostart: true
+    bond_timeout: 12.0
     node_names:
       - map_server
       - amcl
@@ -251,9 +253,9 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "CLOSED_LOOP"
-    max_velocity: [0.28, 0.0, 0.55]
+    max_velocity: [0.22, 0.0, 0.45]
     min_velocity: [-0.10, 0.0, -0.55]
-    max_accel: [0.8, 0.0, 1.2]
+    max_accel: [0.6, 0.0, 1.0]
     max_decel: [-0.8, 0.0, -1.4]
     odom_topic: /odom
     odom_duration: 0.2

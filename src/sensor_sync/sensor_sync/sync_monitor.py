@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from collections import deque
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, PointCloud2
@@ -20,6 +22,7 @@ class SyncMonitor(Node):
         ).value
         self.max_age_sec = float(self.declare_parameter("max_age_sec", 0.25).value)
         self.warn_skew_sec = float(self.declare_parameter("warn_skew_sec", 0.05).value)
+        self.history_size = int(self.declare_parameter("history_size", 256).value)
         self.ignore_skew_in_mock = bool(self.declare_parameter("ignore_skew_in_mock", True).value)
         self.ignore_skew_in_simulated = bool(
             self.declare_parameter("ignore_skew_in_simulated", self.ignore_skew_in_mock).value
@@ -27,6 +30,10 @@ class SyncMonitor(Node):
 
         self.last_imu_stamp = None
         self.last_cloud_stamp = None
+        self.last_imu_rx_time = None
+        self.last_cloud_rx_time = None
+        self.imu_history = deque(maxlen=max(4, self.history_size))
+        self.cloud_history = deque(maxlen=max(4, self.history_size))
         self.status_pub = self.create_publisher(Bool, "/a2/sensor_sync/ok", 10)
         self.status_report_pub = self.create_publisher(String, self.status_report_topic, 10)
         self.last_status_text = ""
@@ -36,19 +43,31 @@ class SyncMonitor(Node):
         self.create_timer(0.5, self.check_status)
 
     def on_imu(self, msg):
-        self.last_imu_stamp = rclpy.time.Time.from_msg(msg.header.stamp)
+        stamp = rclpy.time.Time.from_msg(msg.header.stamp)
+        self.last_imu_stamp = stamp
+        self.last_imu_rx_time = self.get_clock().now()
+        self.imu_history.append(stamp)
 
     def on_cloud(self, msg):
-        self.last_cloud_stamp = rclpy.time.Time.from_msg(msg.header.stamp)
+        stamp = rclpy.time.Time.from_msg(msg.header.stamp)
+        self.last_cloud_stamp = stamp
+        self.last_cloud_rx_time = self.get_clock().now()
+        self.cloud_history.append(stamp)
 
     def check_status(self):
         now = self.get_clock().now()
-        imu_ok = self.last_imu_stamp is not None and (now - self.last_imu_stamp).nanoseconds * 1e-9 <= self.max_age_sec
-        cloud_ok = self.last_cloud_stamp is not None and (now - self.last_cloud_stamp).nanoseconds * 1e-9 <= self.max_age_sec
+        imu_ok = (
+            self.last_imu_rx_time is not None
+            and (now - self.last_imu_rx_time).nanoseconds * 1e-9 <= self.max_age_sec
+        )
+        cloud_ok = (
+            self.last_cloud_rx_time is not None
+            and (now - self.last_cloud_rx_time).nanoseconds * 1e-9 <= self.max_age_sec
+        )
         skew_ok = True
         skew = 0.0
         if self.last_imu_stamp is not None and self.last_cloud_stamp is not None:
-            skew = abs((self.last_imu_stamp - self.last_cloud_stamp).nanoseconds) * 1e-9
+            skew = self.compute_nearest_pair_skew()
             if self.runtime_mode == "mock" and self.ignore_skew_in_mock:
                 skew_ok = True
             elif self.runtime_mode != "real" and self.ignore_skew_in_simulated:
@@ -83,6 +102,16 @@ class SyncMonitor(Node):
         if status != self.last_status_text:
             self.get_logger().info(f"Sensor sync status changed: {status}")
             self.last_status_text = status
+
+    def compute_nearest_pair_skew(self):
+        if not self.cloud_history or not self.imu_history:
+            return 0.0
+        latest_cloud = self.cloud_history[-1]
+        nearest_imu = min(
+            self.imu_history,
+            key=lambda stamp: abs((stamp - latest_cloud).nanoseconds),
+        )
+        return abs((nearest_imu - latest_cloud).nanoseconds) * 1e-9
 
 
 def main():

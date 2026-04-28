@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import signal
 import subprocess
 import time
@@ -13,7 +14,7 @@ from typing import Any
 import yaml
 
 from .config import AppConfig
-from .models import MapSnapshot, NodeCheck, SavedMapInfo, StackStatus
+from .models import MapArtifactInfo, MapSnapshot, NodeCheck, SavedMapInfo, StackStatus
 
 
 class StackControlError(RuntimeError):
@@ -23,20 +24,36 @@ class StackControlError(RuntimeError):
 MAP_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 POLL_INTERVAL_SEC = 0.5
 START_STABILITY_POLLS = 3
+LOG_TAIL_LINE_LIMIT = 80
+LOG_HIGHLIGHT_LIMIT = 12
+LOG_TEXT_LIMIT = 1800
+NAV_LIFECYCLE_NODES = ("map_server", "amcl")
+LOG_HIGHLIGHT_MARKERS = (
+    "[error]",
+    "traceback",
+    "exception",
+    "failed",
+    "not found",
+    "no such file",
+    "timeout",
+    "killed",
+    "rclerror",
+)
+PatternSpec = str | tuple[str, ...]
 
-MAPPING_NODES: list[tuple[str, str, str]] = [
+MAPPING_NODES: list[tuple[str, str, PatternSpec]] = [
     ("bringup", "bringup.launch.py", "bringup.launch.py"),
     ("sdk", "a2_sdk_bridge", "a2_sdk_bridge_node"),
     ("control", "a2_control_bridge", "a2_control_bridge_node"),
-    ("occupancy", "occupancy_mapper", "occupancy_mapper"),
+    ("map_source", "map source", ("slam_toolbox", "native_map_relay", "occupancy_mapper")),
     ("map_manager", "map_manager", "map_manager_node"),
 ]
 
-NAVIGATION_NODES: list[tuple[str, str, str]] = [
+NAVIGATION_NODES: list[tuple[str, str, PatternSpec]] = [
     ("bringup", "bringup.launch.py", "bringup.launch.py"),
     ("sdk", "a2_sdk_bridge", "a2_sdk_bridge_node"),
     ("control", "a2_control_bridge", "a2_control_bridge_node"),
-    ("localization", "manual localization", "manual_localization_publisher"),
+    ("localization", "AMCL localization", "amcl"),
     ("goal_bridge", "goal bridge", "goal_bridge"),
     ("map_server", "map server", "map_server"),
     ("controller", "controller server", "controller_server"),
@@ -51,23 +68,31 @@ STACK_CLEANUP_PATTERNS = [
     "a2_state_publisher_node",
     "a2_sdk_bridge_node",
     "a2_control_bridge_node",
+    "task_manager.py",
     "safety_supervisor",
     "real_readiness_monitor",
     "static_tf_manager",
     "sync_monitor",
     "mid360_driver_guard",
     "pointcloud_frame_relay",
+    "pointcloud_to_laserscan",
+    "slam_toolbox",
+    "native_map_relay",
     "slam_orchestrator",
     "localization_gate",
     "exploration_manager",
     "manual_localization_publisher",
+    "amcl",
     "goal_bridge",
     "occupancy_mapper",
     "map_manager_node",
     "map_server",
     "controller_server",
+    "smoother_server",
     "planner_server",
+    "behavior_server",
     "bt_navigator",
+    "waypoint_follower",
     "velocity_smoother",
     "lifecycle_manager",
 ]
@@ -98,6 +123,7 @@ class StackController:
         self.stop_script = _expand_path(config.stack.stop_script)
         self.pid_file = self.workspace / "runtime" / "bringup.pid"
         self.runtime_state_file = self.workspace / "runtime" / "web_stack_state.yaml"
+        self.a2_system_config_dir = self._resolve_a2_system_config_dir()
         self.timeout = float(config.stack.command_timeout_sec)
         self.start_timeout = max(self.timeout, 30.0)
         self.stop_timeout = max(self.timeout, 12.0)
@@ -184,9 +210,15 @@ class StackController:
                 env={"A2_ENABLE_NAV2": "false", "A2_MAP_YAML": ""},
             )
             self._wait_for_expected_nodes("mapping")
-        except Exception:
+        except Exception as exc:
             self._terminate_runtime_processes()
-            self._write_runtime_state(mode="stopped", target_mode=None, selected_map_id=None, selected_map_yaml=None, message=None)
+            self._write_runtime_state(
+                mode="stopped",
+                target_mode=None,
+                selected_map_id=None,
+                selected_map_yaml=None,
+                message=str(exc),
+            )
             raise
 
         self._write_runtime_state(
@@ -220,13 +252,21 @@ class StackController:
                 [str(self.start_script), self.config.stack.network_interface],
                 env={
                     "A2_ENABLE_NAV2": "true",
+                    "A2_REAL_LOCALIZATION_MODE": "amcl",
                     "A2_MAP_YAML": map_info.map_yaml,
                 },
             )
             self._wait_for_expected_nodes("navigation")
-        except Exception:
+            self._ensure_navigation_lifecycle_ready()
+        except Exception as exc:
             self._terminate_runtime_processes()
-            self._write_runtime_state(mode="stopped", target_mode=None, selected_map_id=None, selected_map_yaml=None, message=None)
+            self._write_runtime_state(
+                mode="stopped",
+                target_mode=None,
+                selected_map_id=None,
+                selected_map_yaml=None,
+                message=str(exc),
+            )
             raise
 
         self._write_runtime_state(
@@ -242,6 +282,12 @@ class StackController:
         if self._runtime_processes() or self._read_runtime_state().get("mode") not in (None, "stopped"):
             self.stop()
 
+    def mapping_source_profile(self) -> str:
+        slam_cfg = self._read_yaml(self.a2_system_config_dir / "slam.yaml")
+        params = slam_cfg.get("slam_manager", {}).get("ros__parameters", {}) or {}
+        profile = str(params.get("mapping_stack_profile", "") or "").strip()
+        return profile or "slam_toolbox"
+
     def _wait_for_expected_nodes(self, mode: str) -> None:
         expected = NAVIGATION_NODES if mode == "navigation" else MAPPING_NODES
         deadline = time.monotonic() + self.start_timeout
@@ -250,7 +296,11 @@ class StackController:
 
         while time.monotonic() < deadline:
             processes = self._runtime_processes()
-            missing_labels = [label for _, label, pattern in expected if not any(pattern in proc.args for proc in processes)]
+            missing_labels = [
+                label
+                for _, label, pattern in expected
+                if not any(self._matches_pattern(proc.args, pattern) for proc in processes)
+            ]
             if not missing_labels:
                 stable_polls += 1
                 if stable_polls >= START_STABILITY_POLLS:
@@ -259,8 +309,54 @@ class StackController:
                 stable_polls = 0
             time.sleep(POLL_INTERVAL_SEC)
 
-        detail = "、".join(missing_labels) if missing_labels else "未知节点"
-        raise StackControlError(f"{'导航' if mode == 'navigation' else '建图'}模式启动超时，缺少节点: {detail}")
+        raise StackControlError(self._build_start_timeout_message(mode, missing_labels))
+
+    def _ensure_navigation_lifecycle_ready(self) -> None:
+        deadline = time.monotonic() + self.start_timeout
+        stable_polls = 0
+        activation_attempts: set[tuple[str, str]] = set()
+        states: dict[str, str] = {}
+        last_known_states: dict[str, str] = {}
+        failures: list[str] = []
+
+        while time.monotonic() < deadline:
+            raw_states = {node: self._get_lifecycle_state(node) for node in NAV_LIFECYCLE_NODES}
+            states = {}
+            for node, raw_state in raw_states.items():
+                if raw_state.startswith("query_failed:") and last_known_states.get(node, "").startswith("active"):
+                    states[node] = last_known_states[node]
+                else:
+                    states[node] = raw_state
+                if states[node].startswith("active"):
+                    last_known_states[node] = states[node]
+            if all(state.startswith("active") for state in states.values()):
+                failures = []
+                stable_polls += 1
+                if stable_polls >= START_STABILITY_POLLS:
+                    return
+            else:
+                stable_polls = 0
+                failures = []
+                for node, state in states.items():
+                    if state.startswith("active"):
+                        continue
+                    if state.startswith("inactive"):
+                        transition = "activate"
+                    elif state.startswith("unconfigured"):
+                        transition = "configure"
+                    else:
+                        failures.append(f"{node}={state}")
+                        continue
+                    attempt = (node, transition)
+                    if attempt in activation_attempts:
+                        continue
+                    if self._set_lifecycle_transition(node, transition):
+                        activation_attempts.add(attempt)
+                    else:
+                        failures.append(f"{node}={state},transition={transition} failed")
+            time.sleep(POLL_INTERVAL_SEC)
+
+        raise StackControlError(self._build_navigation_lifecycle_message(states, failures))
 
     def _terminate_runtime_processes(self) -> list[ProcessInfo]:
         remaining = self._runtime_processes()
@@ -351,14 +447,26 @@ class StackController:
             if not map_yaml.exists():
                 continue
             metadata = self._read_yaml(item / "metadata.yaml")
+            artifact_models = [
+                MapArtifactInfo(**artifact)
+                for artifact in (metadata.get("artifacts") or [])
+                if isinstance(artifact, dict) and artifact.get("kind") and artifact.get("path")
+            ]
             maps.append(
                 SavedMapInfo(
                     map_id=item.name,
                     map_yaml=str(map_yaml),
                     created_at=metadata.get("created_at"),
+                    representation=metadata.get("representation"),
+                    source_topic=metadata.get("source_topic"),
+                    pointcloud_topic_3d=metadata.get("pointcloud_topic_3d"),
+                    has_pointcloud_3d=any(
+                        artifact.kind == "pointcloud_snapshot_3d" for artifact in artifact_models
+                    ),
                     width=metadata.get("width"),
                     height=metadata.get("height"),
                     resolution=metadata.get("resolution"),
+                    artifacts=artifact_models,
                 )
             )
         return maps
@@ -413,9 +521,20 @@ class StackController:
         metadata = {
             "created_at": datetime.now().isoformat(),
             "source": "web_console",
+            "representation": map_snapshot.representation,
+            "source_topic": "/map",
+            "pointcloud_topic_3d": None,
             "width": map_snapshot.width,
             "height": map_snapshot.height,
             "resolution": map_snapshot.resolution,
+            "artifacts": [
+                {
+                    "kind": "occupancy_grid_2d",
+                    "path": "map.yaml",
+                    "topic": "/map",
+                    "resolution": map_snapshot.resolution,
+                }
+            ],
         }
         with metadata_path.open("w", encoding="utf-8") as handle:
             yaml.safe_dump(metadata, handle, sort_keys=False)
@@ -424,9 +543,14 @@ class StackController:
             map_id=map_id,
             map_yaml=str(yaml_path),
             created_at=metadata["created_at"],
+            representation=metadata["representation"],
+            source_topic=metadata["source_topic"],
+            pointcloud_topic_3d=None,
+            has_pointcloud_3d=False,
             width=map_snapshot.width,
             height=map_snapshot.height,
             resolution=map_snapshot.resolution,
+            artifacts=[MapArtifactInfo(**metadata["artifacts"][0])],
         )
 
     def status(self) -> StackStatus:
@@ -455,7 +579,7 @@ class StackController:
                 key=key,
                 label=label,
                 state=self._node_state(processes, pattern, mode),
-                running=any(pattern in proc.args for proc in processes),
+                running=any(self._matches_pattern(proc.args, pattern) for proc in processes),
                 required=True,
             )
             for key, label, pattern in expected
@@ -473,7 +597,11 @@ class StackController:
 
     def _infer_mode(self, processes: list[ProcessInfo]) -> str:
         has_nav = any("bt_navigator" in proc.args or "controller_server" in proc.args for proc in processes)
-        has_mapping = any("occupancy_mapper" in proc.args for proc in processes)
+        has_mapping = any(
+            self._matches_pattern(proc.args, pattern)
+            for proc in processes
+            for pattern in ("occupancy_mapper", "native_map_relay", "slam_toolbox")
+        )
         has_bringup = any("bringup.launch.py" in proc.args for proc in processes)
         if has_nav:
             return "navigation"
@@ -483,14 +611,19 @@ class StackController:
             return "starting"
         return "stopped"
 
-    def _node_state(self, processes: list[ProcessInfo], pattern: str, mode: str) -> str:
-        if any(pattern in proc.args for proc in processes):
+    def _node_state(self, processes: list[ProcessInfo], pattern: PatternSpec, mode: str) -> str:
+        if any(self._matches_pattern(proc.args, pattern) for proc in processes):
             return "running"
         if mode == "starting":
             return "starting"
         if mode == "stopping":
             return "stopping"
         return "missing"
+
+    def _matches_pattern(self, args: str, pattern: PatternSpec) -> bool:
+        if isinstance(pattern, tuple):
+            return any(token in args for token in pattern)
+        return pattern in args
 
     def _process_records(self) -> list[ProcessInfo]:
         result = subprocess.run(
@@ -533,6 +666,80 @@ class StackController:
         logs = sorted(log_dir.glob("bringup_real_*.log"), key=lambda path: path.stat().st_mtime, reverse=True)
         return str(logs[0]) if logs else None
 
+    def _build_start_timeout_message(self, mode: str, missing_labels: list[str]) -> str:
+        detail = "、".join(missing_labels) if missing_labels else "未知节点"
+        parts = [f"{'导航' if mode == 'navigation' else '建图'}模式启动超时，缺少节点: {detail}"]
+        latest_log = self._latest_log_file()
+        if latest_log:
+            parts.append(f"日志: {latest_log}")
+            excerpt = self._latest_log_excerpt(Path(latest_log))
+            if excerpt:
+                parts.append(f"摘要: {excerpt}")
+        return "；".join(parts)
+
+    def _build_navigation_lifecycle_message(
+        self,
+        states: dict[str, str],
+        failures: list[str] | None = None,
+    ) -> str:
+        state_text = "、".join(f"{node}={state}" for node, state in states.items()) or "未知"
+        parts = [f"导航模式启动异常，生命周期未就绪: {state_text}"]
+        if failures:
+            parts.append(f"恢复尝试: {'；'.join(failures)}")
+        latest_log = self._latest_log_file()
+        if latest_log:
+            parts.append(f"日志: {latest_log}")
+            excerpt = self._latest_log_excerpt(Path(latest_log))
+            if excerpt:
+                parts.append(f"摘要: {excerpt}")
+        return "；".join(parts)
+
+    def _latest_log_excerpt(self, path: Path) -> str:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return ""
+
+        tail = [line.strip() for line in lines[-LOG_TAIL_LINE_LIMIT:] if line.strip()]
+        if not tail:
+            return ""
+
+        highlights = [
+            line
+            for line in tail
+            if any(marker in line.lower() for marker in LOG_HIGHLIGHT_MARKERS)
+        ]
+        selected = highlights[-LOG_HIGHLIGHT_LIMIT:] if highlights else tail[-LOG_HIGHLIGHT_LIMIT:]
+        excerpt = " | ".join(selected)
+        if len(excerpt) > LOG_TEXT_LIMIT:
+            excerpt = f"...{excerpt[-LOG_TEXT_LIMIT:]}"
+        return excerpt
+
+    def _run_ros_shell(self, command: str) -> subprocess.CompletedProcess[str]:
+        install_setup = self.workspace / "install" / "setup.bash"
+        shell_parts = [
+            "source /opt/ros/humble/setup.bash",
+            f"source {shlex.quote(str(install_setup))}",
+            command,
+        ]
+        return self._run(["bash", "-lc", " && ".join(shell_parts)])
+
+    def _get_lifecycle_state(self, node_name: str) -> str:
+        try:
+            result = self._run_ros_shell(f"ros2 lifecycle get /{node_name}")
+        except StackControlError as exc:
+            return f"query_failed:{exc}"
+        output = (result.stdout or result.stderr or "").strip().splitlines()
+        return output[-1].strip() if output else "unknown"
+
+    def _set_lifecycle_transition(self, node_name: str, transition: str) -> bool:
+        try:
+            result = self._run_ros_shell(f"ros2 lifecycle set /{node_name} {transition}")
+        except StackControlError:
+            return False
+        output = ((result.stdout or "") + (result.stderr or "")).lower()
+        return "successful" in output
+
     def _read_yaml(self, path: Path) -> dict[str, Any]:
         if not path.exists():
             return {}
@@ -541,8 +748,18 @@ class StackController:
         except Exception:
             return {}
 
+    def _resolve_a2_system_config_dir(self) -> Path:
+        candidates = [
+            self.workspace / "install" / "a2_system" / "share" / "a2_system" / "config",
+            self.workspace / "src" / "a2_system" / "config",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[-1]
+
     def _describe_process(self, process: ProcessInfo) -> str:
         for _, label, pattern in NAVIGATION_NODES + MAPPING_NODES:
-            if pattern in process.args:
+            if self._matches_pattern(process.args, pattern):
                 return label
         return f"pid={process.pid}"

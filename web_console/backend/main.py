@@ -119,11 +119,30 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
     @app.post("/api/stack/start-mapping")
     async def start_mapping_stack():
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        mapping_profile = stack_controller.mapping_source_profile()
+        native: dict | None = None
         try:
             result = await asyncio.to_thread(stack_controller.start_mapping)
+            if mapping_profile == "native_global_map":
+                native = await asyncio.to_thread(node.start_native_mapping)
+        except RosBridgeError as exc:
+            try:
+                await asyncio.to_thread(stack_controller.stop)
+            except StackControlError:
+                pass
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except StackControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}
+        return {
+            "ok": True,
+            **result,
+            "mapping_profile": mapping_profile,
+            "native_slam": jsonable_encoder(native) if native is not None else None,
+            "stack": jsonable_encoder(stack_controller.status()),
+        }
 
     @app.post("/api/stack/start-navigation")
     async def start_navigation_stack(request: StartNavigationRequest):
@@ -137,16 +156,43 @@ def create_app(config_path: str | None = None) -> FastAPI:
     async def list_maps():
         return {"maps": jsonable_encoder(stack_controller.list_maps())}
 
+    @app.get("/api/maps/{map_id}/artifacts/{artifact_name}")
+    async def get_map_artifact(map_id: str, artifact_name: str):
+        map_info = stack_controller.get_map(map_id)
+        if map_info is None:
+            raise HTTPException(status_code=404, detail=f"地图不存在: {map_id}")
+        map_dir = stack_controller.map_root / map_id
+        artifact_path = (map_dir / artifact_name).resolve()
+        if not artifact_path.exists() or not artifact_path.is_file():
+            raise HTTPException(status_code=404, detail=f"资产不存在: {artifact_name}")
+        if map_dir.resolve() not in artifact_path.parents:
+            raise HTTPException(status_code=403, detail="非法资产路径")
+        return FileResponse(artifact_path)
+
     @app.post("/api/maps/save")
     async def save_map(request: SaveMapRequest):
         node = ros_runtime.node
         if node is None:
             raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        native_save: dict | None = None
+        mapping_profile = stack_controller.mapping_source_profile()
         try:
-            saved = await asyncio.to_thread(stack_controller.save_map, request.map_id, node.get_map_snapshot())
+            if stack_controller.status().mode == "mapping" and mapping_profile == "native_global_map":
+                native_save = await asyncio.to_thread(node.request_native_map_save, request.map_id)
+            await asyncio.to_thread(node.save_managed_map, request.map_id)
+            saved = stack_controller.get_map(request.map_id)
+            if saved is None:
+                raise StackControlError(f"地图已请求保存，但未在磁盘找到: {request.map_id}")
+        except RosBridgeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except StackControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return {"ok": True, "map": jsonable_encoder(saved), "maps": jsonable_encoder(stack_controller.list_maps())}
+        return {
+            "ok": True,
+            "map": jsonable_encoder(saved),
+            "maps": jsonable_encoder(stack_controller.list_maps()),
+            "native_slam_save": jsonable_encoder(native_save) if native_save is not None else None,
+        }
 
     @app.websocket(config.server.websocket_path)
     async def websocket_endpoint(websocket: WebSocket):

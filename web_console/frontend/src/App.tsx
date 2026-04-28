@@ -13,8 +13,10 @@ import {
   startNavigationStack,
   stopStack,
 } from "./api";
+import { CameraPanel } from "./components/CameraPanel";
 import { ControlSidebar } from "./components/ControlSidebar";
 import { MapCanvas } from "./components/MapCanvas";
+import { PointCloudCanvas3D } from "./components/PointCloudCanvas3D";
 import { StatusSidebar } from "./components/StatusSidebar";
 import { useBackendSocket } from "./hooks/useBackendSocket";
 import type { BackendEvent, DashboardSnapshot, NavigationGoal, SavedMapInfo, StackStatus } from "./types";
@@ -23,6 +25,7 @@ function createEmptySnapshot(): DashboardSnapshot {
   return {
     map: {
       loaded: false,
+      representation: "occupancy_grid_2d",
       frame_id: null,
       width: 0,
       height: 0,
@@ -31,9 +34,20 @@ function createEmptySnapshot(): DashboardSnapshot {
       stamp: null,
       data: [],
     },
+    pointcloud: {
+      loaded: false,
+      representation: "pointcloud_map_3d",
+      frame_id: null,
+      stamp: null,
+      source_topic: null,
+      points: [],
+      points_total: 0,
+      points_sampled: 0,
+      sample_stride: 1,
+    },
     pose: {
       available: false,
-      source: "amcl_pose",
+      source: "localization_pose",
       frame_id: null,
       stamp: null,
       x: null,
@@ -48,6 +62,7 @@ function createEmptySnapshot(): DashboardSnapshot {
       lidar_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       localization_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       map_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
+      task_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       sdk_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       active_map: null,
       velocity_linear_x: null,
@@ -62,6 +77,18 @@ function createEmptySnapshot(): DashboardSnapshot {
       feedback: {},
       updated_at: null,
     },
+    camera: {
+      available: false,
+      topic: null,
+      frame_id: null,
+      stamp: null,
+      width: null,
+      height: null,
+      encoding: null,
+      format: null,
+      data_url: null,
+      stale: true,
+    },
     health: {
       backend_ok: false,
       ros_connected: false,
@@ -70,8 +97,10 @@ function createEmptySnapshot(): DashboardSnapshot {
       action_server_ready: false,
       map_received: false,
       pose_received: false,
+      camera_received: false,
       last_map_update: null,
       last_pose_update: null,
+      last_camera_update: null,
       last_error: null,
     },
   };
@@ -176,6 +205,10 @@ export default function App() {
         setSnapshot((current) => ({ ...current, map: event.payload as DashboardSnapshot["map"] }));
         return;
       }
+      if (event.type === "pointcloud") {
+        setSnapshot((current) => ({ ...current, pointcloud: event.payload as DashboardSnapshot["pointcloud"] }));
+        return;
+      }
       if (event.type === "pose") {
         setSnapshot((current) => ({ ...current, pose: event.payload as DashboardSnapshot["pose"] }));
         return;
@@ -186,6 +219,10 @@ export default function App() {
       }
       if (event.type === "navigation") {
         setSnapshot((current) => ({ ...current, navigation: event.payload as DashboardSnapshot["navigation"] }));
+        return;
+      }
+      if (event.type === "camera") {
+        setSnapshot((current) => ({ ...current, camera: event.payload as DashboardSnapshot["camera"] }));
         return;
       }
       if (event.type === "health") {
@@ -212,6 +249,8 @@ export default function App() {
     poseAgeMs < 10000;
   const canSetInitialPose = stack?.mode === "navigation" && snapshot.map.loaded && snapshot.navigation.state !== "navigating";
   const stackTransitioning = stackBusy || stack?.mode === "starting" || stack?.mode === "stopping";
+  const selectedMap = maps.find((map) => map.map_id === selectedMapId) ?? null;
+  const use3DViewer = snapshot.pointcloud.loaded || Boolean(selectedMap?.has_pointcloud_3d);
 
   const refreshStack = async () => {
     const [status, health] = await Promise.all([
@@ -362,14 +401,19 @@ export default function App() {
           </div>
         </header>
 
-        <MapCanvas
-          map={snapshot.map.loaded ? snapshot.map : null}
-          pose={snapshot.pose.available ? snapshot.pose : null}
-          selectedGoal={selectedGoal}
-          activeGoal={snapshot.navigation.goal}
-          disabled={!canSendGoal}
-          onSelectGoal={setSelectedGoal}
-        />
+        {use3DViewer ? (
+          <PointCloudCanvas3D pointcloud={snapshot.pointcloud.loaded ? snapshot.pointcloud : null} selectedMap={selectedMap} />
+        ) : (
+          <MapCanvas
+            map={snapshot.map.loaded ? snapshot.map : null}
+            pose={snapshot.pose.available ? snapshot.pose : null}
+            selectedGoal={selectedGoal}
+            activeGoal={snapshot.navigation.goal}
+            disabled={!canSendGoal}
+            onSelectGoal={setSelectedGoal}
+          />
+        )}
+        <CameraPanel camera={snapshot.camera} />
       </main>
 
       <ControlSidebar

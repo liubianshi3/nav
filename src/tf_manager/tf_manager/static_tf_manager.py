@@ -9,6 +9,23 @@ from rclpy.node import Node
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 
+def validate_static_tf_contract(parent, child, xyz, rpy, dynamic_frames, children_seen):
+    if not parent or not child:
+        return False, "empty_parent_or_child"
+    if child in dynamic_frames:
+        return False, "dynamic_child_frame"
+    if child in children_seen:
+        return False, "duplicate_child_frame"
+    if len(xyz) != 3 or len(rpy) != 3:
+        return False, "invalid_vector_length"
+    try:
+        [float(value) for value in xyz]
+        [float(value) for value in rpy]
+    except (TypeError, ValueError):
+        return False, "non_numeric_transform"
+    return True, "ok"
+
+
 class StaticTfManager(Node):
     def __init__(self):
         super().__init__("static_tf_manager")
@@ -68,14 +85,9 @@ class StaticTfManager(Node):
         transforms = []
 
         def add_transform(parent, child, xyz, rpy):
-            if not parent or not child:
-                self.get_logger().warn(f"Skipping TF with empty parent/child: parent='{parent}', child='{child}'")
-                return
-            if child in dynamic_frames:
-                self.get_logger().warn(f"Skipping static TF for dynamic frame '{child}'")
-                return
-            if child in children_seen:
-                self.get_logger().warn(f"Skipping duplicate static TF child frame '{child}'")
+            valid, reason = validate_static_tf_contract(parent, child, xyz, rpy, dynamic_frames, children_seen)
+            if not valid:
+                self.get_logger().warn(f"Skipping TF {parent}->{child}: {reason}")
                 return
             try:
                 transforms.append(self.make_transform(parent, child, xyz, rpy))

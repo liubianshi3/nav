@@ -18,6 +18,8 @@ setup(
             "launch/localization.launch.py",
             "launch/nav2.launch.py",
             "launch/explore.launch.py",
+            "launch/scan_mission.launch.py",
+            "launch/scan_mission_mock.launch.py",
         ]),
     ],
     install_requires=["setuptools"],

@@ -144,7 +144,15 @@ def _launch_setup(context, *args, **kwargs):
     real_lidar_cfg = _load_real_lidar_config(a2_system_share)
     real_lidar_profile = real_lidar_cfg.get("profile", "livox_mid360")
     real_lidar_driver_mode = real_lidar_cfg.get("driver_mode", "")
-    guard_pointcloud_topic = real_lidar_cfg.get("output_topic", "/mid360/points")
+    real_lidar_input_topic = real_lidar_cfg.get("input_topic", "/unitree/slam_lidar/points1")
+    real_lidar_output_topic = real_lidar_cfg.get("output_topic", "/mid360/points")
+    direct_pointcloud_mode = (
+        real_lidar_driver_mode == "external_pointcloud"
+        or real_lidar_profile == "unitree_native_fused"
+    )
+    guard_pointcloud_topic = (
+        real_lidar_input_topic if direct_pointcloud_mode else real_lidar_output_topic
+    )
     guard_stale_timeout = float(real_lidar_cfg.get("stale_timeout_sec", 1.0))
     livox_available = True
     try:
@@ -174,6 +182,7 @@ def _launch_setup(context, *args, **kwargs):
             executable="sync_monitor",
             name="sync_monitor",
             parameters=[f"{a2_system_share}/config/sensor_sync.yaml", {
+                "pointcloud_topic": guard_pointcloud_topic,
                 "use_mock": use_mock,
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time,
@@ -224,15 +233,17 @@ def _launch_setup(context, *args, **kwargs):
         )
         return actions
 
-    if real_lidar_driver_mode == "external_pointcloud" or real_lidar_profile == "unitree_native_fused":
-        input_topic = real_lidar_cfg.get("input_topic", "/unitree/slam_lidar/points")
-        output_topic = real_lidar_cfg.get("output_topic", "/mid360/points")
+    if direct_pointcloud_mode:
+        input_topic = real_lidar_input_topic
+        output_topic = real_lidar_output_topic
         output_frame_id = real_lidar_cfg.get("output_frame_id", "lidar_link")
+        restamp_on_receive = bool(real_lidar_cfg.get("restamp_on_receive", False))
         actions.append(
             LogInfo(
                 msg=(
                     f"Using robot-native fused lidar input_topic={input_topic} "
-                    f"output_topic={output_topic} frame_id={output_frame_id}"
+                    f"direct_consumer_topic={guard_pointcloud_topic} compatibility_output={output_topic} "
+                    f"frame_id={output_frame_id} restamp_on_receive={restamp_on_receive}"
                 )
             )
         )
@@ -245,6 +256,7 @@ def _launch_setup(context, *args, **kwargs):
                     "input_topic": input_topic,
                     "output_topic": output_topic,
                     "frame_id": output_frame_id,
+                    "restamp_on_receive": restamp_on_receive,
                 }],
             )
         )
@@ -309,6 +321,7 @@ def _launch_setup(context, *args, **kwargs):
                     "input_topic": relay_cfg.get("pointcloud_input_topic", "/livox/lidar"),
                     "output_topic": pointcloud_output_topic,
                     "frame_id": relay_frame,
+                    "restamp_on_receive": bool(relay_cfg.get("restamp_on_receive", False)),
                 }],
             )
         )

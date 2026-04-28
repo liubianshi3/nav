@@ -20,8 +20,10 @@ class ServerConfig:
 @dataclass
 class RosTopicConfig:
     map_topic: str = "/map"
-    pointcloud_topic: str = "/mid360/points"
-    amcl_pose_topic: str = "/amcl_pose"
+    pointcloud_topic: str = "/unitree/slam_lidar/points1"
+    manage_map_service: str = "/map_manager/manage_map"
+    localization_pose_topic: str = "/uslam/localization/odom"
+    localization_pose_msg_type: str = "nav_msgs/msg/Odometry"
     odom_topic: str = "/odom"
     tf_topic: str = "/tf"
     tf_static_topic: str = "/tf_static"
@@ -31,8 +33,19 @@ class RosTopicConfig:
     localization_status_topic: str = "/a2/localization/status"
     map_manager_status_topic: str = "/a2/map_manager/status"
     map_manager_active_map_topic: str = "/a2/map_manager/active_map"
+    task_manager_status_topic: str = "/a2/task_manager/status"
     sdk_status_topic: str = "/a2/sdk/status"
     raw_state_topic: str = "/a2/raw_state"
+    camera_image_topic: str = "/camera/image_raw"
+    camera_compressed_topic: str = "/camera/image_raw/compressed"
+
+
+@dataclass
+class CameraConfig:
+    enabled: bool = True
+    prefer_compressed: bool = True
+    max_broadcast_hz: float = 2.0
+    jpeg_quality: int = 70
 
 
 @dataclass
@@ -42,6 +55,8 @@ class NavigationConfig:
     action_wait_timeout_sec: float = 3.0
     goal_response_timeout_sec: float = 5.0
     cancel_timeout_sec: float = 3.0
+    initial_pose_wait_timeout_sec: float = 8.0
+    initial_pose_publish_interval_sec: float = 0.4
     allow_send_goal: bool = True
     occupancy_block_threshold: int = 65
     goal_snap_radius_m: float = 1.5
@@ -54,6 +69,16 @@ class NavigationConfig:
 class HealthConfig:
     pose_stale_sec: float = 2.0
     health_broadcast_hz: float = 1.0
+
+
+@dataclass
+class NativeSlamConfig:
+    enabled: bool = True
+    request_topic: str = "/api/slam_operate/request"
+    response_topic: str = "/api/slam_operate/response"
+    response_timeout_sec: float = 5.0
+    mapping_type: str = "indoor"
+    save_root: str = "/home/unitree/dist/maps"
 
 
 @dataclass
@@ -70,8 +95,10 @@ class StackConfig:
 class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     ros: RosTopicConfig = field(default_factory=RosTopicConfig)
+    camera: CameraConfig = field(default_factory=CameraConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    native_slam: NativeSlamConfig = field(default_factory=NativeSlamConfig)
     stack: StackConfig = field(default_factory=StackConfig)
     config_path: Path | None = None
     project_root: Path = field(default_factory=lambda: Path(__file__).resolve().parents[1])

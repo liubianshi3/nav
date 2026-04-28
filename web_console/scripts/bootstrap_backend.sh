@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 
 cd "${PROJECT_ROOT}"
 
@@ -16,7 +17,7 @@ if [[ ! -f .venv/bin/activate ]]; then
 fi
 
 source .venv/bin/activate
-pip install --upgrade pip
-pip install -r backend/requirements.txt
+pip install -i "${PIP_INDEX_URL}" --upgrade pip
+pip install -i "${PIP_INDEX_URL}" -r backend/requirements.txt
 
 echo "Backend virtualenv is ready at ${PROJECT_ROOT}/.venv"

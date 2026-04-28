@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import threading
+import base64
+import io
+import json
 import math
+import struct
 import time
+from pathlib import Path
 from typing import Any
 
 import rclpy
@@ -15,6 +20,12 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
 from tf2_msgs.msg import TFMessage
+from sensor_msgs.msg import CompressedImage, Image, PointCloud2
+
+try:
+    from PIL import Image as PilImage
+except ImportError:  # pragma: no cover - optional runtime dependency
+    PilImage = None
 
 try:
     from a2_interfaces.msg import RobotState
@@ -22,15 +33,39 @@ except ImportError:  # pragma: no cover - runtime environment fallback
     RobotState = None
 
 try:
+    from a2_interfaces.srv import ManageMap
+except ImportError:  # pragma: no cover - runtime environment fallback
+    ManageMap = None
+
+try:
     from nav2_msgs.action import NavigateToPose
 except ImportError:  # pragma: no cover - runtime environment fallback
     NavigateToPose = None
 
+try:
+    from unitree_api.msg import (
+        Request,
+        RequestHeader,
+        RequestIdentity,
+        RequestLease,
+        RequestPolicy,
+        Response,
+    )
+except ImportError:  # pragma: no cover - runtime environment fallback
+    Request = None
+    RequestHeader = None
+    RequestIdentity = None
+    RequestLease = None
+    RequestPolicy = None
+    Response = None
+
 from .config import AppConfig
 from .models import (
     DashboardSnapshot,
+    CameraFrame,
     InitialPoseRequest,
     MapSnapshot,
+    PointCloudSnapshot,
     NavigationGoal,
     NavigationGoalRequest,
     NavigationTaskState,
@@ -161,18 +196,50 @@ class RosBridgeNode(Node):
         self._active_goal_handle: Any | None = None
 
         self.map_snapshot = MapSnapshot()
+        self.pointcloud_snapshot = PointCloudSnapshot()
         self.pose = RobotPose()
         self.status = RobotStatus()
         self.navigation = NavigationTaskState(updated_at=now_iso())
+        self.camera = CameraFrame()
         self.health = SystemHealth(ros_connected=True)
         self._last_tf_frame: str | None = None
+        self._last_camera_publish_monotonic = 0.0
+        self._native_slam_response_cv = threading.Condition()
+        self._native_slam_responses: dict[int, dict[str, Any]] = {}
+        self.manage_map_client = None
 
         self._setup_subscriptions()
+        if ManageMap is not None:
+            self.manage_map_client = self.create_client(
+                ManageMap, self.config.ros.manage_map_service
+            )
+        else:
+            self.get_logger().warning(
+                "a2_interfaces.srv.ManageMap is unavailable. Map save/load bridge will be disabled."
+            )
         self.initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
             self.config.navigation.initial_pose_topic,
             10,
         )
+        self.native_slam_publisher = None
+        if self.config.native_slam.enabled and Request is not None:
+            self.native_slam_publisher = self.create_publisher(
+                Request,
+                self.config.native_slam.request_topic,
+                10,
+            )
+            if Response is not None:
+                self.create_subscription(
+                    Response,
+                    self.config.native_slam.response_topic,
+                    self._on_native_slam_response,
+                    10,
+                )
+        elif self.config.native_slam.enabled:
+            self.get_logger().warning(
+                "unitree_api.msg.Request is unavailable. Native SLAM commands will be disabled."
+            )
         self.action_client = (
             ActionClient(self, NavigateToPose, self.config.navigation.action_name) if NavigateToPose is not None else None
         )
@@ -190,8 +257,22 @@ class RosBridgeNode(Node):
         )
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, latched_qos)
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, 10)
-        self.create_subscription(PoseWithCovarianceStamped, ros.amcl_pose_topic, self._on_amcl_pose, latched_qos)
-        self.create_subscription(PoseWithCovarianceStamped, ros.amcl_pose_topic, self._on_amcl_pose, 10)
+        self.create_subscription(PointCloud2, ros.pointcloud_topic, self._on_pointcloud, 10)
+        if ros.localization_pose_msg_type == "nav_msgs/msg/Odometry":
+            self.create_subscription(Odometry, ros.localization_pose_topic, self._on_localization_odom, 20)
+        else:
+            self.create_subscription(
+                PoseWithCovarianceStamped,
+                ros.localization_pose_topic,
+                self._on_localization_pose,
+                latched_qos,
+            )
+            self.create_subscription(
+                PoseWithCovarianceStamped,
+                ros.localization_pose_topic,
+                self._on_localization_pose,
+                10,
+            )
         self.create_subscription(Odometry, ros.odom_topic, self._on_odom, 20)
         self.create_subscription(TFMessage, ros.tf_topic, self._on_tf, 20)
         self.create_subscription(String, ros.real_report_topic, self._on_real_report, 10)
@@ -200,11 +281,16 @@ class RosBridgeNode(Node):
         self.create_subscription(String, ros.localization_status_topic, self._on_localization_status, 10)
         self.create_subscription(String, ros.map_manager_status_topic, self._on_map_manager_status, 10)
         self.create_subscription(String, ros.map_manager_active_map_topic, self._on_active_map, 10)
+        self.create_subscription(String, ros.task_manager_status_topic, self._on_task_manager_status, 10)
         self.create_subscription(String, ros.sdk_status_topic, self._on_sdk_status, 10)
         if RobotState is not None:
             self.create_subscription(RobotState, ros.raw_state_topic, self._on_raw_state, 10)
         else:
             self.get_logger().warning("a2_interfaces.msg.RobotState is unavailable. /a2/raw_state will be skipped.")
+        if self.config.camera.enabled:
+            if self.config.camera.prefer_compressed:
+                self.create_subscription(CompressedImage, ros.camera_compressed_topic, self._on_compressed_image, 5)
+            self.create_subscription(Image, ros.camera_image_topic, self._on_image, 5)
 
     def _status_from_string(self, raw: str | None) -> TextStatus:
         parsed_raw, fields = parse_status_string(raw)
@@ -220,15 +306,134 @@ class RosBridgeNode(Node):
     def _publish(self, event_type: str, payload: Any) -> None:
         self.ws_manager.broadcast_threadsafe({"type": event_type, "payload": payload})
 
+    def _camera_throttle_ready(self) -> bool:
+        max_hz = max(0.1, float(self.config.camera.max_broadcast_hz))
+        now = time.monotonic()
+        if now - self._last_camera_publish_monotonic < 1.0 / max_hz:
+            return False
+        self._last_camera_publish_monotonic = now
+        return True
+
     def _set_health_error(self, message: str) -> None:
         with self._lock:
             self.health.last_error = message
         self._publish("health", self.get_health_dict())
 
+    def _on_native_slam_response(self, msg: Any) -> None:
+        response = {
+            "request_id": int(msg.header.identity.id),
+            "api_id": int(msg.header.identity.api_id),
+            "code": int(msg.header.status.code),
+            "data": msg.data,
+        }
+        with self._native_slam_response_cv:
+            self._native_slam_responses[response["request_id"]] = response
+            self._native_slam_response_cv.notify_all()
+
+    def _publish_native_slam_request(self, api_id: int, data: dict[str, Any]) -> dict[str, Any]:
+        if not self.config.native_slam.enabled:
+            raise RosBridgeError("Native SLAM command path is disabled by config")
+        if (
+            self.native_slam_publisher is None
+            or Request is None
+            or RequestHeader is None
+            or RequestIdentity is None
+            or RequestLease is None
+            or RequestPolicy is None
+        ):
+            raise RosBridgeError("unitree_api.msg.Request is unavailable")
+
+        request_id = int(time.time() * 1000)
+        request = Request()
+        request.header = RequestHeader()
+        request.header.identity = RequestIdentity()
+        request.header.identity.api_id = int(api_id)
+        request.header.identity.id = request_id
+        request.header.lease = RequestLease()
+        request.header.lease.id = 0
+        request.header.policy = RequestPolicy()
+        request.header.policy.priority = 0
+        request.header.policy.noreply = False
+        request.parameter = json.dumps({"data": data}, ensure_ascii=False)
+        request.binary = []
+        with self._native_slam_response_cv:
+            self._native_slam_responses.pop(request_id, None)
+        self.native_slam_publisher.publish(request)
+        response: dict[str, Any] | None = None
+        if Response is not None:
+            timeout_sec = max(0.5, float(self.config.native_slam.response_timeout_sec))
+            with self._native_slam_response_cv:
+                ready = self._native_slam_response_cv.wait_for(
+                    lambda: request_id in self._native_slam_responses,
+                    timeout=timeout_sec,
+                )
+                if not ready:
+                    raise RosBridgeError(
+                        f"等待 Unitree SLAM 响应超时: api_id={api_id}, request_id={request_id}"
+                    )
+                response = self._native_slam_responses.pop(request_id)
+            if int(response.get("code", -1)) != 0:
+                raise RosBridgeError(
+                    f"Unitree SLAM 命令失败: api_id={api_id}, code={response.get('code')}, data={response.get('data')}"
+                )
+        return {
+            "api_id": int(api_id),
+            "request_id": request_id,
+            "payload": data,
+            "request_topic": self.config.native_slam.request_topic,
+            "response": response,
+        }
+
+    def start_native_mapping(self) -> dict[str, Any]:
+        published = self._publish_native_slam_request(
+            1801,
+            {"slam_type": self.config.native_slam.mapping_type},
+        )
+        published["message"] = "已发送 Unitree 原生 SLAM 开始建图命令"
+        return published
+
+    def request_native_map_save(self, map_id: str) -> dict[str, Any]:
+        safe_map_id = map_id.strip() or f"map_{int(time.time())}"
+        filename = safe_map_id if safe_map_id.endswith(".pcd") else f"{safe_map_id}.pcd"
+        save_root = Path(self.config.native_slam.save_root).expanduser()
+        target_path = save_root / filename
+        published = self._publish_native_slam_request(
+            1802,
+            {"address": str(target_path)},
+        )
+        published["path"] = str(target_path)
+        published["message"] = "已发送 Unitree 原生 SLAM 保存地图命令"
+        return published
+
+    def save_managed_map(self, map_id: str) -> dict[str, Any]:
+        if self.manage_map_client is None or ManageMap is None:
+            raise RosBridgeError("manage_map service client 不可用")
+        if not self.manage_map_client.wait_for_service(timeout_sec=2.0):
+            raise RosBridgeError("manage_map service 不可用")
+
+        request = ManageMap.Request()
+        request.command = "save"
+        request.map_id = map_id.strip()
+        future = self.manage_map_client.call_async(request)
+        done = threading.Event()
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(timeout=8.0):
+            raise RosBridgeError("manage_map save 超时")
+        response = future.result()
+        if response is None:
+            raise RosBridgeError("manage_map save 未返回结果")
+        if not response.success:
+            raise RosBridgeError(response.message or "manage_map save 失败")
+        return {
+            "message": response.message,
+            "map_ids": list(response.map_ids),
+        }
+
     def _on_map(self, msg: OccupancyGrid) -> None:
         orientation = msg.info.origin.orientation
         map_snapshot = MapSnapshot(
             loaded=True,
+            representation="occupancy_grid_2d",
             frame_id=msg.header.frame_id,
             width=msg.info.width,
             height=msg.info.height,
@@ -248,11 +453,45 @@ class RosBridgeNode(Node):
         self._publish("map", dump_model(map_snapshot))
         self._publish("health", self.get_health_dict())
 
-    def _on_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
+    def _on_pointcloud(self, msg: PointCloud2) -> None:
+        try:
+            pointcloud_snapshot = self._pointcloud_snapshot_from_msg(msg)
+        except Exception as exc:
+            self._set_health_error(f"点云解析失败: {exc}")
+            return
+        with self._lock:
+            self.pointcloud_snapshot = pointcloud_snapshot
+        self._publish("pointcloud", dump_model(pointcloud_snapshot))
+
+    def _on_localization_pose(self, msg: PoseWithCovarianceStamped) -> None:
         pose = msg.pose.pose
         robot_pose = RobotPose(
             available=True,
-            source="amcl_pose",
+            source=self.config.ros.localization_pose_topic,
+            frame_id=msg.header.frame_id,
+            stamp=now_iso(),
+            x=pose.position.x,
+            y=pose.position.y,
+            yaw=quaternion_to_yaw(
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z,
+                pose.orientation.w,
+            ),
+            stale=False,
+        )
+        with self._lock:
+            self.pose = robot_pose
+            self.health.pose_received = True
+            self.health.last_pose_update = robot_pose.stamp
+        self._publish("pose", dump_model(robot_pose))
+        self._publish("health", self.get_health_dict())
+
+    def _on_localization_odom(self, msg: Odometry) -> None:
+        pose = msg.pose.pose
+        robot_pose = RobotPose(
+            available=True,
+            source=self.config.ros.localization_pose_topic,
             frame_id=msg.header.frame_id,
             stamp=now_iso(),
             x=pose.position.x,
@@ -317,6 +556,11 @@ class RosBridgeNode(Node):
             self.status.active_map = msg.data or None
         self._publish("status", dump_model(self.status))
 
+    def _on_task_manager_status(self, msg: String) -> None:
+        with self._lock:
+            self.status.task_manager_status = self._status_from_string(msg.data)
+        self._publish("status", dump_model(self.status))
+
     def _on_sdk_status(self, msg: String) -> None:
         with self._lock:
             self.status.sdk_status = self._status_from_string(msg.data)
@@ -343,6 +587,98 @@ class RosBridgeNode(Node):
         with self._lock:
             self.status.raw_state = raw_state
         self._publish("status", dump_model(self.status))
+
+    def _on_compressed_image(self, msg: CompressedImage) -> None:
+        if not self._camera_throttle_ready():
+            return
+        image_format = (msg.format or "jpeg").lower()
+        mime = "image/png" if "png" in image_format else "image/jpeg"
+        data_url = f"data:{mime};base64,{base64.b64encode(bytes(msg.data)).decode('ascii')}"
+        frame = CameraFrame(
+            available=True,
+            topic=self.config.ros.camera_compressed_topic,
+            frame_id=msg.header.frame_id or None,
+            stamp=now_iso(),
+            encoding="compressed",
+            format=image_format,
+            data_url=data_url,
+            stale=False,
+        )
+        with self._lock:
+            self.camera = frame
+            self.health.camera_received = True
+            self.health.last_camera_update = frame.stamp
+        self._publish("camera", dump_model(frame))
+        self._publish("health", self.get_health_dict())
+
+    def _on_image(self, msg: Image) -> None:
+        if self.config.camera.prefer_compressed and self.camera.available:
+            return
+        if not self._camera_throttle_ready():
+            return
+        if PilImage is None:
+            self._set_health_error("Pillow 未安装，无法把 raw camera image 转成 JPEG")
+            return
+        mode = None
+        raw = bytes(msg.data)
+        encoding = msg.encoding.lower()
+        if encoding == "rgb8":
+            if msg.step != msg.width * 3:
+                self._set_health_error("暂不支持带行填充的 rgb8 camera image")
+                return
+            mode = "RGB"
+        elif encoding == "bgr8":
+            if msg.step != msg.width * 3:
+                self._set_health_error("暂不支持带行填充的 bgr8 camera image")
+                return
+            mode = "RGB"
+            converted = bytearray(len(raw))
+            for index in range(0, len(raw), 3):
+                converted[index] = raw[index + 2]
+                converted[index + 1] = raw[index + 1]
+                converted[index + 2] = raw[index]
+            raw = bytes(converted)
+        elif encoding == "rgba8":
+            if msg.step != msg.width * 4:
+                self._set_health_error("暂不支持带行填充的 rgba8 camera image")
+                return
+            mode = "RGBA"
+        elif encoding == "mono8":
+            if msg.step != msg.width:
+                self._set_health_error("暂不支持带行填充的 mono8 camera image")
+                return
+            mode = "L"
+        else:
+            self._set_health_error(f"暂不支持 raw camera encoding: {msg.encoding}")
+            return
+        try:
+            image = PilImage.frombytes(mode, (msg.width, msg.height), raw)
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=int(self.config.camera.jpeg_quality))
+        except Exception as exc:
+            self._set_health_error(f"raw camera image 转换失败: {exc}")
+            return
+        data_url = f"data:image/jpeg;base64,{base64.b64encode(output.getvalue()).decode('ascii')}"
+        frame = CameraFrame(
+            available=True,
+            topic=self.config.ros.camera_image_topic,
+            frame_id=msg.header.frame_id or None,
+            stamp=now_iso(),
+            width=int(msg.width),
+            height=int(msg.height),
+            encoding=msg.encoding,
+            format="jpeg",
+            data_url=data_url,
+            stale=False,
+        )
+        with self._lock:
+            self.camera = frame
+            self.health.camera_received = True
+            self.health.last_camera_update = frame.stamp
+        self._publish("camera", dump_model(frame))
+        self._publish("health", self.get_health_dict())
 
     def _publish_health(self) -> None:
         with self._lock:
@@ -381,15 +717,65 @@ class RosBridgeNode(Node):
                 pose.stale = False
             return DashboardSnapshot(
                 map=deep_copy_model(self.map_snapshot),
+                pointcloud=deep_copy_model(self.pointcloud_snapshot),
                 pose=pose,
                 status=deep_copy_model(self.status),
                 navigation=deep_copy_model(self.navigation),
+                camera=deep_copy_model(self.camera),
                 health=deep_copy_model(self.health),
             )
 
     def get_map_snapshot(self) -> MapSnapshot:
         with self._lock:
             return deep_copy_model(self.map_snapshot)
+
+    def _pointcloud_snapshot_from_msg(self, msg: PointCloud2) -> PointCloudSnapshot:
+        x_field = next((field for field in msg.fields if field.name == "x"), None)
+        y_field = next((field for field in msg.fields if field.name == "y"), None)
+        z_field = next((field for field in msg.fields if field.name == "z"), None)
+        if x_field is None or y_field is None or z_field is None:
+            raise RosBridgeError("pointcloud missing x/y/z fields")
+        if x_field.datatype != 7 or y_field.datatype != 7 or z_field.datatype != 7:
+            raise RosBridgeError("only FLOAT32 x/y/z pointclouds are supported")
+
+        total_points = int(msg.width) * int(msg.height)
+        if total_points <= 0:
+            return PointCloudSnapshot(
+                loaded=False,
+                source_topic=self.config.ros.pointcloud_topic,
+                frame_id=msg.header.frame_id or None,
+                stamp=now_iso(),
+                points=[],
+                points_total=0,
+                points_sampled=0,
+                sample_stride=1,
+            )
+
+        max_points = 5000
+        sample_stride = max(1, int(math.ceil(total_points / max_points)))
+        endian = ">" if msg.is_bigendian else "<"
+        unpack_float = struct.Struct(f"{endian}f").unpack_from
+        raw = memoryview(msg.data)
+        points: list[list[float]] = []
+        for point_index in range(0, total_points, sample_stride):
+            base = point_index * msg.point_step
+            x = unpack_float(raw, base + x_field.offset)[0]
+            y = unpack_float(raw, base + y_field.offset)[0]
+            z = unpack_float(raw, base + z_field.offset)[0]
+            if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+                continue
+            points.append([float(x), float(y), float(z)])
+
+        return PointCloudSnapshot(
+            loaded=bool(points),
+            frame_id=msg.header.frame_id or None,
+            stamp=now_iso(),
+            source_topic=self.config.ros.pointcloud_topic,
+            points=points,
+            points_total=total_points,
+            points_sampled=len(points),
+            sample_stride=sample_stride,
+        )
 
     def send_navigation_goal(self, request: NavigationGoalRequest) -> NavigationTaskState:
         with self._navigation_lock:
@@ -491,7 +877,12 @@ class RosBridgeNode(Node):
             covariance[7] = 0.25
             covariance[35] = 0.068
 
-            for _ in range(3):
+            previous_pose_stamp = self.pose.stamp
+            deadline = time.monotonic() + self.config.navigation.initial_pose_wait_timeout_sec
+            publish_interval = max(0.1, self.config.navigation.initial_pose_publish_interval_sec)
+            attempts = 0
+
+            while True:
                 msg = PoseWithCovarianceStamped()
                 msg.header.frame_id = snapped_pose.frame_id
                 msg.header.stamp = self.get_clock().now().to_msg()
@@ -501,16 +892,37 @@ class RosBridgeNode(Node):
                 msg.pose.pose.orientation.w = math.cos(snapped_pose.yaw / 2.0)
                 msg.pose.covariance = covariance
                 self.initial_pose_publisher.publish(msg)
-                time.sleep(0.1)
+                attempts += 1
 
-            message = "初始位姿已发送"
+                ready, localization_status = self._initial_pose_ready(previous_pose_stamp)
+                if ready:
+                    break
+                if time.monotonic() >= deadline:
+                    detail = localization_status.reason or localization_status.state or "unknown"
+                    raise RosBridgeError(
+                        f"初始位姿已发送，但定位未进入 ready: {detail}"
+                    )
+                time.sleep(publish_interval)
+
+            message = "初始位姿已发送，定位已就绪"
             if pose_snapped:
-                message = "初始位姿已发送，已吸附到最近可行点"
+                message = "初始位姿已发送，已吸附到最近可行点，定位已就绪"
             return {
                 "pose": dump_model(snapped_pose),
                 "snapped": pose_snapped,
+                "attempts": attempts,
                 "message": message,
             }
+
+    def _initial_pose_ready(self, previous_pose_stamp: str | None) -> tuple[bool, TextStatus]:
+        with self._lock:
+            pose = deep_copy_model(self.pose)
+            localization_status = deep_copy_model(self.status.localization_status)
+            localization_ok = bool(self.status.localization_ok)
+
+        pose_updated = pose.available and pose.stamp is not None and pose.stamp != previous_pose_stamp
+        ready = (localization_ok or localization_status.ready is True) and pose_updated
+        return ready, localization_status
 
     def _on_navigation_result(self, result_future: Any) -> None:
         state = "failed"

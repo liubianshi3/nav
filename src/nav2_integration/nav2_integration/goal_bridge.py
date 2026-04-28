@@ -34,6 +34,21 @@ def normalize_quaternion(orientation) -> bool:
     return True
 
 
+def validate_goal_contract(goal, *, map_frame: str, require_map_frame: bool, max_goal_distance_from_origin: float):
+    if not goal.header.frame_id:
+        goal.header.frame_id = map_frame
+    if require_map_frame and goal.header.frame_id != map_frame:
+        return None, f"bad_frame:{goal.header.frame_id}"
+    x = float(goal.pose.position.x)
+    y = float(goal.pose.position.y)
+    if not math.isfinite(x) or not math.isfinite(y):
+        return None, "nonfinite_goal_position"
+    if math.hypot(x, y) > max_goal_distance_from_origin:
+        return None, "goal_out_of_configured_bounds"
+    orientation_ok = normalize_quaternion(goal.pose.orientation)
+    return goal, "action_goal_dispatched" if orientation_ok else "action_goal_dispatched_orientation_defaulted"
+
+
 class GoalBridge(Node):
     def __init__(self):
         super().__init__("goal_bridge")
@@ -105,14 +120,12 @@ class GoalBridge(Node):
             return None, f"bad_frame:{goal.header.frame_id}"
         if goal.header.stamp.sec == 0 and goal.header.stamp.nanosec == 0:
             goal.header.stamp = self.get_clock().now().to_msg()
-        x = float(goal.pose.position.x)
-        y = float(goal.pose.position.y)
-        if not math.isfinite(x) or not math.isfinite(y):
-            return None, "nonfinite_goal_position"
-        if math.hypot(x, y) > self.max_goal_distance_from_origin:
-            return None, "goal_out_of_configured_bounds"
-        orientation_ok = normalize_quaternion(goal.pose.orientation)
-        return goal, "action_goal_dispatched" if orientation_ok else "action_goal_dispatched_orientation_defaulted"
+        return validate_goal_contract(
+            goal,
+            map_frame=self.map_frame,
+            require_map_frame=self.require_map_frame,
+            max_goal_distance_from_origin=self.max_goal_distance_from_origin,
+        )
 
     def goal_response_callback(self, future):
         try:

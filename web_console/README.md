@@ -69,9 +69,12 @@ web_console/
 - `/a2/map_manager/active_map`
 - `/a2/sdk/status`
 - `/a2/raw_state`
+- `/camera/image_raw/compressed`
+- `/camera/image_raw`
 - action: `/navigate_to_pose`
 
 `/mid360/points` 当前只作为后续扩展入口，第一版前端不绘制 3D 点云。
+相机优先使用压缩图像 topic，raw 图像会由后端转 JPEG 后再推送到浏览器。
 
 ## 配置
 
@@ -85,6 +88,7 @@ web_console/
 - `NavigateToPose` action 名
 - 是否允许发送导航目标
 - 健康检查参数
+- 相机 topic 和推送频率
 
 建议复制一份为 `backend/config.yaml`，再按机器人实际环境修改：
 
@@ -186,6 +190,23 @@ sudo systemctl start a2-web-console-build.service
 sudo journalctl -u a2-web-console.service -f
 ```
 
+## One-click Standby
+
+If you want the robot to stop old stacks, start the native front-LiDAR source,
+restart the web service, and then wait for the operator to click Mapping or
+Navigation from the page, use:
+
+```bash
+/home/unitree/a2_system_ws/install/a2_system/share/a2_system/start_web_console_suite.sh --iface eth0
+```
+
+This script prints failure context for:
+
+- residual ROS bringup processes
+- native `unitree_slam.service`
+- `a2-web-console.service`
+- latest `runtime/logs/bringup_real_*.log`
+
 ## 浏览器访问方式
 
 服务启动后，在同局域网的其它电脑浏览器访问：
@@ -210,6 +231,7 @@ http://<机器人IP>:8080
   - 显示 OccupancyGrid
   - 显示机器人位置和朝向
   - 支持平移、缩放、点击选点
+  - 显示 A2 前向相机图像
 - 右侧：任务与控制
   - 当前任务状态
   - 目标点坐标
@@ -218,6 +240,8 @@ http://<机器人IP>:8080
   - 最近一次成功和错误提示
 
 ## 常见故障排查
+
+可靠性验证清单见 [RELIABILITY_CHECKLIST.md](./RELIABILITY_CHECKLIST.md)。
 
 ### 1. 页面能打开，但地图不显示
 

@@ -2,9 +2,46 @@
 
 import rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
+
+
+def evaluate_localization_contract(
+    *,
+    age_sec,
+    covariance,
+    max_pose_age_sec,
+    max_xy_variance,
+    max_yaw_variance,
+    latch_valid_pose=False,
+    latched_age_sec=None,
+    latched_pose_timeout_sec=0.0,
+):
+    xy_ok = covariance[0] <= max_xy_variance and covariance[7] <= max_xy_variance
+    yaw_ok = covariance[35] <= max_yaw_variance
+    pose_ok = bool(xy_ok and yaw_ok)
+    if pose_ok and age_sec <= max_pose_age_sec:
+        return True, "ready", f"pose_ok,age={age_sec:.2f}", pose_ok
+    if (
+        pose_ok
+        and latch_valid_pose
+        and latched_age_sec is not None
+        and latched_age_sec <= latched_pose_timeout_sec
+    ):
+        return True, "ready", f"pose_latched,age={age_sec:.2f}", pose_ok
+    if age_sec > max_pose_age_sec:
+        return False, "stale_pose", f"pose_timeout,age={age_sec:.2f}", pose_ok
+    return (
+        False,
+        "covariance_rejected",
+        (
+            f"xy_ok={str(xy_ok).lower()},yaw_ok={str(yaw_ok).lower()},"
+            f"cov_x={covariance[0]:.4f},cov_y={covariance[7]:.4f},cov_yaw={covariance[35]:.4f}"
+        ),
+        pose_ok,
+    )
 
 
 class LocalizationGate(Node):
@@ -15,6 +52,9 @@ class LocalizationGate(Node):
             "runtime_mode", "mock" if self.use_mock else "real"
         ).value
         pose_topic = self.declare_parameter("input_pose_topic", "/amcl_pose").value
+        self.input_pose_msg_type = self.declare_parameter(
+            "input_pose_msg_type", "geometry_msgs/msg/PoseWithCovarianceStamped"
+        ).value
         self.status_topic = self.declare_parameter("status_topic", "/a2/localization_ok").value
         self.status_report_topic = self.declare_parameter(
             "status_report_topic", "/a2/localization/status"
@@ -39,17 +79,19 @@ class LocalizationGate(Node):
             if self.pose_transient_local
             else 20
         )
-        self.create_subscription(PoseWithCovarianceStamped, pose_topic, self.on_pose, pose_qos)
+        if self.input_pose_msg_type == "nav_msgs/msg/Odometry":
+            self.create_subscription(Odometry, pose_topic, self.on_odom_pose, pose_qos)
+        else:
+            self.create_subscription(PoseWithCovarianceStamped, pose_topic, self.on_pose, pose_qos)
         self.create_timer(0.2, self.evaluate)
 
     def on_pose(self, msg):
         self.last_pose = msg
 
-    def evaluate(self):
-        if self.last_pose is None:
-            self.status_pub.publish(Bool(data=False))
-            self.publish_status(False, "waiting_pose", "no_pose")
-            return
+    def on_odom_pose(self, msg):
+        self.last_pose = msg
+
+    def _extract_pose_age_and_covariance(self):
         now = self.get_clock().now()
         stamp = self.last_pose.header.stamp
         if stamp.sec == 0 and stamp.nanosec == 0 and self.allow_zero_stamp_as_now:
@@ -57,37 +99,35 @@ class LocalizationGate(Node):
         else:
             pose_time = rclpy.time.Time.from_msg(stamp)
             age = (now - pose_time).nanoseconds * 1e-9
-        covariance = self.last_pose.pose.covariance
-        xy_ok = covariance[0] <= self.max_xy_variance and covariance[7] <= self.max_xy_variance
-        yaw_ok = covariance[35] <= self.max_yaw_variance
-        pose_ok = bool(xy_ok and yaw_ok)
-        if pose_ok and age <= self.max_pose_age_sec:
-            self.last_valid_pose_time = now
-            self.status_pub.publish(Bool(data=True))
-            self.publish_status(True, "ready", f"pose_ok,age={age:.2f}")
+        if isinstance(self.last_pose, Odometry):
+            covariance = self.last_pose.pose.covariance
+        else:
+            covariance = self.last_pose.pose.covariance
+        return now, age, covariance
+
+    def evaluate(self):
+        if self.last_pose is None:
+            self.status_pub.publish(Bool(data=False))
+            self.publish_status(False, "waiting_pose", "no_pose")
             return
-        if (
-            pose_ok
-            and self.latch_valid_pose
-            and self.last_valid_pose_time is not None
-            and (now - self.last_valid_pose_time).nanoseconds * 1e-9
-            <= self.latched_pose_timeout_sec
-        ):
-            self.status_pub.publish(Bool(data=True))
-            self.publish_status(True, "ready", f"pose_latched,age={age:.2f}")
-            return
-        self.status_pub.publish(Bool(data=False))
-        if age > self.max_pose_age_sec:
-            self.publish_status(False, "stale_pose", f"pose_timeout,age={age:.2f}")
-            return
-        self.publish_status(
-            False,
-            "covariance_rejected",
-            (
-                f"xy_ok={str(xy_ok).lower()},yaw_ok={str(yaw_ok).lower()},"
-                f"cov_x={covariance[0]:.4f},cov_y={covariance[7]:.4f},cov_yaw={covariance[35]:.4f}"
-            ),
+        now, age, covariance = self._extract_pose_age_and_covariance()
+        latched_age = None
+        if self.last_valid_pose_time is not None:
+            latched_age = (now - self.last_valid_pose_time).nanoseconds * 1e-9
+        ready, state, reason, pose_ok = evaluate_localization_contract(
+            age_sec=age,
+            covariance=covariance,
+            max_pose_age_sec=self.max_pose_age_sec,
+            max_xy_variance=self.max_xy_variance,
+            max_yaw_variance=self.max_yaw_variance,
+            latch_valid_pose=self.latch_valid_pose,
+            latched_age_sec=latched_age,
+            latched_pose_timeout_sec=self.latched_pose_timeout_sec,
         )
+        if ready and pose_ok and age <= self.max_pose_age_sec:
+            self.last_valid_pose_time = now
+        self.status_pub.publish(Bool(data=ready))
+        self.publish_status(ready, state, reason)
 
     def publish_status(self, ready, state, reason):
         mode = self.runtime_mode

@@ -17,7 +17,7 @@ fi
 if [[ "${A2_ENABLE_NAV2:-false}" == "1" || "${A2_ENABLE_NAV2:-false}" == "true" ]]; then
   EXTRA_ARGS+=("enable_nav2_bringup:=true")
   EXTRA_ARGS+=("enable_control_bridge:=true")
-  EXTRA_ARGS+=("real_localization_mode:=${A2_REAL_LOCALIZATION_MODE:-manual_odom}")
+  EXTRA_ARGS+=("real_localization_mode:=${A2_REAL_LOCALIZATION_MODE:-amcl}")
 fi
 if [[ -n "${A2_MAP_YAML:-}" ]]; then
   EXTRA_ARGS+=("map:=${A2_MAP_YAML}")

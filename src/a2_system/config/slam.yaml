@@ -2,11 +2,19 @@ slam_manager:
   ros__parameters:
     mode: external_odom
     external_stack_profile: external_odom
-    pointcloud_topic: /mid360/points
+    mapping_stack_profile: front_lidar_pointcloud_3d
+    primary_map_representation: pointcloud_map_3d
+    localization_representation: pointcloud_map_3d
+    navigation_representation: pointcloud_map_3d
+    web_map_representation: pointcloud_map_3d
+    front_lidar_input_topic: /unitree/slam_lidar/points1
+    front_lidar_input_type: sensor_msgs/msg/PointCloud2
+    pointcloud_projection_enabled: false
+    pointcloud_topic: /unitree/slam_lidar/points1
     imu_topic: /imu/data
     odom_topic: /odom
     odom_topic_candidates: [/odom]
     map_frame: map
     odom_frame: odom
     base_frame: base_link
-    project_to_nav2_map: true
+    project_to_nav2_map: false

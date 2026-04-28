@@ -20,6 +20,7 @@ setup(
         "console_scripts": [
             "map_manager_node = map_manager.map_manager_node:main",
             "mock_map_publisher = map_manager.mock_map_publisher:main",
+            "native_map_relay = map_manager.native_map_relay:main",
             "occupancy_mapper = map_manager.occupancy_mapper:main",
         ],
     },
