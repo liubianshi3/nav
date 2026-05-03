@@ -76,3 +76,21 @@ python3 src/inspection_task_allocator/inspection_task_allocator/analyze_results.
 ### 7. 注意事项
 
 当前实验基于二维栅格仿真环境，主要用于论文方法验证与对比分析。后续可进一步接入 ROS2、Nav2 以及真实四足机器人平台，以完成实机验证与系统级联调。
+
+### 8. 自适应 A-RH-PADS 实验
+
+Route B 新增 `A-RH-PADS`（Adaptive Receding-Horizon Priority-Aware Dynamic Scheduler，自适应滚动时域优先级感知动态调度算法）。该方法将任务调度目标拆成响应收益 `R(Q_t)` 与运动代价 `C(Q_t)`，并根据当前任务紧急度压力 `U_t`、异常压力 `A_t` 和路径压力 `D_t` 动态计算 `lambda_t`。`lambda_t` 越大，调度越偏响应优先；`lambda_t` 越小，调度越偏运动代价控制。
+
+该方法的目标不是追求路径最短，而是在任务响应与运动代价之间做动态权衡。原 `RH-PADS` / `RH-v2-Light` 保留为固定权重基线。小车运动学实验仅是二维栅格路径加差速小车跟踪的运动学仿真，不是 Gazebo、Nav2 或真实机器人实验。
+
+运行命令：
+
+```bash
+python3 inspection_task_allocator_minimal/adaptive_rh_pads_main_experiment.py
+python3 inspection_task_allocator_minimal/adaptive_rh_pads_abnormal_experiment.py
+python3 inspection_task_allocator_minimal/adaptive_rh_pads_ablation_experiment.py
+python3 inspection_task_allocator_minimal/adaptive_vehicle_sim_experiment.py
+python3 inspection_task_allocator_minimal/adaptive_rh_pads_significance.py
+python3 inspection_task_allocator_minimal/export_adaptive_rh_pads_tables.py
+python3 inspection_task_allocator_minimal/export_adaptive_rh_pads_figures.py
+```
