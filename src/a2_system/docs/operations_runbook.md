@@ -77,12 +77,17 @@ ros2 launch a2_bringup jt128_3d_navigation.launch.py map_id:=<saved_map_id>
 
 Pass condition:
 
-- `/a2/map/pointcloud_3d` received
-- `/a2/relocalization/pose` received
-- `/a2/localization_ok=true`
-- `/a2/lidar/connected=true`
-- `/a2/real/report ready=true`
-- `/a2/nav3/status` transitions out of `waiting_goal`
+- confirm `/a2/map/pointcloud_3d` received
+- confirm `/jt128/dlio/odom` received
+- publish `/initialpose`
+- watch `/a2/relocalization/status` for matcher=ndt and ready=true
+- confirm `/a2/relocalization/pose` freshness
+- confirm `/a2/localization_ok=true`
+- confirm `/a2/lidar/connected=true`
+- confirm `/a2/real/report` says ready=true
+- confirm `/a2/nav3/status` transitions out of `waiting_goal`
+- run dry-run goal first
+- only enable motion after NDT ready and a clear area is verified
 
 ## Web Console
 

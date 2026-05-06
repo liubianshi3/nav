@@ -19,6 +19,10 @@ This workspace is organized around a host-side ROS 2 deployment for the Unitree 
 - 3D path: `JT128 -> DLIO -> /jt128/dlio/map_points and /jt128/dlio/odom -> PCD relocalization -> pose_goal_controller_3d`
 - Shared artifact boundary: `map_manager` save, load, list, and promote services
 
+See also:
+
+- [autoware_ndt_adapter_plan.md](/home/dell/a2_system_ws/src/a2_system/docs/autoware_ndt_adapter_plan.md) for the recommended migration path from the current host-side relocalizer toward an Autoware-style NDT adapter while preserving A2 contracts.
+
 ## TF Design
 
 - `odom -> base_link` is owned by `a2_state_publisher`.

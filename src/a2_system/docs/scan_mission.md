@@ -55,6 +55,8 @@ ros2 launch a2_bringup scan_mission.launch.py dry_run:=true \
   waypoints_file:=/home/unitree/a2_system_ws/src/a2_system/config/scan_waypoints.example.yaml
 ```
 
+## Map Validation
+
 Dry-run behavior:
 
 - loads and validates the route file

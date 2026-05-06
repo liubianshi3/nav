@@ -1,5 +1,7 @@
 # A2 System Workspace
 
+![Architecture Diagram](../src/a2_system/docs/architecture.png)
+
 Host-side ROS 2 Humble workspace for the Unitree A2 real robot stack. The active baseline is front-LiDAR real deployment, with JT128 plus DLIO plus 3D relocalization as the current 3D path and AMCL as the default 2D localization path.
 
 ## Quick Start

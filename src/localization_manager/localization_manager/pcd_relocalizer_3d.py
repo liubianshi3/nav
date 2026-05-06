@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import os
-import struct
 from pathlib import Path
 
 import numpy as np
@@ -16,11 +15,6 @@ from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 from tf2_ros import TransformBroadcaster
-
-try:
-    from scipy.spatial import cKDTree
-except Exception:  # pragma: no cover - exercised on robots without scipy.
-    cKDTree = None
 
 
 def normalize_quaternion(q: np.ndarray) -> np.ndarray:
@@ -89,7 +83,7 @@ def pose_to_matrix(position, orientation) -> np.ndarray:
     return matrix
 
 
-def xyz_rpy_to_matrix(xyz: list[float], rpy: list[float]) -> np.ndarray:
+def xyz_rpy_to_matrix(xyz: list[float] | np.ndarray, rpy: list[float] | np.ndarray) -> np.ndarray:
     roll, pitch, yaw = [float(value) for value in rpy]
     cr, sr = math.cos(roll), math.sin(roll)
     cp, sp = math.cos(pitch), math.sin(pitch)
@@ -121,24 +115,6 @@ def rotation_angle(rotation: np.ndarray) -> float:
     return math.acos(max(-1.0, min(1.0, value)))
 
 
-def estimate_rigid_transform(source: np.ndarray, target: np.ndarray) -> np.ndarray:
-    source_centroid = source.mean(axis=0)
-    target_centroid = target.mean(axis=0)
-    source_centered = source - source_centroid
-    target_centered = target - target_centroid
-    covariance = source_centered.T @ target_centered
-    u, _, vt = np.linalg.svd(covariance)
-    rotation = vt.T @ u.T
-    if np.linalg.det(rotation) < 0:
-        vt[2, :] *= -1
-        rotation = vt.T @ u.T
-    translation = target_centroid - rotation @ source_centroid
-    transform = np.eye(4, dtype=np.float64)
-    transform[:3, :3] = rotation
-    transform[:3, 3] = translation
-    return transform
-
-
 def voxel_downsample(points: np.ndarray, leaf_size: float, max_points: int) -> np.ndarray:
     if points.size == 0:
         return points
@@ -152,25 +128,72 @@ def voxel_downsample(points: np.ndarray, leaf_size: float, max_points: int) -> n
     return points.astype(np.float64, copy=False)
 
 
-class NearestMap:
-    def __init__(self, points: np.ndarray):
-        self.points = points
-        self.tree = cKDTree(points) if cKDTree is not None else None
+class NdtVoxelGrid:
+    def __init__(self, points: np.ndarray, resolution: float, min_points_per_voxel: int, cov_reg: float):
+        self.resolution = resolution
+        self.voxels: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
 
-    def query(self, source: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        if self.tree is not None:
-            distances, indices = self.tree.query(source, k=1, workers=-1)
-            return distances.astype(np.float64), self.points[indices]
-        distances = np.empty((len(source),), dtype=np.float64)
-        targets = np.empty_like(source)
-        for start in range(0, len(source), 256):
-            chunk = source[start : start + 256]
-            diff = chunk[:, None, :] - self.points[None, :, :]
-            squared = np.einsum("ijk,ijk->ij", diff, diff)
-            indices = np.argmin(squared, axis=1)
-            distances[start : start + len(chunk)] = np.sqrt(squared[np.arange(len(chunk)), indices])
-            targets[start : start + len(chunk)] = self.points[indices]
-        return distances, targets
+        if points.size == 0:
+            return
+
+        keys = np.floor(points / resolution).astype(np.int64)
+        unique_keys, inverse_indices = np.unique(keys, axis=0, return_inverse=True)
+        counts = np.bincount(inverse_indices)
+        valid_indices = np.where(counts >= min_points_per_voxel)[0]
+
+        reg_matrix = np.eye(3, dtype=np.float64) * cov_reg
+
+        for idx in valid_indices:
+            pts_in_voxel = points[inverse_indices == idx]
+            mean = np.mean(pts_in_voxel, axis=0)
+            cov = np.cov(pts_in_voxel, rowvar=False)
+            if not isinstance(cov, np.ndarray) or cov.ndim != 2:
+                continue
+            cov += reg_matrix
+            try:
+                inv_cov = np.linalg.inv(cov)
+                self.voxels[tuple(unique_keys[idx])] = (mean, inv_cov)
+            except np.linalg.LinAlgError:
+                pass
+
+    def query(self, points: np.ndarray, neighbor_search: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if points.size == 0:
+            return (
+                np.zeros(0, dtype=bool),
+                np.zeros((0, 3), dtype=np.float64),
+                np.zeros((0, 3, 3), dtype=np.float64),
+                np.zeros((0, 3), dtype=np.float64),
+            )
+        keys = np.floor(points / self.resolution).astype(np.int64)
+
+        valid_mask = np.zeros(len(points), dtype=bool)
+        residuals = np.zeros((len(points), 3), dtype=np.float64)
+        inv_covs = np.zeros((len(points), 3, 3), dtype=np.float64)
+
+        for i, pt in enumerate(points):
+            k = tuple(keys[i])
+            voxel = self.voxels.get(k)
+
+            if voxel is None and neighbor_search:
+                min_dist = float('inf')
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        for dz in (-1, 0, 1):
+                            nk = (k[0]+dx, k[1]+dy, k[2]+dz)
+                            v = self.voxels.get(nk)
+                            if v is not None:
+                                dist = np.linalg.norm(pt - v[0])
+                                if dist < min_dist:
+                                    min_dist = float(dist)
+                                    voxel = v
+
+            if voxel is not None:
+                mean, inv_cov = voxel
+                valid_mask[i] = True
+                residuals[i] = pt - mean
+                inv_covs[i] = inv_cov
+
+        return valid_mask, residuals[valid_mask], inv_covs[valid_mask], points[valid_mask]
 
 
 class PcdRelocalizer3D(Node):
@@ -204,31 +227,33 @@ class PcdRelocalizer3D(Node):
         )
         self.lidar_rpy = list(self.declare_parameter("base_to_lidar_rpy", [0.0, 0.0, 0.0]).value)
         self.publish_tf = bool(self.declare_parameter("publish_tf", True).value)
-        self.auto_seed_identity = bool(self.declare_parameter("auto_seed_identity", True).value)
-        self.icp_interval_sec = max(0.2, float(self.declare_parameter("icp_interval_sec", 1.0).value))
-        self.voxel_leaf_size = max(0.0, float(self.declare_parameter("voxel_leaf_size", 0.25).value))
-        self.max_map_points = int(self.declare_parameter("max_map_points", 80000).value)
-        self.max_scan_points = int(self.declare_parameter("max_scan_points", 2500).value)
-        self.min_correspondences = int(self.declare_parameter("min_correspondences", 120).value)
-        self.max_correspondence_distance = float(
-            self.declare_parameter("max_correspondence_distance", 0.8).value
-        )
-        self.max_iterations = int(self.declare_parameter("max_iterations", 8).value)
-        self.max_translation_correction = float(
-            self.declare_parameter("max_translation_correction", 0.35).value
-        )
-        self.max_rotation_correction = math.radians(
-            float(self.declare_parameter("max_rotation_correction_deg", 8.0).value)
-        )
-        self.max_map_to_odom_translation = float(
-            self.declare_parameter("max_map_to_odom_translation", 20.0).value
-        )
-        self.max_base_distance_from_origin = float(
-            self.declare_parameter("max_base_distance_from_origin", 120.0).value
-        )
-        self.ready_fitness_threshold = float(
-            self.declare_parameter("ready_fitness_threshold", 0.35).value
-        )
+        self.auto_seed_identity = bool(self.declare_parameter("auto_seed_identity", False).value)
+
+        self.matcher_backend = str(self.declare_parameter("matcher_backend", "ndt").value)
+        self.match_interval_sec = max(0.2, float(self.declare_parameter("match_interval_sec", 2.0).value))
+        self.voxel_leaf_size = max(0.0, float(self.declare_parameter("voxel_leaf_size", 0.35).value))
+        self.max_map_points = int(self.declare_parameter("max_map_points", 200000).value)
+        self.max_scan_points = int(self.declare_parameter("max_scan_points", 1200).value)
+
+        self.ndt_resolution = float(self.declare_parameter("ndt_resolution", 1.0).value)
+        self.ndt_min_points_per_voxel = int(self.declare_parameter("ndt_min_points_per_voxel", 6).value)
+        self.ndt_covariance_regularization = float(self.declare_parameter("ndt_covariance_regularization", 0.05).value)
+        self.ndt_neighbor_search = bool(self.declare_parameter("ndt_neighbor_search", True).value)
+        self.ndt_outlier_mahalanobis_threshold = float(self.declare_parameter("ndt_outlier_mahalanobis_threshold", 9.0).value)
+        self.ndt_max_iterations = int(self.declare_parameter("ndt_max_iterations", 12).value)
+        self.ndt_step_translation_limit = float(self.declare_parameter("ndt_step_translation_limit", 0.25).value)
+        self.ndt_step_rotation_limit = math.radians(float(self.declare_parameter("ndt_step_rotation_limit_deg", 3.0).value))
+        self.ndt_converged_translation_epsilon = float(self.declare_parameter("ndt_converged_translation_epsilon", 0.01).value)
+        self.ndt_converged_rotation_epsilon = math.radians(float(self.declare_parameter("ndt_converged_rotation_epsilon_deg", 0.2).value))
+        self.ndt_score_threshold = float(self.declare_parameter("ndt_score_threshold", 3.0).value)
+        self.ndt_min_effective_correspondences = int(self.declare_parameter("ndt_min_effective_correspondences", 80).value)
+
+        self.max_translation_correction = float(self.declare_parameter("max_translation_correction", 1.2).value)
+        self.max_rotation_correction = math.radians(float(self.declare_parameter("max_rotation_correction_deg", 5.0).value))
+        self.max_map_to_odom_translation = float(self.declare_parameter("max_map_to_odom_translation", 20.0).value)
+        self.max_base_distance_from_origin = float(self.declare_parameter("max_base_distance_from_origin", 120.0).value)
+
+        self.covariance_mode = str(self.declare_parameter("covariance_mode", "score_scaled").value)
         self.xy_variance = float(self.declare_parameter("xy_variance", 0.04).value)
         self.z_variance = float(self.declare_parameter("z_variance", 0.08).value)
         self.rot_variance = float(self.declare_parameter("rot_variance", 0.04).value)
@@ -239,6 +264,7 @@ class PcdRelocalizer3D(Node):
             )
         else:
             self.base_to_lidar = xyz_rpy_to_matrix(self.lidar_xyz, self.lidar_rpy)
+
         self.map_to_odom = np.eye(4, dtype=np.float64)
         self.has_seed = bool(self.auto_seed_identity)
         self.last_odom: Odometry | None = None
@@ -246,13 +272,29 @@ class PcdRelocalizer3D(Node):
         self.last_status = ""
         self.last_logged_state = ""
         self.last_log_time = self.get_clock().now()
-        self.last_fitness: float | None = None
+        self.last_score: float | None = None
         self.last_cloud_parse_time = None
         self.cloud_sub = None
+        self.match_in_progress = False
 
         map_points = self._load_pcd()
-        map_points = voxel_downsample(map_points, self.voxel_leaf_size, self.max_map_points)
-        self.nearest_map = NearestMap(map_points)
+        if self.voxel_leaf_size > 0.0 and self.matcher_backend != "ndt":
+            map_points = voxel_downsample(map_points, self.voxel_leaf_size, self.max_map_points)
+        elif self.max_map_points > 0 and len(map_points) > self.max_map_points:
+            step = max(1, len(map_points) // self.max_map_points)
+            map_points = map_points[::step][:self.max_map_points]
+
+        if self.matcher_backend == "ndt":
+            self.ndt_grid = NdtVoxelGrid(
+                map_points,
+                self.ndt_resolution,
+                self.ndt_min_points_per_voxel,
+                self.ndt_covariance_regularization,
+            )
+            self.get_logger().info(f"Built NDT grid with {len(self.ndt_grid.voxels)} voxels")
+        else:
+            raise ValueError(f"Unsupported matcher_backend: {self.matcher_backend}")
+
         self.get_logger().info(
             f"Loaded 3D relocalization map points={len(map_points)} source={self._resolve_pcd_path()}"
         )
@@ -264,7 +306,7 @@ class PcdRelocalizer3D(Node):
         self.create_subscription(PoseWithCovarianceStamped, self.initial_pose_topic, self.on_initial_pose, 10)
         if self.has_seed:
             self.ensure_cloud_subscription()
-        self.create_timer(self.icp_interval_sec, self.run_icp)
+        self.create_timer(self.match_interval_sec, self.run_matcher)
 
     def ensure_cloud_subscription(self) -> None:
         if self.cloud_sub is not None:
@@ -331,7 +373,7 @@ class PcdRelocalizer3D(Node):
         now = self.get_clock().now()
         if self.last_cloud_parse_time is not None:
             age = (now - self.last_cloud_parse_time).nanoseconds * 1e-9
-            if age < self.icp_interval_sec:
+            if age < self.match_interval_sec:
                 return
         self.last_cloud_parse_time = now
         points = []
@@ -355,7 +397,7 @@ class PcdRelocalizer3D(Node):
     def on_odom(self, msg: Odometry) -> None:
         self.last_odom = msg
         if self.has_seed:
-            self.publish_pose_and_tf(msg, ready=self.last_fitness is not None)
+            self.publish_pose_and_tf(msg, ready=self.last_score is not None and self.last_score <= self.ndt_score_threshold)
 
     def on_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         if self.last_odom is None:
@@ -368,7 +410,7 @@ class PcdRelocalizer3D(Node):
         )
         self.map_to_odom = map_to_base @ np.linalg.inv(odom_to_base)
         self.has_seed = True
-        self.last_fitness = None
+        self.last_score = None
         self.last_scan = None
         self.last_cloud_parse_time = None
         self.ensure_cloud_subscription()
@@ -380,14 +422,23 @@ class PcdRelocalizer3D(Node):
         self.publish_pose_and_tf(self.last_odom, ready=False)
         self.publish_status(True, "seeded", "initialpose_anchor_set")
 
-    def run_icp(self) -> None:
+    def run_matcher(self) -> None:
+        if self.match_in_progress:
+            return
+        self.match_in_progress = True
+        try:
+            self._run_ndt()
+        finally:
+            self.match_in_progress = False
+
+    def _run_ndt(self) -> None:
         if not self.has_seed:
             self.publish_status(False, "waiting_seed", "send_initialpose_or_enable_auto_seed")
             return
         if self.last_odom is None:
             self.publish_status(False, "waiting_odom", "no_dlio_odom")
             return
-        if self.last_scan is None or len(self.last_scan) < self.min_correspondences:
+        if self.last_scan is None or len(self.last_scan) < self.ndt_min_effective_correspondences:
             count = 0 if self.last_scan is None else len(self.last_scan)
             self.publish_status(False, "waiting_scan", f"scan_points={count}")
             return
@@ -398,24 +449,80 @@ class PcdRelocalizer3D(Node):
         )
         source = transform_points(self.map_to_odom @ odom_to_base @ self.base_to_lidar, self.last_scan)
         correction = np.eye(4, dtype=np.float64)
-        fitness = float("inf")
-        correspondences = 0
-        for _ in range(max(1, self.max_iterations)):
+
+        score = float("inf")
+        effective_correspondences = 0
+        iteration = 0
+
+        for iteration in range(max(1, self.ndt_max_iterations)):
             moved = transform_points(correction, source)
-            distances, targets = self.nearest_map.query(moved)
-            mask = distances < self.max_correspondence_distance
-            correspondences = int(np.count_nonzero(mask))
-            if correspondences < self.min_correspondences:
+            valid_mask, residuals, inv_covs, valid_points = self.ndt_grid.query(moved, self.ndt_neighbor_search)
+
+            if not np.any(valid_mask):
+                self.publish_status(False, "ndt_rejected", "no_voxels_found")
+                return
+
+            dist_sq = np.einsum('ij,ijk,ik->i', residuals, inv_covs, residuals)
+            inlier_mask = dist_sq < self.ndt_outlier_mahalanobis_threshold
+
+            effective_correspondences = int(np.count_nonzero(inlier_mask))
+            if effective_correspondences < self.ndt_min_effective_correspondences:
                 self.publish_status(
                     False,
-                    "icp_rejected",
-                    f"few_correspondences={correspondences}",
+                    "ndt_rejected",
+                    f"few_effective_correspondences={effective_correspondences}",
                 )
                 return
-            step = estimate_rigid_transform(moved[mask], targets[mask])
+
+            inlier_residuals = residuals[inlier_mask]
+            inlier_inv_covs = inv_covs[inlier_mask]
+            inlier_points = valid_points[inlier_mask]
+
+            score_sum = float(np.sum(dist_sq[inlier_mask]))
+            N = len(inlier_points)
+            px = inlier_points[:, 0]
+            py = inlier_points[:, 1]
+            pz = inlier_points[:, 2]
+
+            J = np.zeros((N, 3, 6), dtype=np.float64)
+            J[:, 0, 0] = 1.0; J[:, 1, 1] = 1.0; J[:, 2, 2] = 1.0
+            J[:, 0, 4] = pz;  J[:, 0, 5] = -py
+            J[:, 1, 3] = -pz; J[:, 1, 5] = px
+            J[:, 2, 3] = py;  J[:, 2, 4] = -px
+
+            J_T_inv_cov = np.einsum('nij,nik->nkj', inlier_inv_covs, J)
+
+            H_batch = np.einsum('nji,nik->njk', J_T_inv_cov, J)
+            H = np.sum(H_batch, axis=0)
+
+            b_batch = np.einsum('nji,ni->nj', J_T_inv_cov, inlier_residuals)
+            b = np.sum(b_batch, axis=0)
+
+            try:
+                delta = -np.linalg.solve(H, b)
+            except np.linalg.LinAlgError:
+                self.publish_status(False, "ndt_error", "singular_hessian")
+                return
+
+            if not np.all(np.isfinite(delta)):
+                self.publish_status(False, "ndt_error", "non_finite_update")
+                return
+
+            d_t = delta[:3]
+            d_r = delta[3:]
+
+            t_norm = np.linalg.norm(d_t)
+            if t_norm > self.ndt_step_translation_limit:
+                d_t *= self.ndt_step_translation_limit / t_norm
+            r_norm = np.linalg.norm(d_r)
+            if r_norm > self.ndt_step_rotation_limit:
+                d_r *= self.ndt_step_rotation_limit / r_norm
+
+            step = xyz_rpy_to_matrix(d_t, d_r)
             correction = step @ correction
-            fitness = float(np.mean(distances[mask]))
-            if np.linalg.norm(step[:3, 3]) < 0.01 and rotation_angle(step[:3, :3]) < math.radians(0.2):
+            score = score_sum / effective_correspondences
+
+            if np.linalg.norm(d_t) < self.ndt_converged_translation_epsilon and np.linalg.norm(d_r) < self.ndt_converged_rotation_epsilon:
                 break
 
         translation = float(np.linalg.norm(correction[:3, 3]))
@@ -423,7 +530,7 @@ class PcdRelocalizer3D(Node):
         if translation > self.max_translation_correction or angle > self.max_rotation_correction:
             self.publish_status(
                 False,
-                "icp_rejected",
+                "ndt_rejected",
                 f"correction_too_large:translation={translation:.3f},rotation_deg={math.degrees(angle):.2f}",
             )
             return
@@ -433,7 +540,7 @@ class PcdRelocalizer3D(Node):
         if np.linalg.norm(candidate_map_to_odom[:3, 3]) > self.max_map_to_odom_translation:
             self.publish_status(
                 False,
-                "icp_rejected",
+                "ndt_rejected",
                 (
                     "map_to_odom_out_of_bounds:"
                     f"norm={np.linalg.norm(candidate_map_to_odom[:3, 3]):.3f},"
@@ -444,7 +551,7 @@ class PcdRelocalizer3D(Node):
         if np.linalg.norm(candidate_map_to_base[:3, 3]) > self.max_base_distance_from_origin:
             self.publish_status(
                 False,
-                "icp_rejected",
+                "ndt_rejected",
                 (
                     "base_pose_out_of_bounds:"
                     f"norm={np.linalg.norm(candidate_map_to_base[:3, 3]):.3f},"
@@ -453,14 +560,33 @@ class PcdRelocalizer3D(Node):
             )
             return
 
+        if score > self.ndt_score_threshold:
+            self.publish_status(
+                False,
+                "ndt_rejected",
+                "score_above_threshold",
+                score=score,
+                effective_correspondences=effective_correspondences,
+                iterations=iteration + 1,
+                translation=translation,
+                rotation_deg=math.degrees(angle),
+            )
+            return
+
         self.map_to_odom = candidate_map_to_odom
-        self.last_fitness = fitness
-        ready = fitness <= self.ready_fitness_threshold
+        self.last_score = score
+        ready = True
+
         self.publish_pose_and_tf(self.last_odom, ready=ready)
         self.publish_status(
             ready,
-            "ready" if ready else "icp_converging",
-            f"fitness={fitness:.3f};correspondences={correspondences};translation={translation:.3f};rotation_deg={math.degrees(angle):.2f}",
+            "ready",
+            "converged",
+            score=score,
+            effective_correspondences=effective_correspondences,
+            iterations=iteration + 1,
+            translation=translation,
+            rotation_deg=math.degrees(angle),
         )
 
     def publish_pose_and_tf(self, odom_msg: Odometry, *, ready: bool) -> None:
@@ -477,7 +603,13 @@ class PcdRelocalizer3D(Node):
         pose.pose.pose.orientation.y = qy
         pose.pose.pose.orientation.z = qz
         pose.pose.pose.orientation.w = qw
-        covariance_scale = 1.0 if ready else 10.0
+
+        covariance_scale = 1.0
+        if not ready:
+            covariance_scale = 10.0
+        elif self.covariance_mode == "score_scaled" and self.last_score is not None:
+            covariance_scale = max(1.0, min(5.0, self.last_score / max(0.1, self.ndt_score_threshold)))
+
         pose.pose.covariance[0] = self.xy_variance * covariance_scale
         pose.pose.covariance[7] = self.xy_variance * covariance_scale
         pose.pose.covariance[14] = self.z_variance * covariance_scale
@@ -502,11 +634,42 @@ class PcdRelocalizer3D(Node):
         tf_msg.transform.rotation.w = qw
         self.tf_broadcaster.sendTransform(tf_msg)
 
-    def publish_status(self, ready: bool, state: str, reason: str) -> None:
-        status = (
-            f"state={state};ready={str(bool(ready)).lower()};reason={reason};"
-            f"map_id={self.map_id or 'current'};live_cloud_topic={self.live_cloud_topic};odom_topic={self.odom_topic}"
-        )
+    def publish_status(
+        self,
+        ready: bool,
+        state: str,
+        reason: str,
+        *,
+        score: float | None = None,
+        effective_correspondences: int | None = None,
+        iterations: int | None = None,
+        translation: float | None = None,
+        rotation_deg: float | None = None,
+    ) -> None:
+        score_val = score if score is not None else (self.last_score if self.last_score is not None else -1.0)
+        status_parts = [
+            f"state={state}",
+            f"ready={str(bool(ready)).lower()}",
+            f"reason={reason}",
+            f"matcher={self.matcher_backend}",
+            f"score={score_val:.3f}",
+        ]
+        if effective_correspondences is not None:
+            status_parts.append(f"effective_correspondences={effective_correspondences}")
+        if iterations is not None:
+            status_parts.append(f"iterations={iterations}")
+        if translation is not None:
+            status_parts.append(f"translation={translation:.3f}")
+        if rotation_deg is not None:
+            status_parts.append(f"rotation_deg={rotation_deg:.2f}")
+
+        status_parts.extend([
+            f"map_id={self.map_id or 'current'}",
+            f"live_cloud_topic={self.live_cloud_topic}",
+            f"odom_topic={self.odom_topic}"
+        ])
+
+        status = ";".join(status_parts)
         self.status_pub.publish(String(data=status))
         now = self.get_clock().now()
         log_age = (now - self.last_log_time).nanoseconds * 1e-9

@@ -3,7 +3,8 @@ from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -133,23 +134,17 @@ def generate_launch_description():
                     }
                 ],
             ),
-            Node(
-                package="localization_manager",
-                executable="pcd_relocalizer_3d",
-                name="pcd_relocalizer_3d",
-                output="screen",
-                parameters=[
-                    f"{a2_system_share}/config/pcd_relocalization_3d.yaml",
-                    {
-                        "map_root": LaunchConfiguration("map_root"),
-                        "map_id": LaunchConfiguration("map_id"),
-                        "pcd_path": LaunchConfiguration("pcd_path"),
-                        "live_cloud_topic": "/jt128/front/points",
-                        "odom_topic": "/jt128/dlio/odom",
-                        "pose_topic": "/a2/relocalization/pose",
-                        "use_sim_time": LaunchConfiguration("use_sim_time"),
-                    },
-                ],
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(
+                        get_package_share_directory("a2_ndt_adapter"),
+                        "launch",
+                        "ndt_adapter.launch.py",
+                    )
+                ),
+                launch_arguments={
+                    "use_sim_time": LaunchConfiguration("use_sim_time"),
+                }.items(),
             ),
             _pointcloud_guard_action(),
             Node(

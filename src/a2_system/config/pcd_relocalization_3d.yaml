@@ -15,8 +15,6 @@ pcd_relocalizer_3d:
     base_frame: base_link
 
     # Unitree A2 JT128 front lidar structural design reference.
-    # This is not a calibrated extrinsic, but it is better than the previous
-    # provisional pose and keeps relocalization aligned with the DLIO chain.
     base_to_lidar_xyz: [0.33767, 0.0, 0.08134]
     base_to_lidar_use_rotation_matrix: true
     base_to_lidar_rotation_matrix: [0.0, 0.0, 1.0,
@@ -25,23 +23,32 @@ pcd_relocalizer_3d:
     base_to_lidar_rpy: [0.0, 0.0, 0.0]
 
     publish_tf: true
-    # Do not auto-ready from identity. A saved PCD map may have a different
-    # odom origin, so the operator/Web must provide /initialpose first.
     auto_seed_identity: false
     icp_interval_sec: 2.0
+    matcher_backend: ndt
 
     voxel_leaf_size: 0.35
-    max_map_points: 20000
-    max_scan_points: 800
-    min_correspondences: 120
-    max_correspondence_distance: 0.8
-    max_iterations: 4
+    max_map_points: 200000
+    max_scan_points: 1200
+
+    ndt_resolution: 1.0
+    ndt_min_points_per_voxel: 6
+    ndt_covariance_regularization: 0.05
+    ndt_neighbor_search: true
+    ndt_outlier_mahalanobis_threshold: 9.0
+    ndt_max_iterations: 12
+    ndt_step_translation_limit: 0.25
+    ndt_step_rotation_limit_deg: 3.0
+    ndt_converged_translation_epsilon: 0.01
+    ndt_converged_rotation_epsilon_deg: 0.2
+    ndt_score_threshold: 3.0
+    ndt_min_effective_correspondences: 80
+
     max_translation_correction: 1.2
     max_rotation_correction_deg: 5.0
     max_map_to_odom_translation: 20.0
     max_base_distance_from_origin: 120.0
-    ready_fitness_threshold: 0.35
-
+    covariance_mode: score_scaled
     xy_variance: 0.04
     z_variance: 0.08
     rot_variance: 0.04

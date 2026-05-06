@@ -327,10 +327,25 @@ def check_docs(result: CheckResult) -> None:
     result.require(fault_doc.exists(), "fault tree must exist")
 
 
+def check_pcd_relocalization(result: CheckResult) -> None:
+    params = get(load_yaml(CONFIG_DIR / "pcd_relocalization_3d.yaml"), "pcd_relocalizer_3d", "ros__parameters", default={})
+    result.require(params.get("matcher_backend") == "ndt", "matcher_backend must be ndt")
+    result.require(params.get("live_cloud_topic") == "/jt128/front/points", "live_cloud_topic must remain /jt128/front/points")
+    result.require(params.get("odom_topic") == "/jt128/dlio/odom", "odom_topic must remain /jt128/dlio/odom")
+    result.require(params.get("pose_topic") == "/a2/relocalization/pose", "pose_topic must remain /a2/relocalization/pose")
+    result.require(params.get("status_topic") == "/a2/relocalization/status", "status_topic must remain /a2/relocalization/status")
+    result.require(not bool(params.get("auto_seed_identity", True)), "auto_seed_identity must remain false")
+    result.require(float(params.get("ndt_resolution", 0.0)) > 0.0, "ndt_resolution must be > 0")
+    result.require(int(params.get("ndt_min_effective_correspondences", 0)) >= 50, "ndt_min_effective_correspondences must be >= 50")
+    result.require(float(params.get("max_translation_correction", 999.0)) <= 3.0, "max_translation_correction must remain bounded")
+    result.require(float(params.get("max_rotation_correction_deg", 999.0)) <= 15.0, "max_rotation_correction_deg must remain bounded")
+
+
 def main() -> int:
     result = CheckResult()
     check_nav2_stack(result)
     check_localization(result)
+    check_pcd_relocalization(result)
     check_state_bridge(result)
     check_real_lidar(result)
     check_goal_bridge(result)
