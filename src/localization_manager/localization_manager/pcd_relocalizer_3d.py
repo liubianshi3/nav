@@ -258,6 +258,29 @@ class PcdRelocalizer3D(Node):
         self.z_variance = float(self.declare_parameter("z_variance", 0.08).value)
         self.rot_variance = float(self.declare_parameter("rot_variance", 0.04).value)
 
+        # Kidnap detection and global search
+        self.kidnap_consecutive_rejections = int(self.declare_parameter("kidnap_consecutive_rejections", 5).value)
+        self.kidnap_search_grid_xy_m = float(self.declare_parameter("kidnap_search_grid_xy_m", 5.0).value)
+        self.kidnap_search_grid_yaw_deg = float(self.declare_parameter("kidnap_search_grid_yaw_deg", 45.0).value)
+        self.kidnap_search_min_score = float(self.declare_parameter("kidnap_search_min_score", 5.0).value)
+        self.kidnap_search_fast_iterations = int(self.declare_parameter("kidnap_search_fast_iterations", 5).value)
+        self.kidnap_search_fast_max_points = int(self.declare_parameter("kidnap_search_fast_max_points", 400).value)
+        self.kidnap_cooldown_sec = float(self.declare_parameter("kidnap_cooldown_sec", 10.0).value)
+
+        # Auto-initial localization: on startup, if no seed is provided, run global search
+        self.auto_initial_localization = bool(
+            self.declare_parameter("auto_initial_localization", True).value
+        )
+        self.auto_initial_max_candidates = int(
+            self.declare_parameter("auto_initial_max_candidates", 150).value
+        )
+        self.auto_initial_timeout_sec = float(
+            self.declare_parameter("auto_initial_timeout_sec", 30.0).value
+        )
+        self._auto_init_done = False
+        self._auto_init_triggered = False
+        self._auto_init_start_time = None
+
         if self.use_lidar_rotation_matrix:
             self.base_to_lidar = xyz_rotation_matrix_to_matrix(
                 self.lidar_xyz, self.lidar_rotation_matrix
@@ -276,6 +299,12 @@ class PcdRelocalizer3D(Node):
         self.last_cloud_parse_time = None
         self.cloud_sub = None
         self.match_in_progress = False
+
+        # Kidnap recovery state
+        self._consecutive_rejections = 0
+        self._kidnap_lost = False
+        self._last_search_time = self.get_clock().now()
+        self._search_in_progress = False
 
         map_points = self._load_pcd()
         if self.voxel_leaf_size > 0.0 and self.matcher_backend != "ndt":
@@ -368,8 +397,6 @@ class PcdRelocalizer3D(Node):
         return np.array(points, dtype=np.float64)
 
     def on_cloud(self, msg: PointCloud2) -> None:
-        if not self.has_seed:
-            return
         now = self.get_clock().now()
         if self.last_cloud_parse_time is not None:
             age = (now - self.last_cloud_parse_time).nanoseconds * 1e-9
@@ -423,13 +450,250 @@ class PcdRelocalizer3D(Node):
         self.publish_status(True, "seeded", "initialpose_anchor_set")
 
     def run_matcher(self) -> None:
-        if self.match_in_progress:
+        if self.match_in_progress or self._search_in_progress:
             return
+
+        # ── Auto-initial localization: trigger global search on startup ──
+        if (
+            self.auto_initial_localization
+            and not self._auto_init_done
+            and not self.has_seed
+            and len(self.ndt_grid.voxels) > 0
+        ):
+            if not self._auto_init_triggered:
+                self._auto_init_triggered = True
+                self._auto_init_start_time = self.get_clock().now()
+                self.ensure_cloud_subscription()
+                self.get_logger().info(
+                    "Auto-initial localization: waiting for first scan and odometry..."
+                )
+                self.publish_status(True, "waiting_scan", "auto_init_pending")
+            elif (
+                self.last_scan is not None
+                and len(self.last_scan) >= self.ndt_min_effective_correspondences
+                and self.last_odom is not None
+            ):
+                elapsed = (self.get_clock().now() - self._auto_init_start_time).nanoseconds * 1e-9
+                self.get_logger().info(
+                    f"Auto-initial localization: triggering global search "
+                    f"(max_candidates={self.auto_initial_max_candidates})"
+                )
+                self.publish_status(True, "searching", "auto_init_search_started")
+                self._search_in_progress = True
+                try:
+                    # Scale grid spacing to respect auto_initial_max_candidates
+                    orig_xy = self.kidnap_search_grid_xy_m
+                    orig_yaw = self.kidnap_search_grid_yaw_deg
+                    orig_min_score = self.kidnap_search_min_score
+                    # Compute grid spacing to fit within max_candidates
+                    keys = list(self.ndt_grid.voxels.keys())
+                    k_arr = np.array(keys) * self.ndt_resolution
+                    extent_x = float(np.max(k_arr[:, 0]) - np.min(k_arr[:, 0]))
+                    extent_y = float(np.max(k_arr[:, 1]) - np.min(k_arr[:, 1]))
+                    area = max(1.0, extent_x * extent_y)
+                    density = max(1.0, self.auto_initial_max_candidates / 72.0)
+                    step_xy = max(2.0, math.sqrt(area / density))
+                    self.kidnap_search_grid_xy_m = step_xy
+                    self.kidnap_search_grid_yaw_deg = max(30.0, 360.0 / max(4, int(72.0 / density)))
+                    self.kidnap_search_min_score = max(0.5, float(self.ndt_score_threshold) * 0.6)
+                    found = self._run_global_search()
+                    self.kidnap_search_grid_xy_m = orig_xy
+                    self.kidnap_search_grid_yaw_deg = orig_yaw
+                    self.kidnap_search_min_score = orig_min_score
+                finally:
+                    self._search_in_progress = False
+                self._auto_init_done = True
+                if found:
+                    score_str = f"{self.last_score:.3f}" if self.last_score is not None else "-1.000"
+                    self.get_logger().info(
+                        f"Auto-initial localization SUCCEEDED "
+                        f"(score={score_str})"
+                    )
+                    self.publish_status(True, "ready", "auto_init_success")
+                else:
+                    self.get_logger().warn(
+                        "Auto-initial localization FAILED — falling back to manual seed"
+                    )
+                    self.publish_status(False, "waiting_seed", "auto_init_failed")
+                return
+
+        # Kidnap recovery: run global search before normal tracking
+        if self._kidnap_lost:
+            now = self.get_clock().now()
+            elapsed = (now - self._last_search_time).nanoseconds * 1e-9
+            if elapsed >= self.kidnap_cooldown_sec:
+                self._last_search_time = now
+                self._search_in_progress = True
+                try:
+                    self._run_global_search()
+                finally:
+                    self._search_in_progress = False
+                return
+
         self.match_in_progress = True
         try:
             self._run_ndt()
         finally:
             self.match_in_progress = False
+
+    def _ndt_align(
+        self,
+        initial_map_to_odom: np.ndarray,
+        odom_to_base: np.ndarray,
+        scan: np.ndarray,
+        max_iterations: int,
+        score_threshold: float,
+    ) -> dict:
+        """Run NDT alignment from a given initial estimate.
+
+        Returns dict with keys: score, map_to_odom, accepted, reason,
+        effective_correspondences, iterations, translation, rotation_deg.
+        """
+        source = transform_points(
+            initial_map_to_odom @ odom_to_base @ self.base_to_lidar, scan
+        )
+        correction = np.eye(4, dtype=np.float64)
+
+        score = float("inf")
+        effective_correspondences = 0
+        iteration = 0
+
+        for iteration in range(max(1, max_iterations)):
+            moved = transform_points(correction, source)
+            valid_mask, residuals, inv_covs, valid_points = self.ndt_grid.query(
+                moved, self.ndt_neighbor_search
+            )
+
+            if not np.any(valid_mask):
+                return {
+                    "score": float("inf"), "map_to_odom": initial_map_to_odom,
+                    "accepted": False, "reason": "no_voxels_found",
+                    "effective_correspondences": 0, "iterations": iteration + 1,
+                    "translation": 0.0, "rotation_deg": 0.0,
+                }
+
+            dist_sq = np.einsum("ij,ijk,ik->i", residuals, inv_covs, residuals)
+            inlier_mask = dist_sq < self.ndt_outlier_mahalanobis_threshold
+
+            effective_correspondences = int(np.count_nonzero(inlier_mask))
+            if effective_correspondences < self.ndt_min_effective_correspondences:
+                return {
+                    "score": float("inf"), "map_to_odom": initial_map_to_odom,
+                    "accepted": False,
+                    "reason": f"few_effective_correspondences={effective_correspondences}",
+                    "effective_correspondences": effective_correspondences,
+                    "iterations": iteration + 1, "translation": 0.0, "rotation_deg": 0.0,
+                }
+
+            inlier_residuals = residuals[inlier_mask]
+            inlier_inv_covs = inv_covs[inlier_mask]
+            inlier_points = valid_points[inlier_mask]
+
+            score_sum = float(np.sum(dist_sq[inlier_mask]))
+            N = len(inlier_points)
+            px, py, pz = inlier_points[:, 0], inlier_points[:, 1], inlier_points[:, 2]
+
+            J = np.zeros((N, 3, 6), dtype=np.float64)
+            J[:, 0, 0] = 1.0; J[:, 1, 1] = 1.0; J[:, 2, 2] = 1.0
+            J[:, 0, 4] = pz;  J[:, 0, 5] = -py
+            J[:, 1, 3] = -pz; J[:, 1, 5] = px
+            J[:, 2, 3] = py;  J[:, 2, 4] = -px
+
+            J_T_inv_cov = np.einsum("nij,nik->nkj", inlier_inv_covs, J)
+
+            H_batch = np.einsum("nji,nik->njk", J_T_inv_cov, J)
+            H = np.sum(H_batch, axis=0)
+
+            b_batch = np.einsum("nji,ni->nj", J_T_inv_cov, inlier_residuals)
+            b = np.sum(b_batch, axis=0)
+
+            try:
+                delta = -np.linalg.solve(H, b)
+            except np.linalg.LinAlgError:
+                return {
+                    "score": float("inf"), "map_to_odom": initial_map_to_odom,
+                    "accepted": False, "reason": "singular_hessian",
+                    "effective_correspondences": effective_correspondences,
+                    "iterations": iteration + 1, "translation": 0.0, "rotation_deg": 0.0,
+                }
+
+            if not np.all(np.isfinite(delta)):
+                return {
+                    "score": float("inf"), "map_to_odom": initial_map_to_odom,
+                    "accepted": False, "reason": "non_finite_update",
+                    "effective_correspondences": effective_correspondences,
+                    "iterations": iteration + 1, "translation": 0.0, "rotation_deg": 0.0,
+                }
+
+            d_t = delta[:3]
+            d_r = delta[3:]
+
+            t_norm = np.linalg.norm(d_t)
+            if t_norm > self.ndt_step_translation_limit:
+                d_t *= self.ndt_step_translation_limit / t_norm
+            r_norm = np.linalg.norm(d_r)
+            if r_norm > self.ndt_step_rotation_limit:
+                d_r *= self.ndt_step_rotation_limit / r_norm
+
+            step = xyz_rpy_to_matrix(d_t, d_r)
+            correction = step @ correction
+            score = score_sum / effective_correspondences
+
+            if (
+                np.linalg.norm(d_t) < self.ndt_converged_translation_epsilon
+                and np.linalg.norm(d_r) < self.ndt_converged_rotation_epsilon
+            ):
+                break
+
+        translation = float(np.linalg.norm(correction[:3, 3]))
+        angle = rotation_angle(correction[:3, :3])
+        if translation > self.max_translation_correction or angle > self.max_rotation_correction:
+            return {
+                "score": score, "map_to_odom": initial_map_to_odom,
+                "accepted": False,
+                "reason": f"correction_too_large:translation={translation:.3f},rotation_deg={math.degrees(angle):.2f}",
+                "effective_correspondences": effective_correspondences,
+                "iterations": iteration + 1, "translation": translation,
+                "rotation_deg": math.degrees(angle),
+            }
+
+        candidate_map_to_odom = correction @ initial_map_to_odom
+        candidate_map_to_base = candidate_map_to_odom @ odom_to_base
+        if np.linalg.norm(candidate_map_to_odom[:3, 3]) > self.max_map_to_odom_translation:
+            return {
+                "score": score, "map_to_odom": initial_map_to_odom,
+                "accepted": False,
+                "reason": f"map_to_odom_out_of_bounds:norm={np.linalg.norm(candidate_map_to_odom[:3, 3]):.3f}",
+                "effective_correspondences": effective_correspondences,
+                "iterations": iteration + 1, "translation": translation,
+                "rotation_deg": math.degrees(angle),
+            }
+        if np.linalg.norm(candidate_map_to_base[:3, 3]) > self.max_base_distance_from_origin:
+            return {
+                "score": score, "map_to_odom": initial_map_to_odom,
+                "accepted": False,
+                "reason": f"base_pose_out_of_bounds:norm={np.linalg.norm(candidate_map_to_base[:3, 3]):.3f}",
+                "effective_correspondences": effective_correspondences,
+                "iterations": iteration + 1, "translation": translation,
+                "rotation_deg": math.degrees(angle),
+            }
+
+        if score > score_threshold:
+            return {
+                "score": score, "map_to_odom": initial_map_to_odom,
+                "accepted": False, "reason": "score_above_threshold",
+                "effective_correspondences": effective_correspondences,
+                "iterations": iteration + 1, "translation": translation,
+                "rotation_deg": math.degrees(angle),
+            }
+
+        return {
+            "score": score, "map_to_odom": candidate_map_to_odom,
+            "accepted": True, "reason": "converged",
+            "effective_correspondences": effective_correspondences,
+            "iterations": iteration + 1, "translation": translation,
+            "rotation_deg": math.degrees(angle),
+        }
 
     def _run_ndt(self) -> None:
         if not self.has_seed:
@@ -447,147 +711,150 @@ class PcdRelocalizer3D(Node):
             self.last_odom.pose.pose.position,
             self.last_odom.pose.pose.orientation,
         )
-        source = transform_points(self.map_to_odom @ odom_to_base @ self.base_to_lidar, self.last_scan)
-        correction = np.eye(4, dtype=np.float64)
 
-        score = float("inf")
-        effective_correspondences = 0
-        iteration = 0
-
-        for iteration in range(max(1, self.ndt_max_iterations)):
-            moved = transform_points(correction, source)
-            valid_mask, residuals, inv_covs, valid_points = self.ndt_grid.query(moved, self.ndt_neighbor_search)
-
-            if not np.any(valid_mask):
-                self.publish_status(False, "ndt_rejected", "no_voxels_found")
-                return
-
-            dist_sq = np.einsum('ij,ijk,ik->i', residuals, inv_covs, residuals)
-            inlier_mask = dist_sq < self.ndt_outlier_mahalanobis_threshold
-
-            effective_correspondences = int(np.count_nonzero(inlier_mask))
-            if effective_correspondences < self.ndt_min_effective_correspondences:
-                self.publish_status(
-                    False,
-                    "ndt_rejected",
-                    f"few_effective_correspondences={effective_correspondences}",
-                )
-                return
-
-            inlier_residuals = residuals[inlier_mask]
-            inlier_inv_covs = inv_covs[inlier_mask]
-            inlier_points = valid_points[inlier_mask]
-
-            score_sum = float(np.sum(dist_sq[inlier_mask]))
-            N = len(inlier_points)
-            px = inlier_points[:, 0]
-            py = inlier_points[:, 1]
-            pz = inlier_points[:, 2]
-
-            J = np.zeros((N, 3, 6), dtype=np.float64)
-            J[:, 0, 0] = 1.0; J[:, 1, 1] = 1.0; J[:, 2, 2] = 1.0
-            J[:, 0, 4] = pz;  J[:, 0, 5] = -py
-            J[:, 1, 3] = -pz; J[:, 1, 5] = px
-            J[:, 2, 3] = py;  J[:, 2, 4] = -px
-
-            J_T_inv_cov = np.einsum('nij,nik->nkj', inlier_inv_covs, J)
-
-            H_batch = np.einsum('nji,nik->njk', J_T_inv_cov, J)
-            H = np.sum(H_batch, axis=0)
-
-            b_batch = np.einsum('nji,ni->nj', J_T_inv_cov, inlier_residuals)
-            b = np.sum(b_batch, axis=0)
-
-            try:
-                delta = -np.linalg.solve(H, b)
-            except np.linalg.LinAlgError:
-                self.publish_status(False, "ndt_error", "singular_hessian")
-                return
-
-            if not np.all(np.isfinite(delta)):
-                self.publish_status(False, "ndt_error", "non_finite_update")
-                return
-
-            d_t = delta[:3]
-            d_r = delta[3:]
-
-            t_norm = np.linalg.norm(d_t)
-            if t_norm > self.ndt_step_translation_limit:
-                d_t *= self.ndt_step_translation_limit / t_norm
-            r_norm = np.linalg.norm(d_r)
-            if r_norm > self.ndt_step_rotation_limit:
-                d_r *= self.ndt_step_rotation_limit / r_norm
-
-            step = xyz_rpy_to_matrix(d_t, d_r)
-            correction = step @ correction
-            score = score_sum / effective_correspondences
-
-            if np.linalg.norm(d_t) < self.ndt_converged_translation_epsilon and np.linalg.norm(d_r) < self.ndt_converged_rotation_epsilon:
-                break
-
-        translation = float(np.linalg.norm(correction[:3, 3]))
-        angle = rotation_angle(correction[:3, :3])
-        if translation > self.max_translation_correction or angle > self.max_rotation_correction:
-            self.publish_status(
-                False,
-                "ndt_rejected",
-                f"correction_too_large:translation={translation:.3f},rotation_deg={math.degrees(angle):.2f}",
-            )
-            return
-
-        candidate_map_to_odom = correction @ self.map_to_odom
-        candidate_map_to_base = candidate_map_to_odom @ odom_to_base
-        if np.linalg.norm(candidate_map_to_odom[:3, 3]) > self.max_map_to_odom_translation:
-            self.publish_status(
-                False,
-                "ndt_rejected",
-                (
-                    "map_to_odom_out_of_bounds:"
-                    f"norm={np.linalg.norm(candidate_map_to_odom[:3, 3]):.3f},"
-                    f"limit={self.max_map_to_odom_translation:.3f}"
-                ),
-            )
-            return
-        if np.linalg.norm(candidate_map_to_base[:3, 3]) > self.max_base_distance_from_origin:
-            self.publish_status(
-                False,
-                "ndt_rejected",
-                (
-                    "base_pose_out_of_bounds:"
-                    f"norm={np.linalg.norm(candidate_map_to_base[:3, 3]):.3f},"
-                    f"limit={self.max_base_distance_from_origin:.3f}"
-                ),
-            )
-            return
-
-        if score > self.ndt_score_threshold:
-            self.publish_status(
-                False,
-                "ndt_rejected",
-                "score_above_threshold",
-                score=score,
-                effective_correspondences=effective_correspondences,
-                iterations=iteration + 1,
-                translation=translation,
-                rotation_deg=math.degrees(angle),
-            )
-            return
-
-        self.map_to_odom = candidate_map_to_odom
-        self.last_score = score
-        ready = True
-
-        self.publish_pose_and_tf(self.last_odom, ready=ready)
-        self.publish_status(
-            ready,
-            "ready",
-            "converged",
-            score=score,
-            effective_correspondences=effective_correspondences,
-            iterations=iteration + 1,
-            translation=translation,
-            rotation_deg=math.degrees(angle),
+        result = self._ndt_align(
+            self.map_to_odom, odom_to_base, self.last_scan,
+            self.ndt_max_iterations, self.ndt_score_threshold,
         )
+
+        if result["accepted"]:
+            self.map_to_odom = result["map_to_odom"]
+            self.last_score = result["score"]
+            self._consecutive_rejections = 0
+            if self._kidnap_lost:
+                self.get_logger().info(
+                    f"Global relocalization recovered: score={result['score']:.3f} "
+                    f"correspondences={result['effective_correspondences']}"
+                )
+            self._kidnap_lost = False
+            self.publish_pose_and_tf(self.last_odom, ready=True)
+            self.publish_status(
+                True, "ready", "converged",
+                score=result["score"],
+                effective_correspondences=result["effective_correspondences"],
+                iterations=result["iterations"],
+                translation=result["translation"],
+                rotation_deg=result["rotation_deg"],
+            )
+        else:
+            self._consecutive_rejections += 1
+            if (
+                self._consecutive_rejections >= self.kidnap_consecutive_rejections
+                and not self._kidnap_lost
+            ):
+                self._kidnap_lost = True
+                self.get_logger().warning(
+                    f"Kidnap suspected: {self._consecutive_rejections} consecutive NDT "
+                    f"rejections (reason={result['reason']}). Will trigger global search."
+                )
+            self.publish_status(
+                False, "ndt_rejected", result["reason"],
+                score=result["score"],
+                effective_correspondences=result["effective_correspondences"],
+                iterations=result["iterations"],
+                translation=result["translation"],
+                rotation_deg=result["rotation_deg"],
+            )
+
+    def _run_global_search(self) -> bool:
+        """Run grid-based global relocalization. Returns True if a valid pose was found."""
+        if self.last_odom is None or self.last_scan is None:
+            return False
+        if len(self.last_scan) < self.ndt_min_effective_correspondences:
+            return False
+        if not self.ndt_grid.voxels:
+            self.get_logger().error("Global search requires a non-empty NDT map")
+            return False
+
+        # Compute map XY bounds from NDT voxels
+        keys = list(self.ndt_grid.voxels.keys())
+        k_arr = np.array(keys) * self.ndt_resolution
+        x_min, y_min = float(np.min(k_arr[:, 0])), float(np.min(k_arr[:, 1]))
+        x_max, y_max = float(np.max(k_arr[:, 0])), float(np.max(k_arr[:, 1]))
+
+        grid_spacing = self.kidnap_search_grid_xy_m
+        yaw_step = math.radians(self.kidnap_search_grid_yaw_deg)
+
+        x_samples = int(max(1, (x_max - x_min) / grid_spacing))
+        y_samples = int(max(1, (y_max - y_min) / grid_spacing))
+        yaw_samples = int(max(1, 2.0 * math.pi / yaw_step))
+
+        # Cap total candidates to keep search bounded
+        max_candidates = 150
+        if x_samples * y_samples * yaw_samples > max_candidates:
+            scale = (max_candidates / (x_samples * y_samples * yaw_samples)) ** (1.0 / 3.0)
+            x_samples = max(2, int(x_samples * scale))
+            y_samples = max(2, int(y_samples * scale))
+            yaw_samples = max(4, int(yaw_samples * scale))
+            yaw_step = 2.0 * math.pi / yaw_samples
+
+        grid_spacing_x = (x_max - x_min) / x_samples
+        grid_spacing_y = (y_max - y_min) / y_samples
+
+        self.get_logger().info(
+            f"Global search: map bounds=[{x_min:.1f},{x_max:.1f}]x[{y_min:.1f},{y_max:.1f}] "
+            f"candidates={x_samples}x{y_samples}x{yaw_samples}={x_samples * y_samples * yaw_samples}"
+        )
+
+        odom_to_base = pose_to_matrix(
+            self.last_odom.pose.pose.position,
+            self.last_odom.pose.pose.orientation,
+        )
+
+        # Downsample scan for speed
+        fast_scan = voxel_downsample(
+            self.last_scan, self.voxel_leaf_size * 2.0, self.kidnap_search_fast_max_points
+        )
+
+        best_result = None
+        best_score = float("inf")
+
+        for xi in range(x_samples):
+            cx = x_min + (xi + 0.5) * grid_spacing_x
+            for yi in range(y_samples):
+                cy = y_min + (yi + 0.5) * grid_spacing_y
+                for yi_idx in range(yaw_samples):
+                    cyaw = yi_idx * yaw_step
+
+                    map_to_base = xyz_rpy_to_matrix([cx, cy, 0.0], [0.0, 0.0, cyaw])
+                    map_to_odom = map_to_base @ np.linalg.inv(odom_to_base)
+
+                    result = self._ndt_align(
+                        map_to_odom, odom_to_base, fast_scan,
+                        self.kidnap_search_fast_iterations, self.kidnap_search_min_score,
+                    )
+
+                    if result["accepted"] and result["score"] < best_score:
+                        best_score = result["score"]
+                        best_result = result
+
+        if best_result is not None:
+            self.get_logger().info(
+                f"Global search success: score={best_score:.3f} "
+                f"correspondences={best_result['effective_correspondences']} "
+                f"translation={best_result['translation']:.3f}m "
+                f"rotation={best_result['rotation_deg']:.1f}deg"
+            )
+            self.map_to_odom = best_result["map_to_odom"]
+            self.last_score = best_score
+            self._consecutive_rejections = 0
+            self._kidnap_lost = False
+            self.publish_pose_and_tf(self.last_odom, ready=True)
+            self.publish_status(
+                True, "ready", "global_search_converged",
+                score=best_score,
+                effective_correspondences=best_result["effective_correspondences"],
+                iterations=best_result["iterations"],
+                translation=best_result["translation"],
+                rotation_deg=best_result["rotation_deg"],
+            )
+            return True
+
+        self.get_logger().warning(
+            f"Global search failed: no candidate accepted "
+            f"(best_score={best_score:.3f}, candidates={x_samples * y_samples * yaw_samples})"
+        )
+        return False
 
     def publish_pose_and_tf(self, odom_msg: Odometry, *, ready: bool) -> None:
         odom_to_base = pose_to_matrix(odom_msg.pose.pose.position, odom_msg.pose.pose.orientation)

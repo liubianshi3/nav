@@ -66,6 +66,11 @@ def _launch_setup(context, *args, **kwargs):
         real_camera_config_path = os.path.join(a2_system_share, "config", "real_camera.yaml")
     diagnostic_only = os.environ.get("A2_REAL_DIAGNOSTIC_ONLY", "0") == "1"
     real_lidar_cfg = _load_real_lidar_config(real_lidar_config_path)
+    ground_segmentation_impl = (
+        LaunchConfiguration("ground_segmentation_impl").perform(context).strip().lower() or "cpp"
+    )
+    if ground_segmentation_impl not in ("cpp", "python"):
+        ground_segmentation_impl = "cpp"
     real_lidar_profile = real_lidar_cfg.get("profile", "hesai_jt128_front")
     real_lidar_driver_mode = real_lidar_cfg.get("driver_mode", "")
     real_lidar_imu_topic = real_lidar_cfg.get("imu_topic", "/jt128/front/imu")
@@ -153,6 +158,29 @@ def _launch_setup(context, *args, **kwargs):
         ),
     ]
 
+    # Diagnostic aggregator — always on, collects all status sources
+    # and publishes standard DiagnosticArray + /a2/health
+    actions.append(
+        Node(
+            package="a2_diagnostics",
+            executable="diagnostic_aggregator",
+            name="diagnostic_aggregator",
+            parameters=[f"{get_package_share_directory('a2_diagnostics')}/config/diagnostic_aggregator.yaml"],
+            output="screen",
+        )
+    )
+
+    # Nav health monitor — consumes /diagnostics_agg, drives degradation levels
+    actions.append(
+        Node(
+            package="nav_health_monitor",
+            executable="nav_health_monitor",
+            name="nav_health_monitor",
+            parameters=[f"{get_package_share_directory('nav_health_monitor')}/config/nav_health_monitor.yaml"],
+            output="screen",
+        )
+    )
+
     if diagnostic_only:
         actions.append(
             LogInfo(
@@ -190,7 +218,76 @@ def _launch_setup(context, *args, **kwargs):
                     }],
                 )
             )
-    elif real_lidar_profile == "hesai_jt128_front" or real_lidar_driver_mode == "dedicated_hesai_ros_driver":
+    if real_lidar_profile == "hesai_jt128_front" or real_lidar_driver_mode == "dedicated_hesai_ros_driver":
+
+        # Ground segmentation: separate ground from obstacles,
+        # feeds /a2/obstacle/points -> collision_monitor + occupancy_mapper
+        # and   /a2/ground/points   -> future traversability mapping
+        enable_ground_seg = bool(real_lidar_cfg.get("enable_ground_segmentation", True))
+        if enable_ground_seg:
+            actions.append(
+                LogInfo(
+                    msg=(
+                        "Ground segmentation enabled. "
+                        f"input={real_lidar_output_topic} -> "
+                        "obstacle=/a2/obstacle/points ground=/a2/ground/points"
+                    )
+                )
+            )
+            if ground_segmentation_impl == "cpp":
+                gs_share = get_package_share_directory("a2_ground_segmentation_cpp")
+                actions.append(
+                    Node(
+                        package="a2_ground_segmentation_cpp",
+                        executable="ground_segmentation_cpp_node",
+                        name="ground_segmentation_cpp",
+                        parameters=[
+                            f"{gs_share}/config/ground_segmentation_cpp.yaml",
+                            {
+                                "input_topic": real_lidar_output_topic,
+                                "use_sim_time": use_sim_time,
+                            },
+                        ],
+                    )
+                )
+            else:
+                actions.append(
+                    Node(
+                        package="a2_ground_segmentation",
+                        executable="ground_segmentation_node",
+                        name="ground_segmentation",
+                        parameters=[{
+                            "input_topic": real_lidar_output_topic,
+                            "use_sim_time": use_sim_time,
+                        }],
+                    )
+                )
+
+            # Collision monitor: spatial safety paired with ground_seg.
+            # Takes /cmd_vel (from Nav2 velocity_smoother) + /a2/obstacle/points,
+            # publishes safe commands to /cmd_vel_safe -> a2_control_bridge.
+            enable_collision = bool(real_lidar_cfg.get("enable_collision_monitor", True))
+            if enable_collision:
+                actions.append(
+                    LogInfo(
+                        msg=(
+                            "Collision monitor enabled. "
+                            "/cmd_vel -> [stop/slowdown filter] -> /cmd_vel_safe"
+                        )
+                    )
+                )
+                actions.append(
+                    Node(
+                        package="nav2_collision_monitor",
+                        executable="collision_monitor",
+                        name="collision_monitor",
+                        parameters=[f"{a2_system_share}/config/collision_monitor.yaml", {
+                            "use_sim_time": use_sim_time,
+                        }],
+                        output="screen",
+                    )
+                )
+        return actions
         actions.append(
             LogInfo(
                 msg=(
@@ -291,5 +388,10 @@ def generate_launch_description():
         DeclareLaunchArgument("robot_config", default_value=""),
         DeclareLaunchArgument("real_lidar_config", default_value=""),
         DeclareLaunchArgument("real_camera_config", default_value=""),
+        DeclareLaunchArgument(
+            "ground_segmentation_impl",
+            default_value="cpp",
+            description="Ground segmentation implementation: 'cpp' (default) or 'python' fallback.",
+        ),
         OpaqueFunction(function=_launch_setup),
     ])

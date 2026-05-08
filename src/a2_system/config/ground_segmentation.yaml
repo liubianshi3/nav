@@ -1,0 +1,46 @@
+ground_segmentation:
+  ros__parameters:
+    # -- input -----------------------------------------------------------
+    input_topic: /jt128/front/points
+
+    # -- output topics ---------------------------------------------------
+    ground_topic: /a2/ground/points
+    obstacle_topic: /a2/obstacle/points
+    traversability_topic: /a2/traversability
+
+    # -- ray ground filter parameters ------------------------------------
+    # Angular resolution of each radial sector (degrees).
+    radial_divider_angle: 1.0
+
+    # Maximum slope from origin to a point for it to be considered ground.
+    general_max_slope_deg: 8.0
+
+    # Maximum slope between adjacent points for ground classification.
+    local_max_slope_deg: 6.0
+
+    # Maximum slope for the first point in a sector (stricter).
+    initial_max_slope_deg: 3.0
+
+    # Minimum absolute height threshold regardless of slope.
+    min_height_threshold: 0.15
+
+    # Minimum radial distance between points before checking slope.
+    concentric_divider_distance: 0.01
+
+    # Distance threshold for reclassifying a point when the previous
+    # classification was non-ground.
+    reclass_distance_threshold: 0.1
+
+    # -- traversability grid ---------------------------------------------
+    traversability_resolution: 0.1
+    traversability_width: 400
+    traversability_height: 400
+    traversability_origin_x: -20.0
+    traversability_origin_y: -20.0
+    max_traversable_slope_deg: 20.0
+    traversability_publish_hz: 1.0
+
+    # -- misc ------------------------------------------------------------
+    frame_id: map
+    # Process 1 out of every N pointclouds (1 = every cloud).
+    process_every_n: 1

@@ -1,0 +1,40 @@
+# Regression test thresholds.
+# If any metric exceeds its threshold, the scenario is marked FAIL.
+
+scenarios:
+  straight_line:
+    max_ate_m: 0.15
+    max_rmse_m: 0.10
+    min_tracking_pct: 90.0
+    max_blocked_pct: 5.0
+    max_near_collision_count: 1
+
+  turning:
+    max_ate_m: 0.25
+    max_rmse_m: 0.15
+    min_tracking_pct: 80.0
+    max_blocked_pct: 10.0
+    max_near_collision_count: 3
+
+  obstacle_avoidance:
+    max_ate_m: 0.30
+    max_rmse_m: 0.20
+    min_avoiding_pct: 5.0
+    max_collision_count: 0
+    max_near_collision_count: 5
+
+  kidnapping:
+    max_ate_m: 0.50
+    max_rmse_m: 0.35
+    min_recovery_triggered: true
+    max_near_collision_count: 5
+
+  full_mission:
+    max_ate_m: 0.30
+    max_rmse_m: 0.20
+    min_waypoint_success_rate: 80.0
+    max_near_collision_count: 8
+
+global:
+  hard_clearance_m: 0.15
+  near_collision_m: 0.30

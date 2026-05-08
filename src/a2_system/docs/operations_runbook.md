@@ -72,7 +72,13 @@ Pass condition:
 ## JT128 3D Navigation
 
 ```bash
-ros2 launch a2_bringup jt128_3d_navigation.launch.py map_id:=<saved_map_id>
+ros2 launch a2_bringup jt128_3d_navigation.launch.py map_id:=<saved_map_id> dry_run:=true enable_motion:=false
+```
+
+Dry-run readiness check:
+
+```bash
+ros2 run a2_system ndt_adapter_dry_run_check.py
 ```
 
 Pass condition:
@@ -80,11 +86,13 @@ Pass condition:
 - confirm `/a2/map/pointcloud_3d` received
 - confirm `/jt128/dlio/odom` received
 - publish `/initialpose`
-- watch `/a2/relocalization/status` for matcher=ndt and ready=true
+- watch `/a2/relocalization/status` for matcher=autoware_ndt and ready=true
+- confirm status includes `score`, `iteration_num`, `map_ready`, and `last_map_returned_points`
 - confirm `/a2/relocalization/pose` freshness
 - confirm `/a2/localization_ok=true`
 - confirm `/a2/lidar/connected=true`
 - confirm `/a2/real/report` says ready=true
+- confirm `/jt128/front/points` is fresh before accepting a 3D goal
 - confirm `/a2/nav3/status` transitions out of `waiting_goal`
 - run dry-run goal first
 - only enable motion after NDT ready and a clear area is verified

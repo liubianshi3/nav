@@ -1,0 +1,49 @@
+<!--
+  A2 3D Navigation Behavior Tree
+
+  Extends Nav2's default navigate-to-pose with A2-specific recovery strategies:
+    1. Lateral strafe  (DriveOnHeading side-step — A2 is omnidirectional)
+    2. Clear costmaps   (allow replanning around obstacles)
+    3. Spin             (rotate to find clear path)
+    4. BackUp           (retreat)
+    5. Wait             (pause and retry)
+
+  The outer RecoveryNode retries the full navigation pipeline up to 6 times.
+  When the path follower detects a failure (stuck, invalid path, etc.), the
+  ReactiveFallback triggers the RoundRobin recovery sequence.
+
+  A2 body: ~1.1m long × ~0.45m wide. Strafing sideways uses the robot's unique
+  lateral mobility to escape narrow corridors that a differential-drive robot
+  cannot exit via spin-only recovery.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <DriveOnHeading time_allowance="3.0" speed="0.08"/>
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"/>
+          <Wait wait_duration="5"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

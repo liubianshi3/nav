@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/goal_pose_3d_smoke_test.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav_contract_check.py
+  scripts/ndt_adapter_dry_run_check.py
   scripts/preflight_check.py
   scripts/task_manager.py
   tools/bootstrap_env.sh
@@ -34,6 +35,7 @@ install(PROGRAMS
   tools/stop_stack.sh
   tools/stop_jt128_stack.sh
   tools/setup_unitree_dds.sh
+  tools/map_quality/check_map_quality.py
   DESTINATION share/${PROJECT_NAME})
 
 install(PROGRAMS
@@ -42,7 +44,13 @@ install(PROGRAMS
   scripts/goal_pose_3d_smoke_test.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav_contract_check.py
+  scripts/ndt_adapter_dry_run_check.py
   scripts/task_manager.py
+  scripts/traversability_to_obstacle_cloud.py
+  scripts/odometry_to_pose_covariance.py
+  scripts/pcd_to_2d_map.py
+  scripts/a2_battery_publisher.py
+  tools/map_quality/check_map_quality.py
   DESTINATION lib/${PROJECT_NAME})
 
 ament_export_include_directories(include)

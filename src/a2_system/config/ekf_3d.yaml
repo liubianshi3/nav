@@ -1,0 +1,92 @@
+ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    sensor_timeout: 0.5
+    two_d_mode: false
+
+    map_frame: "map"
+    odom_frame: "odom"
+    base_link_frame: "base_link"
+    world_frame: "map"
+
+    # ── DLIO 3D odometry → velocity prediction ──────────────────
+    # DLIO already fuses LiDAR + IMU internally. We use only its
+    # twist (linear + angular velocity) for continuous prediction
+    # between NDT absolute-pose corrections.
+    odom0: "/jt128/dlio/odom"
+    odom0_config:
+      [false, false, false,   # x, y, z position (odom frame — drifts)
+       false, false, false,   # roll, pitch, yaw
+       true,  true,  true,    # vx, vy, vz
+       true,  true,  true,    # vroll, vpitch, vyaw
+       false, false, false]   # ax, ay, az (unused)
+
+    # ── Body IMU → orientation / angular velocity ───────────────
+    # Unitree SDK IMU in base_link. We fuse angular velocity and
+    # linear acceleration for roll/pitch stability. DLIO already
+    # uses the LiDARʼs internal IMU, so this body IMU is an
+    # independent complementary source.
+    imu0: "/imu/data"
+    imu0_config:
+      [false, false, false,   # orientation (unused — use twist + accel)
+       false, false, false,
+       false, false, false,   # angular velocity (unused — DLIO covers it)
+       true,  true,  true,    # angular velocity x, y, z
+       false, false, false]   # linear acceleration (unused)
+
+    # ── NDT global pose → absolute measurement ──────────────────
+    # The Autoware NDT scan matcher publishes in map frame.
+    # These pose corrections bound the drift DLIO accumulates.
+    pose0: "ndt_pose_with_covariance"
+    pose0_config:
+      [true,  true,  true,    # x, y, z (map frame — absolute)
+       true,  true,  true,    # roll, pitch, yaw
+       false, false, false,   # velocity (not in pose messages)
+       false, false, false,
+       false, false, false]
+
+    # ── Output ──────────────────────────────────────────────────
+    # publish_tf: false because the NDT adapter already publishes
+    # map→odom. The EKF output (odometry/filtered = map→base_link)
+    # is remapped to /ekf_pose_with_covariance via a small bridge.
+    publish_tf: false
+    publish_acceleration: false
+    print_diagnostics: false
+
+    # ── Process noise (tuned for quadruped walking gait) ────────
+    # Higher than wheeled robots because legs introduce more
+    # prediction uncertainty.
+    process_noise_covariance:
+      [0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.05,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.1,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.03,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.06,  0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.2,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.2,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.4,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.1,   0.0,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.1,   0.0,   0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.15,  0.0,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.3,   0.0,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.3,   0.0,
+       0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.0,   0.6]
+
+    # ── Initial covariance (moderate — we start unlocalized) ────
+    initial_estimate_covariance:
+      [1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.3,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.3,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,
+       0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.2]

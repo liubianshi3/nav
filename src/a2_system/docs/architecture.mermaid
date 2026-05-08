@@ -1,0 +1,55 @@
+graph TD
+    %% 硬件与基础驱动层
+    subgraph Hardware_Drivers [硬件与基础驱动层]
+        SDK2((Unitree SDK2)) --> SDK_Bridge[a2_sdk_bridge]
+        Lidar((JT128 LiDAR)) --> Lidar_Driver[jt128_driver]
+    end
+
+    %% 状态处理层
+    subgraph State_Processing [状态处理层]
+        SDK_Bridge -- "/a2/raw_state" --> State_Pub[a2_state_publisher]
+        State_Pub -- "/odom" --> Odom_Topic[/odom/]
+        State_Pub -- "/imu/data" --> IMU_Topic[/imu/data/]
+        State_Pub -- "TF: odom -> base_link" --> TF_Bus[[TF Bus]]
+    end
+
+    %% 感知与同步层
+    subgraph Perception [感知与同步层]
+        Lidar_Driver -- "Points & IMU" --> Sync[sensor_sync / pointcloud_guard]
+        Sync -- "Validated Points" --> Scan_Convert[pointcloud_to_laserscan]
+    end
+
+    %% 定位与建图层（双路径）
+    subgraph Localization_Mapping [定位与建图层]
+        direction TB
+        subgraph Path_2D [2D 路径]
+            Scan_Convert -- "/scan" --> AMCL_SLAM[AMCL / slam_toolbox]
+        end
+        subgraph Path_3D [3D 路径]
+            Sync -- "Points" --> DLIO[DLIO / PCD Relocalization]
+        end
+        AMCL_SLAM -- "TF: map -> odom" --> TF_Bus
+        DLIO -- "TF: map -> odom" --> TF_Bus
+        Map_Mgr[map_manager] <--> AMCL_SLAM
+        Map_Mgr <--> DLIO
+    end
+
+    %% 决策与控制层
+    subgraph Control_Decision [决策与控制层]
+        Goal_Pose[/goal_pose/] --> Goal_Bridge[goal_bridge]
+        Goal_Bridge -- "Nav2 Goal" --> Nav2[Nav2 Stack]
+        Goal_Bridge -- "3D Goal" --> Controller_3D[pose_goal_controller_3d]
+        
+        Nav2 -- "/cmd_vel" --> Control_Bridge[a2_control_bridge]
+        Controller_3D -- "/cmd_vel" --> Control_Bridge
+        
+        Safety[safety_supervisor] -. "Gate/E-Stop" .-> Control_Bridge
+    end
+
+    %% 输出到执行器
+    Control_Bridge -- "Motion Commands" --> SDK2
+
+    %% 样式定义
+    style TF_Bus fill:#f9f,stroke:#333,stroke-width:2px
+    style SDK2 fill:#ddd,stroke:#333
+    style Lidar fill:#ddd,stroke:#333

@@ -52,3 +52,16 @@ pcd_relocalizer_3d:
     xy_variance: 0.04
     z_variance: 0.08
     rot_variance: 0.04
+
+    # Kidnap detection — enter global search after N consecutive NDT rejections
+    kidnap_consecutive_rejections: 5
+    # Global search grid: XY spacing (m) and yaw resolution (deg)
+    kidnap_search_grid_xy_m: 5.0
+    kidnap_search_grid_yaw_deg: 45.0
+    # Minimum score to accept a global search candidate
+    kidnap_search_min_score: 5.0
+    # Fast-mode iterations and max scan points per candidate
+    kidnap_search_fast_iterations: 5
+    kidnap_search_fast_max_points: 400
+    # Minimum interval between global search attempts (seconds)
+    kidnap_cooldown_sec: 10.0

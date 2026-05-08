@@ -16,7 +16,7 @@ import rclpy
 import yaml
 from action_msgs.msg import GoalStatus
 from a2_interfaces.srv import ManageMap, SetMode
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -28,6 +28,17 @@ try:
     from nav2_msgs.action import NavigateToPose
 except ImportError:  # pragma: no cover - depends on runtime environment
     NavigateToPose = None
+
+try:
+    from a2_interfaces.action import RunMission as RunMissionAction
+    from rclpy.action import ActionServer, CancelResponse, GoalResponse
+    _HAS_RUN_MISSION_ACTION = True
+except ImportError:  # pragma: no cover - depends on runtime environment
+    RunMissionAction = None  # type: ignore[assignment]
+    ActionServer = None  # type: ignore[assignment]
+    CancelResponse = None  # type: ignore[assignment]
+    GoalResponse = None  # type: ignore[assignment]
+    _HAS_RUN_MISSION_ACTION = False
 
 
 def yaw_to_quaternion(yaw: float) -> tuple[float, float, float, float]:
@@ -145,6 +156,25 @@ class AutoScanMission(Node):
         self.yaw_pass_threshold_rad = float(self.declare_parameter("yaw_pass_threshold_rad", 0.15).value)
         self.yaw_warn_threshold_rad = float(self.declare_parameter("yaw_warn_threshold_rad", 0.30).value)
 
+        # Recovery FSM — active on both Nav2 and pose_topic_3d backends (gated by `recovery_enabled`).
+        # Recovery Twist hints are published on two topics:
+        #   1. recovery_cmd_topic (/a2/recovery/cmd_vel) → consumed by DWA-Lite planner when active
+        #   2. recovery_direct_cmd_topic (/cmd_vel)        → consumed by collision_monitor when Nav2
+        #      DWB is the active planner (goal is cancelled, so no conflict on /cmd_vel)
+        self.recovery_enabled = bool(self.declare_parameter("recovery_enabled", True).value)
+        self.recovery_cmd_topic = self.declare_parameter("recovery_cmd_topic", "/a2/recovery/cmd_vel").value
+        self.recovery_direct_cmd_topic = self.declare_parameter("recovery_direct_cmd_topic", "/cmd_vel").value
+        self.max_recovery_attempts = int(self.declare_parameter("max_recovery_attempts", 2).value)
+        self.nav3_status_topic = self.declare_parameter("nav3_status_topic", "/a2/nav3/status").value
+        self.recovery_total_budget_sec = float(self.declare_parameter("recovery_total_budget_sec", 12.0).value)
+        self.recovery_spin_sec = float(self.declare_parameter("recovery_spin_sec", 6.0).value)
+        self.recovery_backup_sec = float(self.declare_parameter("recovery_backup_sec", 3.0).value)
+        self.recovery_lateral_sec = float(self.declare_parameter("recovery_lateral_sec", 3.0).value)
+        self.recovery_spin_rate = float(self.declare_parameter("recovery_spin_rate", 0.4).value)
+        self.recovery_backup_speed = float(self.declare_parameter("recovery_backup_speed", 0.10).value)
+        self.recovery_lateral_speed = float(self.declare_parameter("recovery_lateral_speed", 0.10).value)
+        self.recovery_publish_hz = float(self.declare_parameter("recovery_publish_hz", 10.0).value)
+
         self.map_received = False
         self.pointcloud_received = False
         self.latest_map: OccupancyGrid | None = None
@@ -167,6 +197,10 @@ class AutoScanMission(Node):
         self.progress_pub = self.create_publisher(Float32, self.mission_progress_topic, 10)
         self.goal_pub = self.create_publisher(PoseStamped, self.mission_goal_topic, 10)
         self.pose_goal_pub = self.create_publisher(PoseStamped, self.pose_goal_topic, 10)
+        self.recovery_cmd_pub = self.create_publisher(Twist, self.recovery_cmd_topic, 10)
+        self.recovery_direct_cmd_pub = self.create_publisher(Twist, self.recovery_direct_cmd_topic, 10)
+        self.nav3_status_raw = ""
+        self.create_subscription(String, self.nav3_status_topic, self._on_nav3_status, 10)
 
         transient_qos = QoSProfile(
             depth=1,
@@ -257,6 +291,13 @@ class AutoScanMission(Node):
         ordered = ";".join(f"{key}={value}" for key, value in payload.items())
         self.status_pub.publish(String(data=ordered))
         self.get_logger().info(f"Mission status: {ordered}")
+        # Mirror to the active RunMission action goal handle, if any.
+        cb = getattr(self, "_action_feedback_cb", None)
+        if cb is not None:
+            try:
+                cb(state, reason, ordered)
+            except Exception as exc:  # pragma: no cover - best-effort feedback
+                self.get_logger().warning(f"action feedback hook failed: {exc}")
 
     def spin_for(self, duration_sec: float) -> None:
         deadline = time.monotonic() + max(0.0, duration_sec)
@@ -568,15 +609,32 @@ class AutoScanMission(Node):
         result_future = goal_handle.get_result_async()
         if not self.wait_for_future(result_future, self.goal_result_timeout_sec):
             goal_handle.cancel_goal_async()
-            return self.finish_waypoint_result(
-                waypoint, "goal_result_timeout", False, start_time, localization_drops_before, real_not_ready_before
+            # ── Recovery FSM for Nav2 path ──────────────────────────
+            recovery_info: dict[str, Any] = {"triggered": False, "recovered": False, "attempts": 0}
+            if self.recovery_enabled:
+                recovery_info = self._run_recovery_nav2(waypoint, target, start_time)
+            result = self.finish_waypoint_result(
+                waypoint,
+                "goal_result_timeout" if not recovery_info.get("recovered") else "recovered_continue",
+                recovery_info.get("recovered", False),
+                start_time,
+                localization_drops_before,
+                real_not_ready_before,
+                recovery=recovery_info,
             )
+            return result
 
         result = result_future.result()
         status_code = result.status if result is not None else GoalStatus.STATUS_UNKNOWN
         if waypoint.dwell_sec > 0.0:
             self.spin_for(waypoint.dwell_sec)
         self.spin_for(self.settle_time_sec)
+
+        recovery_info = {}
+        if status_code == GoalStatus.STATUS_ABORTED and self.recovery_enabled:
+            recovery_info = self._run_recovery_nav2(waypoint, target, start_time)
+            if recovery_info.get("recovered"):
+                status_code = GoalStatus.STATUS_SUCCEEDED
 
         if status_code == GoalStatus.STATUS_SUCCEEDED:
             state = "succeeded"
@@ -593,7 +651,265 @@ class AutoScanMission(Node):
             start_time,
             localization_drops_before,
             real_not_ready_before,
+            recovery=recovery_info if recovery_info else None,
         )
+
+    def _on_nav3_status(self, msg: String) -> None:
+        self.nav3_status_raw = msg.data
+
+    def _nav3_state(self) -> str:
+        return parse_status_string(self.nav3_status_raw).get("state", "")
+
+    def _publish_zero_recovery(self) -> None:
+        zero = Twist()
+        self.recovery_cmd_pub.publish(zero)
+        self.recovery_direct_cmd_pub.publish(zero)
+
+    def _publish_recovery_twist(self, vx: float, vy: float, wz: float) -> None:
+        cmd = Twist()
+        cmd.linear.x = float(vx)
+        cmd.linear.y = float(vy)
+        cmd.angular.z = float(wz)
+        self.recovery_cmd_pub.publish(cmd)
+        self.recovery_direct_cmd_pub.publish(cmd)
+
+    def _check_pose_reached(self, waypoint: "WaypointSpec") -> tuple[bool, float | None]:
+        pose = self.current_pose_dict()
+        if pose is None:
+            return False, None
+        distance = math.hypot(float(pose["x"]) - waypoint.x, float(pose["y"]) - waypoint.y)
+        yaw_error = abs(normalize_angle(float(pose["yaw"]) - waypoint.yaw))
+        self.last_feedback_distance = distance
+        reached = distance <= self.position_pass_threshold_m and yaw_error <= self.yaw_pass_threshold_rad
+        return reached, distance
+
+    def _drive_to_pose_topic_goal(self, waypoint: "WaypointSpec", deadline: float) -> tuple[bool, str]:
+        """Track an already-published pose goal until reached, deadline, or planner block.
+
+        Returns (reached, reason). reason is one of: 'reached', 'deadline',
+        'planner_blocked', 'cancelled'.
+        """
+        while rclpy.ok() and time.monotonic() < deadline:
+            reached, _ = self._check_pose_reached(waypoint)
+            if reached:
+                return True, "reached"
+            if self.recovery_enabled and self._nav3_state() == "blocked":
+                return False, "planner_blocked"
+            rclpy.spin_once(self, timeout_sec=0.1)
+        if not rclpy.ok():
+            return False, "cancelled"
+        return False, "deadline"
+
+    def _run_recovery_fsm(self, waypoint: "WaypointSpec", target: PoseStamped, deadline: float) -> dict[str, Any]:
+        """Try to unblock by emitting Twist hints; resume goal tracking after each step.
+
+        The C++ obstacle_aware_local_planner_3d adopts our recovery_cmd_topic input only after
+        its own hard-clearance veto, so this never bypasses the safety pipeline. Each step
+        re-publishes the goal so that as soon as the planner becomes unblocked it resumes.
+        """
+        info: dict[str, Any] = {
+            "triggered": True,
+            "sequence": [],
+            "recovered": False,
+            "duration_sec": 0.0,
+        }
+        if not self.recovery_enabled:
+            info["triggered"] = False
+            return info
+
+        budget_deadline = min(deadline, time.monotonic() + self.recovery_total_budget_sec)
+        period = 1.0 / max(1.0, self.recovery_publish_hz)
+        t_start = time.monotonic()
+
+        def step(name: str, duration: float, twist_fn) -> str:
+            """Execute one recovery step. Returns 'reached' | 'recovered' | 'expired'."""
+            info["sequence"].append(name)
+            self.publish_status(
+                "recovery_active", f"step={name}", ready=True,
+                waypoint=waypoint.waypoint_id,
+            )
+            step_deadline = min(budget_deadline, time.monotonic() + duration)
+            tick = 0
+            while rclpy.ok() and time.monotonic() < step_deadline:
+                vx, vy, wz = twist_fn(tick)
+                self._publish_recovery_twist(vx, vy, wz)
+                rclpy.spin_once(self, timeout_sec=period)
+                tick += 1
+                reached, _ = self._check_pose_reached(waypoint)
+                if reached:
+                    self._publish_zero_recovery()
+                    return "reached"
+                # As soon as planner is no longer blocked, hand control back.
+                if self._nav3_state() not in ("blocked", ""):
+                    self._publish_zero_recovery()
+                    self.pose_goal_pub.publish(target)
+                    return "recovered"
+            self._publish_zero_recovery()
+            return "expired"
+
+        # Step 1: spin in place, alternating direction.
+        outcome = step(
+            "spin_probe", self.recovery_spin_sec,
+            lambda tick: (0.0, 0.0,
+                          self.recovery_spin_rate if (tick // max(1, int(self.recovery_publish_hz))) % 2 == 0
+                          else -self.recovery_spin_rate),
+        )
+        if outcome == "reached":
+            info["recovered"] = True
+            info["duration_sec"] = time.monotonic() - t_start
+            return info
+        if outcome == "recovered":
+            ok, why = self._drive_to_pose_topic_goal(waypoint, deadline)
+            info["recovered"] = ok
+            info["duration_sec"] = time.monotonic() - t_start
+            info["resume_reason"] = why
+            if ok:
+                return info
+            # else fall through to next step
+
+        if time.monotonic() >= budget_deadline:
+            info["duration_sec"] = time.monotonic() - t_start
+            return info
+
+        # Step 2: short backup.
+        outcome = step(
+            "backup_probe", self.recovery_backup_sec,
+            lambda _tick: (-self.recovery_backup_speed, 0.0, 0.0),
+        )
+        if outcome == "reached":
+            info["recovered"] = True
+            info["duration_sec"] = time.monotonic() - t_start
+            return info
+        if outcome == "recovered":
+            ok, why = self._drive_to_pose_topic_goal(waypoint, deadline)
+            info["recovered"] = ok
+            info["duration_sec"] = time.monotonic() - t_start
+            info["resume_reason"] = why
+            if ok:
+                return info
+
+        if time.monotonic() >= budget_deadline:
+            info["duration_sec"] = time.monotonic() - t_start
+            return info
+
+        # Step 3: lateral probe (right then left).
+        half = max(0.1, self.recovery_lateral_sec / 2.0)
+        outcome = step(
+            "lateral_right",
+            half,
+            lambda _tick: (0.0, -self.recovery_lateral_speed, 0.0),
+        )
+        if outcome == "recovered":
+            ok, why = self._drive_to_pose_topic_goal(waypoint, deadline)
+            info["recovered"] = ok
+            info["duration_sec"] = time.monotonic() - t_start
+            info["resume_reason"] = why
+            if ok:
+                return info
+        if outcome == "reached":
+            info["recovered"] = True
+            info["duration_sec"] = time.monotonic() - t_start
+            return info
+
+        outcome = step(
+            "lateral_left",
+            half,
+            lambda _tick: (0.0, self.recovery_lateral_speed, 0.0),
+        )
+        if outcome == "reached":
+            info["recovered"] = True
+        elif outcome == "recovered":
+            ok, why = self._drive_to_pose_topic_goal(waypoint, deadline)
+            info["recovered"] = ok
+            info["resume_reason"] = why
+        info["duration_sec"] = time.monotonic() - t_start
+        return info
+
+    def _run_recovery_nav2(
+        self, waypoint: "WaypointSpec", target: PoseStamped, _wp_start_time: float
+    ) -> dict[str, Any]:
+        """Nav2-backend recovery: emit Twist hints, then re-send NavigateToPose goal.
+
+        Unlike the pose_topic_3d path which checks _nav3_state() for "blocked", the Nav2
+        path simply cancels the timed-out goal, executes the recovery sequence, and
+        retries the waypoint up to max_recovery_attempts times.
+        """
+        info: dict[str, Any] = {
+            "triggered": True,
+            "sequence": [],
+            "recovered": False,
+            "duration_sec": 0.0,
+            "attempts": 0,
+        }
+        if not self.recovery_enabled:
+            info["triggered"] = False
+            return info
+
+        t_start = time.monotonic()
+        period = 1.0 / max(1.0, self.recovery_publish_hz)
+
+        def run_step(name: str, duration: float, twist_fn) -> bool:
+            """Returns True if the goal was reached during or after this step."""
+            info["sequence"].append(name)
+            self.publish_status(
+                "recovery_active", f"step={name};backend=nav2", ready=True,
+                waypoint=waypoint.waypoint_id,
+            )
+            step_deadline = time.monotonic() + duration
+            tick = 0
+            while rclpy.ok() and time.monotonic() < step_deadline:
+                vx, vy, wz = twist_fn(tick)
+                self._publish_recovery_twist(vx, vy, wz)
+                rclpy.spin_once(self, timeout_sec=period)
+                tick += 1
+                reached, _ = self._check_pose_reached(waypoint)
+                if reached:
+                    self._publish_zero_recovery()
+                    return True
+            self._publish_zero_recovery()
+            return False
+
+        for attempt in range(self.max_recovery_attempts):
+            info["attempts"] = attempt + 1
+            reached = run_step(
+                "spin_probe", self.recovery_spin_sec,
+                lambda tick: (0.0, 0.0,
+                              self.recovery_spin_rate if (tick // max(1, int(self.recovery_publish_hz))) % 2 == 0
+                              else -self.recovery_spin_rate),
+            )
+            if reached:
+                info["recovered"] = True
+                info["duration_sec"] = time.monotonic() - t_start
+                return info
+
+            # Re-send Nav2 goal and wait (shorter timeout for recovery retry).
+            try:
+                goal = NavigateToPose.Goal()
+                goal.pose = target
+                goal_future = self.navigate_client.send_goal_async(goal)
+                if not self.wait_for_future(goal_future, 10.0):
+                    continue
+                goal_handle = goal_future.result()
+                if goal_handle is None or not goal_handle.accepted:
+                    continue
+                result_future = goal_handle.get_result_async()
+                retry_timeout = min(
+                    self.goal_result_timeout_sec / max(1, attempt + 1),
+                    self.recovery_total_budget_sec,
+                )
+                if not self.wait_for_future(result_future, retry_timeout):
+                    goal_handle.cancel_goal_async()
+                    continue
+                result = result_future.result()
+                if result is not None and result.status == GoalStatus.STATUS_SUCCEEDED:
+                    info["recovered"] = True
+                    info["duration_sec"] = time.monotonic() - t_start
+                    return info
+            except Exception:
+                continue
+
+        info["duration_sec"] = time.monotonic() - t_start
+        return info
 
     def execute_pose_topic_waypoint(
         self,
@@ -605,26 +921,58 @@ class AutoScanMission(Node):
     ) -> dict[str, Any]:
         self.pose_goal_pub.publish(target)
         deadline = time.monotonic() + self.goal_result_timeout_sec
-        while rclpy.ok() and time.monotonic() < deadline:
-            pose = self.current_pose_dict()
-            if pose is not None:
-                distance = math.hypot(float(pose["x"]) - waypoint.x, float(pose["y"]) - waypoint.y)
-                yaw_error = abs(normalize_angle(float(pose["yaw"]) - waypoint.yaw))
-                self.last_feedback_distance = distance
-                if distance <= self.position_pass_threshold_m and yaw_error <= self.yaw_pass_threshold_rad:
-                    if waypoint.dwell_sec > 0.0:
-                        self.spin_for(waypoint.dwell_sec)
-                    self.spin_for(self.settle_time_sec)
-                    return self.finish_waypoint_result(
-                        waypoint,
-                        "succeeded",
-                        True,
-                        start_time,
-                        localization_drops_before,
-                        real_not_ready_before,
-                    )
-            rclpy.spin_once(self, timeout_sec=0.1)
-        return self.finish_waypoint_result(
+        recovery_info: dict[str, Any] | None = None
+        recovery_attempts = 0
+        max_recovery_attempts = 1
+
+        while True:
+            reached, reason = self._drive_to_pose_topic_goal(waypoint, deadline)
+            if reached:
+                if waypoint.dwell_sec > 0.0:
+                    self.spin_for(waypoint.dwell_sec)
+                self.spin_for(self.settle_time_sec)
+                state = "succeeded" if recovery_info is None else "recovered_continue"
+                result = self.finish_waypoint_result(
+                    waypoint,
+                    state,
+                    True,
+                    start_time,
+                    localization_drops_before,
+                    real_not_ready_before,
+                )
+                if recovery_info is not None:
+                    result["recovery"] = recovery_info
+                return result
+
+            if (
+                self.recovery_enabled
+                and reason in ("planner_blocked", "deadline")
+                and recovery_attempts < max_recovery_attempts
+                and time.monotonic() < deadline
+            ):
+                recovery_attempts += 1
+                recovery_info = self._run_recovery_fsm(waypoint, target, deadline)
+                # If recovery brought us into tracking, loop back and continue waiting on the goal.
+                if recovery_info.get("recovered", False):
+                    # Re-evaluate goal (could already have been reached during recovery loop).
+                    reached2, _ = self._check_pose_reached(waypoint)
+                    if reached2:
+                        if waypoint.dwell_sec > 0.0:
+                            self.spin_for(waypoint.dwell_sec)
+                        self.spin_for(self.settle_time_sec)
+                        result = self.finish_waypoint_result(
+                            waypoint, "recovered_continue", True, start_time,
+                            localization_drops_before, real_not_ready_before,
+                        )
+                        result["recovery"] = recovery_info
+                        return result
+                    # planner is moving again — keep tracking until deadline
+                    self.pose_goal_pub.publish(target)
+                    continue
+                # Recovery failed: fall through to timeout failure with recovery info attached.
+            break
+
+        result = self.finish_waypoint_result(
             waypoint,
             "goal_result_timeout",
             False,
@@ -632,6 +980,9 @@ class AutoScanMission(Node):
             localization_drops_before,
             real_not_ready_before,
         )
+        if recovery_info is not None:
+            result["recovery"] = recovery_info
+        return result
 
     def finish_waypoint_result(
         self,
@@ -642,6 +993,7 @@ class AutoScanMission(Node):
         localization_drops_before: int,
         real_not_ready_before: int,
         route_validation: dict[str, Any] | None = None,
+        recovery: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         final_pose = self.current_pose_dict()
         position_error_m = None
@@ -681,6 +1033,8 @@ class AutoScanMission(Node):
             "real_report": self.real_report_raw,
             "nav_status": self.nav_status_raw,
         }
+        if recovery:
+            result["recovery"] = recovery
         self.report_entries.append(result)
         self.progress_pub.publish(
             Float32(data=float(len(self.report_entries)) / max(1.0, float(self.total_waypoints)))
@@ -735,7 +1089,7 @@ class AutoScanMission(Node):
             state_counts[state] = state_counts.get(state, 0) + 1
         planned = len(waypoints)
         executed = len(self.report_entries)
-        succeeded = state_counts.get("succeeded", 0)
+        succeeded = state_counts.get("succeeded", 0) + state_counts.get("recovered_continue", 0)
         return {
             "mission": self.mission_name,
             "dry_run": self.dry_run,
@@ -946,17 +1300,17 @@ class AutoScanMission(Node):
                         self.final_outcome = "failed"
                         self.final_reason = f"waypoint_failed:{waypoint.waypoint_id}"
                         break
-                    if result["state"] not in {"succeeded"} and self.stop_on_failure:
+                    if result["state"] not in {"succeeded", "recovered_continue"} and self.stop_on_failure:
                         self.final_outcome = "failed"
                         self.final_reason = f"waypoint_state:{waypoint.waypoint_id}:{result['state']}"
                         break
                 else:
                     states = {entry["state"] for entry in self.report_entries}
                     validations = {entry["validation"] for entry in self.report_entries}
-                    if states == {"succeeded"} and validations == {"pass"}:
+                    if states.issubset({"succeeded", "recovered_continue"}) and validations == {"pass"}:
                         self.final_outcome = "succeeded"
                         self.final_reason = "all_waypoints_completed"
-                    elif "fail" in validations or any(state != "succeeded" for state in states):
+                    elif "fail" in validations or any(state not in {"succeeded", "recovered_continue"} for state in states):
                         self.final_outcome = "completed_with_findings"
                         self.final_reason = "waypoint_validation_findings"
                     else:
@@ -981,13 +1335,149 @@ class AutoScanMission(Node):
         self.publish_status("mission_complete", self.final_reason, ready=ready)
         return report_path
 
+    # ------------------------------------------------------------------
+    # ROS 2 Action Server (a2_interfaces.action.RunMission)
+    # ------------------------------------------------------------------
+    def install_action_server(self) -> bool:
+        """Install the RunMission action server. Idempotent. Returns False if the
+        action interface is unavailable (e.g. partial install)."""
+        if not _HAS_RUN_MISSION_ACTION:
+            self.get_logger().warning(
+                "RunMission action interface unavailable; action server not installed"
+            )
+            return False
+        if getattr(self, "_run_mission_action_server", None) is not None:
+            return True
+        self._action_feedback_cb = None
+        self._cancel_requested = False
+        self._run_mission_action_server = ActionServer(
+            self,
+            RunMissionAction,
+            "run_mission",
+            execute_callback=self._run_mission_execute,
+            goal_callback=self._run_mission_goal_cb,
+            cancel_callback=self._run_mission_cancel_cb,
+        )
+        # Snapshot params so per-goal overrides can be reset between goals.
+        self._param_defaults = {
+            "mission_name": self.mission_name,
+            "waypoints_file": self.waypoints_file,
+            "require_real_ready": self.require_real_ready,
+            "stop_on_failure": self.stop_on_failure,
+        }
+        self.get_logger().info("RunMission action server installed at /run_mission")
+        return True
+
+    def _run_mission_goal_cb(self, _goal_request) -> Any:
+        # One mission at a time; reject if another is running.
+        if self._mission_running:
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
+    def _run_mission_cancel_cb(self, _goal_handle) -> Any:
+        self._cancel_requested = True
+        return CancelResponse.ACCEPT
+
+    def is_cancel_requested(self) -> bool:
+        return bool(getattr(self, "_cancel_requested", False))
+
+    def _publish_action_feedback(self, goal_handle, state: str, reason: str, last_kv: str) -> None:
+        try:
+            fb = RunMissionAction.Feedback()
+            fb.state = state
+            fb.reason = reason
+            fb.current_waypoint_index = int(len(self.report_entries))
+            fb.total_waypoints = int(self.total_waypoints)
+            denom = max(1, self.total_waypoints)
+            fb.progress = float(len(self.report_entries)) / float(denom)
+            fb.last_status_kv = last_kv
+            goal_handle.publish_feedback(fb)
+        except Exception as exc:  # pragma: no cover - best-effort
+            self.get_logger().warning(f"publish_feedback failed: {exc}")
+
+    def _run_mission_execute(self, goal_handle):
+        request = goal_handle.request
+        # Apply per-goal overrides.
+        if request.mission_name:
+            self.mission_name = request.mission_name
+        if request.waypoints_file:
+            self.waypoints_file = os.path.expandvars(os.path.expanduser(request.waypoints_file))
+        self.require_real_ready = bool(request.require_real_ready)
+        self.stop_on_failure = bool(request.stop_on_failure)
+
+        # Reset per-goal aggregation state.
+        self.report_entries = []
+        self.route_validation_entries = []
+        self.saved_map_id = None
+        self.saved_map_message = None
+        self.final_outcome = "not_started"
+        self.final_reason = "not_started"
+        self.last_feedback_distance = None
+        self.total_waypoints = 0
+        self._cancel_requested = False
+        self._action_feedback_cb = lambda state, reason, kv: self._publish_action_feedback(
+            goal_handle, state, reason, kv
+        )
+        report_path: Path | None = None
+        try:
+            report_path = self.run()
+        except Exception as exc:  # pragma: no cover - run() handles most cases internally
+            self.get_logger().error(f"RunMission execute failed: {exc}")
+            self.final_outcome = "failed"
+            self.final_reason = f"exception:{exc}"
+        finally:
+            self._action_feedback_cb = None
+            # Restore defaults so a subsequent goal (or shutdown) sees pristine values.
+            d = getattr(self, "_param_defaults", {})
+            self.mission_name = d.get("mission_name", self.mission_name)
+            self.waypoints_file = d.get("waypoints_file", self.waypoints_file)
+            self.require_real_ready = d.get("require_real_ready", self.require_real_ready)
+            self.stop_on_failure = d.get("stop_on_failure", self.stop_on_failure)
+
+        result = RunMissionAction.Result()
+        # Determine action terminal state.
+        success = self.final_outcome in {"succeeded", "dry_run_succeeded"}
+        if self._cancel_requested:
+            goal_handle.canceled()
+        elif success:
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+        result.success = bool(success)
+        result.reason = str(self.final_reason)
+        result.report_json_path = ""
+        result.report_csv_path = ""
+        if report_path is not None:
+            result.report_json_path = str(report_path.with_suffix(".json"))
+            result.report_csv_path = str(report_path.with_suffix(".csv"))
+        result.succeeded_waypoints = int(
+            sum(
+                1 for e in self.report_entries
+                if e.get("state") in ("succeeded", "recovered_continue")
+            )
+        )
+        result.total_waypoints = int(self.total_waypoints)
+        return result
+
 
 def main() -> None:
     rclpy.init()
     node = AutoScanMission()
+    enable_action_server = bool(
+        node.declare_parameter("enable_action_server", True).value
+    )
     try:
-        report_path = node.run()
-        node.get_logger().info(f"Mission report written to: {report_path}")
+        if enable_action_server and node.install_action_server():
+            node.get_logger().info(
+                "auto_scan_mission running as action server (no immediate run)"
+            )
+            try:
+                rclpy.spin(node)
+            except KeyboardInterrupt:  # pragma: no cover
+                pass
+        else:
+            report_path = node.run()
+            node.get_logger().info(f"Mission report written to: {report_path}")
     finally:
         node.destroy_node()
         rclpy.shutdown()

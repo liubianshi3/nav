@@ -7,6 +7,7 @@ import math
 import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Twist
 from rclpy.node import Node
+from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Bool, String
 
 
@@ -52,6 +53,15 @@ class PoseGoalController3D(Node):
         self.require_localization_ok = bool(
             self.declare_parameter("require_localization_ok", True).value
         )
+        self.require_obstacle_cloud = bool(
+            self.declare_parameter("require_obstacle_cloud", True).value
+        )
+        self.obstacle_cloud_topic = self.declare_parameter(
+            "obstacle_cloud_topic", "/jt128/front/points"
+        ).value
+        self.obstacle_cloud_timeout_sec = float(
+            self.declare_parameter("obstacle_cloud_timeout_sec", 1.0).value
+        )
         self.control_hz = max(1.0, float(self.declare_parameter("control_hz", 10.0).value))
         self.pose_timeout_sec = float(self.declare_parameter("pose_timeout_sec", 0.5).value)
         self.goal_timeout_sec = float(self.declare_parameter("goal_timeout_sec", 60.0).value)
@@ -69,6 +79,8 @@ class PoseGoalController3D(Node):
         self.pose: PoseWithCovarianceStamped | None = None
         self.pose_time = None
         self.localization_ok = False
+        self.obstacle_cloud_time = None
+        self.obstacle_cloud_points = 0
         self.goal: PoseStamped | None = None
         self.goal_start_time = None
         self.last_status = ""
@@ -82,6 +94,8 @@ class PoseGoalController3D(Node):
             self.create_subscription(PoseStamped, self.legacy_goal_topic, self.on_goal, 10)
         self.create_subscription(PoseWithCovarianceStamped, self.pose_topic, self.on_pose, 20)
         self.create_subscription(Bool, self.localization_ok_topic, self.on_localization_ok, 10)
+        if self.require_obstacle_cloud:
+            self.create_subscription(PointCloud2, self.obstacle_cloud_topic, self.on_obstacle_cloud, 10)
         self.create_timer(1.0 / self.control_hz, self.tick)
         self.publish_status(False, "idle", "waiting_goal")
 
@@ -92,6 +106,10 @@ class PoseGoalController3D(Node):
     def on_localization_ok(self, msg: Bool) -> None:
         self.localization_ok = bool(msg.data)
 
+    def on_obstacle_cloud(self, msg: PointCloud2) -> None:
+        self.obstacle_cloud_time = self.get_clock().now()
+        self.obstacle_cloud_points = int(msg.width) * int(msg.height)
+
     def on_goal(self, msg: PoseStamped) -> None:
         frame = msg.header.frame_id or self.map_frame
         if frame != self.map_frame:
@@ -99,6 +117,9 @@ class PoseGoalController3D(Node):
             return
         if self.pose is None:
             self.reject_goal("no_current_pose")
+            return
+        if not self.obstacle_cloud_is_fresh():
+            self.reject_goal("obstacle_cloud_stale")
             return
         gx = float(msg.pose.position.x)
         gy = float(msg.pose.position.y)
@@ -130,6 +151,14 @@ class PoseGoalController3D(Node):
         age = (self.get_clock().now() - self.pose_time).nanoseconds * 1e-9
         return age <= self.pose_timeout_sec
 
+    def obstacle_cloud_is_fresh(self) -> bool:
+        if not self.require_obstacle_cloud:
+            return True
+        if self.obstacle_cloud_time is None or self.obstacle_cloud_points <= 0:
+            return False
+        age = (self.get_clock().now() - self.obstacle_cloud_time).nanoseconds * 1e-9
+        return age <= self.obstacle_cloud_timeout_sec
+
     def tick(self) -> None:
         if self.goal is None:
             return
@@ -140,6 +169,10 @@ class PoseGoalController3D(Node):
         if self.require_localization_ok and not self.localization_ok:
             self.publish_zero()
             self.publish_status(False, "blocked", "localization_not_ready")
+            return
+        if not self.obstacle_cloud_is_fresh():
+            self.publish_zero()
+            self.publish_status(False, "blocked", "obstacle_cloud_stale")
             return
         if self.goal_start_time is not None:
             age = (self.get_clock().now() - self.goal_start_time).nanoseconds * 1e-9
@@ -192,7 +225,9 @@ class PoseGoalController3D(Node):
     def publish_status(self, ready: bool, state: str, reason: str) -> None:
         status = (
             f"state={state};ready={str(bool(ready)).lower()};reason={reason};"
-            f"goal_topic={self.goal_topic};pose_topic={self.pose_topic};cmd_topic={self.cmd_topic}"
+            f"goal_topic={self.goal_topic};pose_topic={self.pose_topic};cmd_topic={self.cmd_topic};"
+            f"require_obstacle_cloud={str(bool(self.require_obstacle_cloud)).lower()};"
+            f"obstacle_cloud_topic={self.obstacle_cloud_topic};obstacle_cloud_points={self.obstacle_cloud_points}"
         )
         self.status_pub.publish(String(data=status))
         now = self.get_clock().now()

@@ -1,0 +1,61 @@
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+
+    # Smart safety: collision_monitor subscribes to Nav2 /cmd_vel,
+    # checks /a2/obstacle/points from ground_seg, and publishes
+    # safe commands to /cmd_vel_safe.
+    # a2_control_bridge subscribes to /cmd_vel_safe.
+    cmd_vel_in_topic: "/cmd_vel"
+    cmd_vel_out_topic: "/cmd_vel_safe"
+
+    transform_tolerance: 0.5
+    source_timeout: 2.0
+    base_shift_correction: true
+    stop_pub_timeout: 2.0
+
+    # ── Safety polygons ─────────────────────────────────────────
+    # Two zones: inner STOP + outer SLOWDOWN
+    # A2 body: ~1.1m long × ~0.45m wide. Polygons defined in
+    # base_link frame (x-forward, y-left)
+    polygons: ["PolygonStop", "PolygonSlow"]
+
+    PolygonStop:
+      type: "polygon"
+      # 0.5m forward, 0.4m side, 0.3m rear
+      points: [0.5, 0.4, 0.5, -0.4, -0.3, -0.4, -0.3, 0.4]
+      action_type: "stop"
+      max_points: 3
+      visualize: true
+      polygon_pub_topic: "polygon_stop"
+      enabled: true
+
+    PolygonSlow:
+      type: "polygon"
+      # 0.9m forward, 0.7m side, 0.5m rear
+      points: [0.9, 0.7, 0.9, -0.7, -0.5, -0.7, -0.5, 0.7]
+      action_type: "slowdown"
+      max_points: 2
+      slowdown_ratio: 0.3
+      visualize: true
+      polygon_pub_topic: "polygon_slowdown"
+      enabled: true
+
+    # ── Observation sources ─────────────────────────────────────
+    observation_sources: ["obstacle_cloud", "traversability_cloud"]
+
+    obstacle_cloud:
+      type: "pointcloud"
+      topic: "/a2/obstacle/points"
+      min_height: 0.05
+      max_height: 0.85
+      enabled: true
+
+    traversability_cloud:
+      type: "pointcloud"
+      topic: "/a2/traversability/obstacle_points"
+      min_height: 0.0
+      max_height: 0.5
+      enabled: true

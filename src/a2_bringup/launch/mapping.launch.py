@@ -109,6 +109,6 @@ def generate_launch_description():
         DeclareLaunchArgument("runtime_mode", default_value=""),
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("enable_nav2_bringup", default_value="false"),
-        DeclareLaunchArgument("pointcloud_topic", default_value="/jt128/front/points"),
+        DeclareLaunchArgument("pointcloud_topic", default_value="/a2/obstacle/points"),
         OpaqueFunction(function=_launch_setup),
     ])

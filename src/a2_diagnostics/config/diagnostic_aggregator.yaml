@@ -1,0 +1,44 @@
+diagnostic_aggregator:
+  ros__parameters:
+    system_name: a2_system
+    hardware_id: a2_robot
+
+    # Each entry maps one existing a2 String status topic to a diagnostic name.
+    # The aggregator subscribes, parses, and publishes standard DiagnosticArray.
+    status_sources:
+      # -- safety & readiness -----------------------------------------------
+      - {topic: /a2/safety/status,         name: safety_supervisor}
+      - {topic: /a2/real/report,           name: real_readiness}
+
+      # -- control & sdk ----------------------------------------------------
+      - {topic: /a2/control/status,        name: a2_control_bridge}
+      - {topic: /a2/sdk/status,            name: a2_sdk_bridge}
+
+      # -- localization -----------------------------------------------------
+      - {topic: /a2/localization/status,   name: localization_gate}
+      - {topic: /a2/relocalization/status, name: pcd_relocalizer_3d}
+
+      # -- sensing & sync ---------------------------------------------------
+      - {topic: /a2/lidar/status,          name: pointcloud_guard}
+      - {topic: /a2/slam/status,           name: slam_orchestrator}
+      - {topic: /a2/perception/ground_segmentation/status, name: ground_segmentation}
+
+      # -- navigation -------------------------------------------------------
+      - {topic: /a2/nav2/status,           name: goal_bridge}
+      - {topic: /a2/nav3/status,           name: pose_goal_controller_3d}
+      - {topic: /a2/ndt_adapter/status,    name: ndt_adapter}
+
+      # -- mapping ----------------------------------------------------------
+      - {topic: /a2/map_manager/status,    name: map_manager}
+      - {topic: /a2/native_map/status,     name: native_map_relay}
+      - {topic: /a2/pointcloud_map/status, name: pointcloud_accumulator}
+
+      # -- missions & tasks ------------------------------------------------
+      - {topic: /a2/scan_mission/status,   name: auto_scan_mission}
+      - {topic: /a2/task_manager/status,   name: task_manager}
+
+      # -- watchdog ---------------------------------------------------------
+      - {topic: /a2/jt128/dlio_watchdog,   name: jt128_dlio_watchdog}
+
+      # -- nav health monitor (self-monitoring, forms diagnostic loop) ------
+      - {topic: /a2/nav/status,            name: nav_health_monitor}

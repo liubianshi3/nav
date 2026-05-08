@@ -29,6 +29,13 @@ try:
 except ImportError:  # pragma: no cover - depends on runtime environment
     NavigateToPose = None
 
+try:
+    from a2_interfaces.action import RunMission as RunMissionAction
+    _HAS_RUN_MISSION_ACTION = True
+except ImportError:  # pragma: no cover - depends on runtime environment
+    RunMissionAction = None  # type: ignore[assignment]
+    _HAS_RUN_MISSION_ACTION = False
+
 
 ROUTE_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -242,6 +249,19 @@ class TaskManager(Node):
         self.auto_scan_script = Path(os.path.expandvars(os.path.expanduser(raw_auto_scan_script)))
         self.command_timeout_sec = float(self.declare_parameter("command_timeout_sec", 10.0).value)
         self.route_stop_timeout_sec = float(self.declare_parameter("route_stop_timeout_sec", 5.0).value)
+        # When true, dispatch missions via the RunMission ROS 2 action instead of
+        # subprocess.Popen(auto_scan_mission.py). The mission node continues to publish
+        # /a2/scan_mission/* String topics so external consumers (Web Console) are
+        # unaffected. Defaults to false until the action server is verified at runtime.
+        self.task_manager_use_action = bool(
+            self.declare_parameter("task_manager_use_action", True).value
+        )
+        self.run_mission_action_name = self.declare_parameter(
+            "run_mission_action_name", "/run_mission"
+        ).value
+        self.run_mission_goal_timeout_sec = float(
+            self.declare_parameter("run_mission_goal_timeout_sec", 5.0).value
+        )
         self.callback_group = ReentrantCallbackGroup()
 
         self.route_root.mkdir(parents=True, exist_ok=True)
@@ -253,6 +273,10 @@ class TaskManager(Node):
         self.last_status = ""
         self._active_goal_handle: Any | None = None
         self._route_process: subprocess.Popen[str] | None = None
+        # When dispatching missions via the RunMission action, this holds the
+        # active goal handle so we can cancel/stop later. None when no goal is in flight.
+        self._route_action_goal_handle: Any | None = None
+        self._route_action_result_future: Any | None = None
         self._route_state = "idle"
         self._route_id = ""
         self._route_path = ""
@@ -281,6 +305,21 @@ class TaskManager(Node):
             self.set_mode_service,
             callback_group=self.callback_group,
         )
+        self.run_mission_client = None
+        if self.task_manager_use_action:
+            if not _HAS_RUN_MISSION_ACTION:
+                self.get_logger().error(
+                    "task_manager_use_action=true but a2_interfaces.action.RunMission is "
+                    "not importable; falling back to subprocess mode"
+                )
+                self.task_manager_use_action = False
+            else:
+                self.run_mission_client = ActionClient(
+                    self,
+                    RunMissionAction,
+                    self.run_mission_action_name,
+                    callback_group=self.callback_group,
+                )
         self.navigate_client = (
             ActionClient(
                 self,
@@ -318,6 +357,12 @@ class TaskManager(Node):
         self.report_pub.publish(msg)
         self.publish_status("ready", "mission_report_update")
 
+    def _route_active(self) -> bool:
+        return (
+            self._route_process is not None
+            or self._route_action_goal_handle is not None
+        )
+
     def poll_route_process(self) -> None:
         if self._route_process is None:
             return
@@ -337,7 +382,7 @@ class TaskManager(Node):
         return future.done()
 
     def publish_status(self, state: str, reason: str) -> None:
-        ready = self._route_process is None
+        ready = not self._route_active()
         status = (
             f"mode={self.runtime_mode};state={state};ready={str(bool(ready)).lower()};reason={reason};"
             f"current_mode={self.current_mode};active_map={self.active_map or 'none'};"
@@ -469,8 +514,80 @@ class TaskManager(Node):
         self.publish_status("initial_pose_sent", "published_three_times")
         return "initial pose published"
 
+    def _on_run_mission_feedback(self, fb_msg) -> None:
+        try:
+            fb = fb_msg.feedback
+            self.mission_status_raw = fb.last_status_kv or self.mission_status_raw
+            if fb.state == "mission_complete":
+                # final feedback before result; do nothing here, result handler updates state
+                pass
+            else:
+                self._route_state = "running"
+        except Exception as exc:  # pragma: no cover - best-effort
+            self.get_logger().warning(f"run_mission feedback handler failed: {exc}")
+
+    def _on_run_mission_result(self, future) -> None:
+        try:
+            wrapped = future.result()
+            status = getattr(wrapped, "status", GoalStatus.STATUS_UNKNOWN)
+            result = getattr(wrapped, "result", None)
+            success = bool(getattr(result, "success", False)) if result is not None else False
+            self._route_state = "succeeded" if (
+                status == GoalStatus.STATUS_SUCCEEDED and success
+            ) else (
+                "canceled" if status == GoalStatus.STATUS_CANCELED else "failed"
+            )
+            if result is not None and getattr(result, "report_json_path", ""):
+                self.mission_report_path = result.report_json_path
+        except Exception as exc:  # pragma: no cover - best-effort
+            self.get_logger().warning(f"run_mission result handler failed: {exc}")
+            self._route_state = "failed"
+        finally:
+            self._route_action_goal_handle = None
+            self._route_action_result_future = None
+            self.publish_status("ready", f"route_action_done:{self._route_state}")
+
+    def _start_route_via_action(
+        self,
+        route_id: str,
+        route_file: Path,
+        request: NavCommand.Request,
+        mission_name: str,
+    ) -> tuple[str, str]:
+        client = self.run_mission_client
+        if client is None or not _HAS_RUN_MISSION_ACTION:
+            raise RuntimeError("RunMission action client unavailable")
+        if not client.wait_for_server(timeout_sec=self.run_mission_goal_timeout_sec):
+            raise RuntimeError(
+                f"RunMission action server '{self.run_mission_action_name}' not available"
+            )
+        goal = RunMissionAction.Goal()
+        goal.mission_name = mission_name
+        goal.waypoints_file = str(route_file)
+        goal.require_real_ready = bool(getattr(request, "require_real_ready", True))
+        goal.stop_on_failure = bool(request.stop_on_failure)
+
+        send_future = client.send_goal_async(
+            goal, feedback_callback=self._on_run_mission_feedback
+        )
+        if not self.wait_for_future(send_future, self.run_mission_goal_timeout_sec):
+            raise RuntimeError("RunMission send_goal timed out")
+        goal_handle = send_future.result()
+        if goal_handle is None or not getattr(goal_handle, "accepted", False):
+            raise RuntimeError("RunMission goal rejected by mission server")
+        self._route_action_goal_handle = goal_handle
+        self._route_action_result_future = goal_handle.get_result_async()
+        self._route_action_result_future.add_done_callback(self._on_run_mission_result)
+        self._route_state = "running"
+        self._route_id = route_id
+        self._route_path = str(route_file)
+        self.mission_report_path = ""
+        self.mission_status_raw = ""
+        self.publish_status("route_started", "mission_action_dispatched")
+        return route_id, str(route_file)
+
     def start_route(self, request: NavCommand.Request) -> tuple[str, str]:
-        if self._route_process is not None:
+        if self._route_active():
             raise RuntimeError("another route mission is already running")
         if request.route_id:
             route_id = validate_route_id(request.route_id)
@@ -483,6 +600,10 @@ class TaskManager(Node):
         if not route_file.exists():
             raise FileNotFoundError(f"route file not found: {route_file}")
         mission_name = (request.mission_name or route_id or "auto_scan").strip()
+
+        if self.task_manager_use_action and self.run_mission_client is not None:
+            return self._start_route_via_action(route_id, route_file, request, mission_name)
+
         command = build_auto_scan_command(
             self.auto_scan_script,
             route_file,
@@ -509,6 +630,17 @@ class TaskManager(Node):
         return route_id, str(route_file)
 
     def stop_route(self) -> str:
+        if self._route_action_goal_handle is not None:
+            handle = self._route_action_goal_handle
+            try:
+                cancel_future = handle.cancel_goal_async()
+                self.wait_for_future(cancel_future, self.route_stop_timeout_sec)
+            except Exception as exc:  # pragma: no cover - best-effort cancel
+                self.get_logger().warning(f"cancel_goal_async failed: {exc}")
+            # Result callback will clear _route_action_goal_handle and update state.
+            self._route_state = "stopping"
+            self.publish_status("route_stopping", "mission_action_cancel_requested")
+            return "route mission cancel requested"
         if self._route_process is None:
             self._route_state = "idle"
             return "no active route mission"

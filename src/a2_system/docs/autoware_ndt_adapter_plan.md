@@ -134,12 +134,14 @@ The status payload should include these top-level fields:
 - `state`
 - `ready`
 - `reason`
-- `matcher=ndt`
+- `matcher=autoware_ndt`
 - `score`
-- `effective_correspondences`
-- `iterations`
-- `translation`
-- `rotation_deg`
+- `score_threshold`
+- `iteration_num`
+- `map_ready`
+- `map_points`
+- `last_map_cell_id`
+- `last_map_returned_points`
 - `map_id`
 - `live_cloud_topic`
 - `odom_topic`
@@ -175,9 +177,10 @@ management.
 Recommended A2 direction:
 
 1. Keep `map_manager` as the A2 map authority.
-2. Extend `pointcloud_map_loader` or add a compatible differential-load service.
-3. Let the NDT adapter request map tiles or surrounding map segments near the
-   current pose estimate.
+2. Cache `/a2/map/pointcloud_3d` inside the A2 NDT adapter and expose the
+   Autoware `GetDifferentialPointCloudMap` service boundary.
+3. Let the adapter return bounded local map cells around each requested area
+   instead of forwarding the whole map on every request.
 4. Keep the save/load/promote lifecycle in A2 tooling rather than replacing it
    with Autoware launch assumptions.
 
@@ -252,15 +255,31 @@ following are true:
 - Web continues showing localization state without backend contract churn
 - dry-run robot validation passes before any motion enablement
 
-## Current Blocker
+## Current Integration Status
 
-The current development environment does not show an installed Autoware NDT
-package in `ros2 pkg list`, so the immediate next work item is not runtime
-integration. It is:
+The current development environment exposes `autoware_ndt_scan_matcher` through
+ROS package discovery, and the A2 adapter package is intended to launch that
+matcher behind an A2-native interface.
 
-- decide whether to vendor the Autoware NDT package into the workspace, or
-- install a compatible package on the robot/dev machine, then
-- implement the A2 adapter boundary on top of it
+Current local hardening:
+
+- `a2_ndt_adapter` launches Autoware NDT behind A2 topic and TF contracts.
+- NDT pose/TF output is gated on fresh DLIO odom and fresh acceptable score.
+- The differential map service returns bounded area cells and honors cached cell
+  IDs.
+- `ndt_adapter_dry_run_check.py` provides a repeatable robot-side dry-run gate.
+- `pose_goal_controller_3d` requires a fresh front-LiDAR cloud before accepting
+  or executing a 3D pose goal.
+
+The remaining validation work is runtime-focused:
+
+- confirm the adapter and matcher launch together on the robot in dry-run mode
+- confirm the bounded differential map service gives NDT enough local map points
+- confirm NDT score and iteration diagnostics are fresh before A2 pose/TF output
+- confirm bad matches do not update `map -> odom`
+- profile CPU latency on dense JT128 point clouds before enabling motion
+- add a full 2.5D/3D obstacle-aware planner/costmap after the transitional
+  pointcloud freshness gate is validated
 
 ## Bottom Line
 
