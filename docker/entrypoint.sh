@@ -8,8 +8,10 @@ export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 mkdir -p "${A2_WORKSPACE}/runtime/maps" "${A2_WORKSPACE}/runtime/logs"
 
+set +u
 source /opt/ros/humble/setup.bash
 source "${A2_WORKSPACE}/install/setup.bash"
+set -u
 
 # Start web console backend (open web UI to start mapping/navigation)
 exec "${A2_WORKSPACE}/web_console/scripts/run_backend.sh" "$@"
