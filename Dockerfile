@@ -45,9 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-autoware-map-msgs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Unitree SDK (requires --build-context unitree_sdk=/opt/unitree_robotics)
-# Build with: DOCKER_BUILDKIT=1 docker build --build-context unitree_sdk=/opt/unitree_robotics ...
-COPY --from=unitree_sdk / /opt/unitree_robotics/
+# Install Unitree SDK (bundled in docker/unitree_sdk/ for self-contained build)
+COPY docker/unitree_sdk/ /opt/unitree_robotics/
 
 # Install A2-specific SDK headers (shipped in repo under docker/a2_sdk_headers/)
 COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
