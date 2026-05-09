@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-pointcloud-to-laserscan \
     ros-humble-autoware-internal-debug-msgs \
     ros-humble-autoware-map-msgs \
+    ros-humble-slam-toolbox \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Unitree SDK (bundled in docker/unitree_sdk/ for self-contained build)
@@ -65,14 +66,10 @@ COPY --from=web-build /backend/static ./web_console/backend/static
 # Copy entrypoint
 COPY docker/entrypoint.sh /usr/local/bin/a2-web-entrypoint
 
-# Remove duplicate third-party packages, clone Hesai lidar driver, then build
+# Build all ROS2 packages (third-party autoware excluded, Hesai lidar driver included)
 RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
     && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
-    && git clone --depth 1 --branch v1.5.0 \
-        https://github.com/HesaiTechnology/HesaiLidar_ROS_2.0.git \
-        src/hesai_ros_driver \
-    && rm -rf src/hesai_ros_driver/.git \
     && source /opt/ros/humble/setup.bash \
     && OUR_PACKAGES=$(colcon list \
         | grep -vE 'autoware_|fast_lio|livox_ros_driver2' \

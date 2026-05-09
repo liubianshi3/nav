@@ -34,6 +34,13 @@ fi
 source "${WORKSPACE}/install/setup.bash"
 set -u
 
+# Detect Docker: skip hardware-specific setup that requires host system tools
+_IS_DOCKER=false
+if [[ -f /.dockerenv ]] || grep -q docker /proc/1/cgroup 2>/dev/null; then
+  _IS_DOCKER=true
+  echo "Running in Docker — skipping network interface preflight, DDS setup, and sudo calls."
+fi
+
 PREFLIGHT_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/preflight_check.py"
 CONFIGURE_NETWORK_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/configure_real_network.sh"
 SETUP_DDS_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/setup_unitree_dds.sh"
@@ -43,19 +50,21 @@ if [[ -n "${IFACE}" ]]; then
   PREFLIGHT_ARGS+=(--interface "${IFACE}")
 fi
 
-python3 "${PREFLIGHT_SCRIPT}" "${PREFLIGHT_ARGS[@]}" || true
+if ! $_IS_DOCKER; then
+  python3 "${PREFLIGHT_SCRIPT}" "${PREFLIGHT_ARGS[@]}" || true
 
-if [[ -z "${IFACE}" ]]; then
-  source "${SETUP_DDS_SCRIPT}"
+  if [[ -z "${IFACE}" ]]; then
+    source "${SETUP_DDS_SCRIPT}"
+    IFACE="${A2_NETWORK_INTERFACE:-${IFACE}}"
+  fi
+
+  if [[ "${A2_AUTO_CONFIGURE_NETWORK:-1}" == "1" ]]; then
+    "${CONFIGURE_NETWORK_SCRIPT}" "${IFACE}"
+  fi
+
+  source "${SETUP_DDS_SCRIPT}" "${IFACE}"
   IFACE="${A2_NETWORK_INTERFACE:-${IFACE}}"
 fi
-
-if [[ "${A2_AUTO_CONFIGURE_NETWORK:-1}" == "1" ]]; then
-  "${CONFIGURE_NETWORK_SCRIPT}" "${IFACE}"
-fi
-
-source "${SETUP_DDS_SCRIPT}" "${IFACE}"
-IFACE="${A2_NETWORK_INTERFACE:-${IFACE}}"
 
 # Keep the interface readiness result from setup_unitree_dds.sh, but launch the
 # ROS workspace with the default RMW to avoid SDK/domain collisions in the
