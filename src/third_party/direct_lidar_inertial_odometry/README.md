@@ -11,10 +11,8 @@ DLIO is a new lightweight LiDAR-inertial odometry algorithm with a novel coarse-
 
 ## Instructions
 
-### Sensor Setup & Compatibility
-DLIO has been extensively tested using a variety of sensor configurations and currently supports Ouster, Velodyne, Hesai, and Livox LiDARs. The point cloud should be of input type `sensor_msgs::PointCloud2` and the 6-axis IMU input type of `sensor_msgs::Imu`. 
-
-For Livox sensors specifically, you can use the `master` branch directly if it is of type `sensor_msgs::PointCloud2` (`xfer_format: 0`), or the `feature/livox-support` branch and the latest [`livox_ros_driver2`](https://github.com/Livox-SDK/livox_ros_driver2) package if it is of type `livox_ros_driver2::CustomMsg` (`xfer_format: 1`) (see [here](https://github.com/vectr-ucla/direct_lidar_inertial_odometry/issues/5) for more information).
+### Sensor Setup
+DLIO has been extensively tested using a variety of sensor configurations and currently supports Ouster, Velodyne, and Hesai LiDARs. The point cloud should be of input type `sensor_msgs::PointCloud2` and the 6-axis IMU input type of `sensor_msgs::Imu`.
 
 For best performance, extrinsic calibration between the LiDAR/IMU sensors and the robot's center-of-gravity should be inputted into `cfg/dlio.yaml`. If the exact values of these are unavailable, a rough LiDAR-to-IMU extrinsics can also be used (note however that performance will be degraded).
 
@@ -25,8 +23,8 @@ Also note that the LiDAR and IMU sensors _need_ to be properly time-synchronized
 ### Dependencies
 The following has been verified to be compatible, although other configurations may work too:
 
-- Ubuntu 20.04
-- ROS Noetic (`roscpp`, `std_msgs`, `sensor_msgs`, `geometry_msgs`, `nav_msgs`, `pcl_ros`)
+- Ubuntu 22.04
+- ROS Humble (`rclcpp`, `std_msgs`, `sensor_msgs`, `geometry_msgs`, `nav_msgs`, `pcl_ros`)
 - C++ 14
 - CMake >= `3.12.4`
 - OpenMP >= `4.5`
@@ -37,19 +35,35 @@ The following has been verified to be compatible, although other configurations 
 sudo apt install libomp-dev libpcl-dev libeigen3-dev
 ```
 
-DLIO supports ROS1 by default, and ROS2 using the `feature/ros2` branch.
+DLIO currently supports `ROS 1` and `ROS 2`!
 
 ### Compiling
 Compile using the [`catkin_tools`](https://catkin-tools.readthedocs.io/en/latest/) package via:
 
 ```sh
-mkdir ws && cd ws && mkdir src && catkin init && cd src
-git clone https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git
-catkin build
+mkdir ~/ros2_ws && cd ~/ros2_ws && mkdir src && cd src
+```
+```sh
+git clone https://github.com/vectr-ucla/direct_lidar_inertial_odometry -b feature/ros2
+```
+```sh
+cd ~/ros2_ws
+```
+```sh
+colcon build --symlink-install --packages-select direct_lidar_inertial_odometry
 ```
 
 ### Execution
-After compiling, source the workspace and execute via:
+
+<details>
+<summary> After compiling, don't forget to source before ROS commands.</summary>
+
+``` bash
+source ~/ros2_ws/install/setup.bash
+```
+</details>
+
+Execute via:
 
 ```sh
 roslaunch direct_lidar_inertial_odometry dlio.launch \
@@ -58,16 +72,13 @@ roslaunch direct_lidar_inertial_odometry dlio.launch \
   imu_topic:=/robot/imu
 ```
 
-for Ouster, Velodyne, Hesai, or Livox (`xfer_format: 0`) sensors, or 
+<details>
+<summary> Example command: </summary>
 
-```sh
-roslaunch direct_lidar_inertial_odometry dlio.launch \
-  rviz:={true, false} \
-  livox_topic:=/livox/lidar \
-  imu_topic:=/robot/imu
+``` bash
+ros2 launch direct_lidar_inertial_odometry dlio.launch.py rviz:=true pointcloud_topic:=/lexus3/os_center/points imu_topic:=/lexus3/os_center/imu
 ```
-
-for Livox sensors (`xfer_format: 1`).
+</details>
 
 Be sure to change the topic names to your corresponding topics. Alternatively, edit the launch file directly if desired. If successful, you should see the following output in your terminal:
 <br>
@@ -79,11 +90,11 @@ Be sure to change the topic names to your corresponding topics. Alternatively, e
 To save DLIO's generated map into `.pcd` format, call the following service:
 
 ```sh
-rosservice call /robot/dlio_map/save_pcd LEAF_SIZE SAVE_PATH
+ros2 service call /save_pcd direct_lidar_inertial_odometry/srv/SavePCD "{'leaf_size': 0.2, 'save_path': '~/map'}"
 ```
 
 ### Test Data
-For your convenience, we provide test data [here](https://drive.proton.me/urls/Z83QCWKZWW#bMIqDh02AJZZ) (1.2GB, 1m 13s, Ouster OS1-32) of an aggressive motion to test our motion correction scheme, and [here](https://drive.proton.me/urls/7NQSK9DXJ0#gZ9yjGNrDBgG) (16.5GB, 4m 21s, Ouster OSDome) of a longer trajectory outside with lots of trees. Try these two datasets with both deskewing on and off!
+For your convenience, we provide test data [here](https://drive.google.com/file/d/1Sp_Mph4rekXKY2euxYxv6SD6WIzB-wVU/view?usp=sharing) (1.2GB, 1m 13s, Ouster OS1-32) of an aggressive motion to test our motion correction scheme, and [here](https://drive.google.com/file/d/1HbmF5gTHxCAMqBkEd5PTxDNQvcI8tKXn/view?usp=sharing) (16.5GB, 4m 21s, Ouster OSDome) of a longer trajectory outside with lots of trees. Try these two datasets with both deskewing on and off!
 
 <br>
 <p align='center'>
@@ -112,8 +123,6 @@ We thank the authors of the [FastGICP](https://github.com/SMRT-AIST/fast_gicp) a
 - Jose Luis Blanco and Pranjal Kumar Rai, “NanoFLANN: a C++ Header-Only Fork of FLANN, A Library for Nearest Neighbor (NN) with KD-Trees,” https://github.com/jlblancoc/nanoflann, 2014.
 
 We would also like to thank Helene Levy and David Thorne for their help with data collection.
-
-Many thanks to [@shrijitsingh99](https://github.com/shrijitsingh99) for [porting DLIO to ROS2](https://github.com/vectr-ucla/direct_lidar_inertial_odometry/pull/16)!
 
 ## License
 This work is licensed under the terms of the MIT license.
