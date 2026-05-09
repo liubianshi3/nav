@@ -54,6 +54,8 @@ navigation:
   cancel_timeout_sec: 3.0
   initial_pose_wait_timeout_sec: 8.0
   initial_pose_publish_interval_sec: 0.4
+  initial_pose_covariance_xy: 0.05
+  initial_pose_covariance_yaw: 0.03
   allow_send_goal: true
   require_map_for_goal: true
   require_localization_ready: true

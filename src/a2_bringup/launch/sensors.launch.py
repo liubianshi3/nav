@@ -287,7 +287,6 @@ def _launch_setup(context, *args, **kwargs):
                         output="screen",
                     )
                 )
-        return actions
         actions.append(
             LogInfo(
                 msg=(

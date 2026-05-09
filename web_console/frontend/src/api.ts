@@ -143,6 +143,15 @@ export async function saveCurrentMap(mapId: string): Promise<{ map: SavedMapInfo
   return handleJson<{ ok: boolean; map: SavedMapInfo; maps: SavedMapInfo[] }>(response);
 }
 
+export async function projectPcdTo2d(mapId: string): Promise<{ ok: boolean; map_id: string; map_yaml: string; navigation_ready: boolean; stdout: string }> {
+  const response = await fetch("/api/maps/project-2d", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ map_id: mapId }),
+  });
+  return handleJson<{ ok: boolean; map_id: string; map_yaml: string; navigation_ready: boolean; stdout: string }>(response);
+}
+
 export async function fetchTaskRoutes(): Promise<TaskRouteListing> {
   return handleJson<TaskRouteListing>(await fetch("/api/tasks/routes"));
 }

@@ -36,6 +36,7 @@ class RosTopicConfig:
     camera_status_topic: str = "/a2/camera/depth/status"
     localization_ok_topic: str = "/a2/localization_ok"
     localization_status_topic: str = "/a2/localization/status"
+    relocalization_status_topic: str = "/a2/relocalization/status"
     map_manager_status_topic: str = "/a2/map_manager/status"
     map_manager_active_map_topic: str = "/a2/map_manager/active_map"
     task_manager_status_topic: str = "/a2/task_manager/status"
@@ -44,6 +45,8 @@ class RosTopicConfig:
     raw_state_topic: str = "/a2/raw_state"
     camera_image_topic: str = "/camera/image_raw"
     camera_compressed_topic: str = "/camera/image_raw/compressed"
+    battery_topic: str = "/a2/battery"
+    scan_mission_status_topic: str = "/a2/scan_mission/status"
 
 
 @dataclass
@@ -71,6 +74,8 @@ class NavigationConfig:
     cancel_timeout_sec: float = 3.0
     initial_pose_wait_timeout_sec: float = 8.0
     initial_pose_publish_interval_sec: float = 0.4
+    initial_pose_covariance_xy: float = 0.05
+    initial_pose_covariance_yaw: float = 0.03
     allow_send_goal: bool = True
     require_map_for_goal: bool = True
     require_localization_ready: bool = True

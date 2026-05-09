@@ -29,6 +29,7 @@ def generate_launch_description():
             ],
             remappings=[
                 ('points_raw', '/jt128/front/points'),
+                ('ekf_pose_with_covariance', '/a2/ndt/open_loop_pose'),
             ],
             output='screen'
         ),

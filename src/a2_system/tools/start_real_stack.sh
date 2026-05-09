@@ -2,6 +2,7 @@
 set -euo pipefail
 
 WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+GRAPH_PID_WS="${A2_GRAPH_PID_WS:-$HOME/graph_pid_ws}"
 IFACE="${A2_NETWORK_INTERFACE:-}"
 EXTRA_ARGS=()
 export A2_WORKSPACE="${WORKSPACE}"
@@ -27,6 +28,9 @@ mkdir -p "${LOG_DIR}"
 
 set +u
 source /opt/ros/humble/setup.bash
+if [[ -f "${GRAPH_PID_WS}/install/setup.bash" ]]; then
+  source "${GRAPH_PID_WS}/install/setup.bash"
+fi
 source "${WORKSPACE}/install/setup.bash"
 set -u
 

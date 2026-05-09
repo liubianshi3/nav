@@ -87,6 +87,10 @@ class RobotStatus(BaseModel):
     velocity_linear_x: float | None = None
     velocity_angular_z: float | None = None
     raw_state: RawStateSummary | None = None
+    ndt_score: float | None = None
+    ndt_healthy: bool | None = None
+    planner_type: str | None = None
+    bt_filename: str | None = None
 
 
 class NavigationGoal(BaseModel):
@@ -285,6 +289,24 @@ class StackStatus(BaseModel):
     message: str | None = None
 
 
+class RecoveryStatus(BaseModel):
+    active: bool = False
+    step: str | None = None
+    sequence: list[str] = Field(default_factory=list)
+    recovered: bool | None = None
+    duration_sec: float | None = None
+    attempts: int = 0
+    raw: str | None = None
+
+
+class BatterySnapshot(BaseModel):
+    available: bool = False
+    percentage: float | None = None
+    voltage: float | None = None
+    charging: bool | None = None
+    stamp: str | None = None
+
+
 class DashboardSnapshot(BaseModel):
     map: MapSnapshot = Field(default_factory=MapSnapshot)
     pointcloud: PointCloudSnapshot = Field(default_factory=PointCloudSnapshot)
@@ -293,3 +315,5 @@ class DashboardSnapshot(BaseModel):
     navigation: NavigationTaskState = Field(default_factory=NavigationTaskState)
     camera: CameraFrame = Field(default_factory=CameraFrame)
     health: SystemHealth = Field(default_factory=SystemHealth)
+    battery: BatterySnapshot = Field(default_factory=BatterySnapshot)
+    recovery: RecoveryStatus = Field(default_factory=RecoveryStatus)
