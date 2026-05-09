@@ -11,6 +11,17 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Bool, String
 
 
+def as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        v = value.strip().lower()
+        return v in ("1", "true", "t", "yes", "y", "on")
+    if isinstance(value, (int, float)):
+        return value != 0
+    return bool(value)
+
+
 def yaw_from_quaternion(q) -> float:
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
     cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -49,11 +60,11 @@ class PoseGoalController3D(Node):
             "localization_ok_topic", "/a2/localization_ok"
         ).value
         self.map_frame = self.declare_parameter("map_frame", "map").value
-        self.dry_run = bool(self.declare_parameter("dry_run", True).value)
-        self.require_localization_ok = bool(
+        self.dry_run = as_bool(self.declare_parameter("dry_run", True).value)
+        self.require_localization_ok = as_bool(
             self.declare_parameter("require_localization_ok", True).value
         )
-        self.require_obstacle_cloud = bool(
+        self.require_obstacle_cloud = as_bool(
             self.declare_parameter("require_obstacle_cloud", True).value
         )
         self.obstacle_cloud_topic = self.declare_parameter(

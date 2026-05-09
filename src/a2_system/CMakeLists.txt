@@ -13,6 +13,7 @@ install(PROGRAMS
   scripts/auto_scan_mission.py
   scripts/config_schema_check.py
   scripts/goal_pose_3d_smoke_test.py
+  scripts/industrial_3d_closed_loop_check.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py
@@ -42,6 +43,7 @@ install(PROGRAMS
   scripts/auto_scan_mission.py
   scripts/config_schema_check.py
   scripts/goal_pose_3d_smoke_test.py
+  scripts/industrial_3d_closed_loop_check.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py

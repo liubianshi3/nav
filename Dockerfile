@@ -44,6 +44,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-autoware-internal-debug-msgs \
     ros-humble-autoware-map-msgs \
     ros-humble-slam-toolbox \
+    ros-humble-pcl-ros \
+    ros-humble-pcl-conversions \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Unitree SDK (bundled in docker/unitree_sdk/ for self-contained build)

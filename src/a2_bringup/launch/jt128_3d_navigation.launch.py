@@ -3,9 +3,9 @@ from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription, OpaqueFunction, SetLaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -52,6 +52,44 @@ def _pointcloud_guard_action():
     )
 
 
+def _resolve_nav2_map_arguments(context, *args, **kwargs):
+    enable_nav2_3d = LaunchConfiguration("enable_nav2_3d").perform(context).strip().lower()
+    if enable_nav2_3d not in ("1", "true", "t", "yes", "y", "on"):
+        return []
+
+    explicit_map = LaunchConfiguration("nav2_3d_map").perform(context).strip()
+    if explicit_map:
+        return [LogInfo(msg=f"Nav2 3D map YAML: {explicit_map}")]
+
+    map_root = Path(LaunchConfiguration("map_root").perform(context))
+    map_id = LaunchConfiguration("map_id").perform(context).strip()
+    pcd_path = LaunchConfiguration("pcd_path").perform(context).strip()
+
+    candidates: list[Path] = []
+    if map_id:
+        candidates.append(map_root / map_id / "map.yaml")
+    if pcd_path:
+        candidates.append(Path(pcd_path).expanduser().resolve().parent / "map.yaml")
+
+    for candidate in candidates:
+        if candidate.exists():
+            resolved = str(candidate)
+            return [
+                SetLaunchConfiguration("nav2_3d_map", resolved),
+                LogInfo(msg=f"Resolved Nav2 3D map YAML from navigation assets: {resolved}"),
+            ]
+
+    detail = f"map_id={map_id or 'none'};pcd_path={pcd_path or 'none'}"
+    return [
+        LogInfo(
+            msg=(
+                "Nav2 3D is enabled but no map YAML could be resolved automatically. "
+                f"Pass nav2_3d_map explicitly or add map.yaml beside the selected 3D map. ({detail})"
+            )
+        )
+    ]
+
+
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     unitree_ddsc_env = _unitree_ddsc_env()
@@ -74,6 +112,7 @@ def generate_launch_description():
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
                                   description="Path to 2D projected map YAML for Nav2 3D mode"),
+            OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
                     "Starting JT128 3D navigation: loading PCD, running the first-pass "

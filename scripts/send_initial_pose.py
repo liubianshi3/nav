@@ -31,11 +31,12 @@ def main():
         0.0, 0.0, 0.0, 0.0, 0.0, 0.1,
     ]
 
-    node.get_logger().info(f'Sending initial pose: ({x:.2f}, {y:.2f}) stamp={msg.header.stamp}')
+    node.get_logger().info(f'Sending 50 initial poses: ({x:.2f}, {y:.2f})')
 
-    for i in range(3):
+    for i in range(50):
+        msg.header.stamp = node.get_clock().now().to_msg()
         pub.publish(msg)
-        rclpy.spin_once(node, timeout_sec=0.1)
+        rclpy.spin_once(node, timeout_sec=0.05)
 
     node.get_logger().info('Done.')
     node.destroy_node()

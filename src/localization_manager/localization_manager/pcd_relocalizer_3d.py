@@ -234,6 +234,9 @@ class PcdRelocalizer3D(Node):
         self.voxel_leaf_size = max(0.0, float(self.declare_parameter("voxel_leaf_size", 0.35).value))
         self.max_map_points = int(self.declare_parameter("max_map_points", 200000).value)
         self.max_scan_points = int(self.declare_parameter("max_scan_points", 1200).value)
+        # Optional scan range trimming to reduce outliers/dynamics influence
+        self.scan_trim_min_range = float(self.declare_parameter("scan_trim_min_range", 0.0).value)
+        self.scan_trim_max_range = float(self.declare_parameter("scan_trim_max_range", 0.0).value)
 
         self.ndt_resolution = float(self.declare_parameter("ndt_resolution", 1.0).value)
         self.ndt_min_points_per_voxel = int(self.declare_parameter("ndt_min_points_per_voxel", 6).value)
@@ -246,6 +249,18 @@ class PcdRelocalizer3D(Node):
         self.ndt_converged_translation_epsilon = float(self.declare_parameter("ndt_converged_translation_epsilon", 0.01).value)
         self.ndt_converged_rotation_epsilon = math.radians(float(self.declare_parameter("ndt_converged_rotation_epsilon_deg", 0.2).value))
         self.ndt_score_threshold = float(self.declare_parameter("ndt_score_threshold", 3.0).value)
+        # Readiness hysteresis: require consecutive accepts and tolerate transient rejections
+        self.ready_required_consecutive = int(
+            self.declare_parameter("ready_required_consecutive", 2).value
+        )
+        self.ready_release_required_consecutive = int(
+            self.declare_parameter("ready_release_required_consecutive", 2).value
+        )
+        self.ready_release_score_threshold = float(
+            self.declare_parameter(
+                "ready_release_score_threshold", max(0.1, self.ndt_score_threshold * 1.5)
+            ).value
+        )
         self.ndt_min_effective_correspondences = int(self.declare_parameter("ndt_min_effective_correspondences", 80).value)
 
         self.max_translation_correction = float(self.declare_parameter("max_translation_correction", 1.2).value)
@@ -299,6 +314,10 @@ class PcdRelocalizer3D(Node):
         self.last_cloud_parse_time = None
         self.cloud_sub = None
         self.match_in_progress = False
+        # Readiness state and counters
+        self.last_ready: bool = False
+        self._consecutive_accepts = 0
+        self._consecutive_ready_releases = 0
 
         # Kidnap recovery state
         self._consecutive_rejections = 0
@@ -415,16 +434,27 @@ class PcdRelocalizer3D(Node):
         if not points:
             self.publish_status(False, "waiting_scan", "empty_cloud")
             return
-        self.last_scan = voxel_downsample(
+        down = voxel_downsample(
             np.array(points, dtype=np.float64),
             self.voxel_leaf_size,
             self.max_scan_points,
         )
+        # Optional distance trimming (3D Euclidean)
+        if self.scan_trim_min_range > 0.0 or self.scan_trim_max_range > 0.0:
+            dists = np.linalg.norm(down, axis=1)
+            min_ok = dists >= max(0.0, self.scan_trim_min_range)
+            if self.scan_trim_max_range > 0.0:
+                max_ok = dists <= self.scan_trim_max_range
+                mask = np.logical_and(min_ok, max_ok)
+            else:
+                mask = min_ok
+            down = down[mask]
+        self.last_scan = down
 
     def on_odom(self, msg: Odometry) -> None:
         self.last_odom = msg
         if self.has_seed:
-            self.publish_pose_and_tf(msg, ready=self.last_score is not None and self.last_score <= self.ndt_score_threshold)
+            self.publish_pose_and_tf(msg, ready=self.last_ready)
 
     def on_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         if self.last_odom is None:
@@ -635,6 +665,10 @@ class PcdRelocalizer3D(Node):
             if r_norm > self.ndt_step_rotation_limit:
                 d_r *= self.ndt_step_rotation_limit / r_norm
 
+            # Restrict to planar SE2.5 update: allow only x/y translation and yaw rotation
+            d_t[2] = 0.0
+            d_r[0] = 0.0
+            d_r[1] = 0.0
             step = xyz_rpy_to_matrix(d_t, d_r)
             correction = step @ correction
             score = score_sum / effective_correspondences
@@ -721,15 +755,19 @@ class PcdRelocalizer3D(Node):
             self.map_to_odom = result["map_to_odom"]
             self.last_score = result["score"]
             self._consecutive_rejections = 0
+            self._consecutive_accepts += 1
+            if self._consecutive_accepts >= max(1, self.ready_required_consecutive):
+                self.last_ready = True
+                self._consecutive_ready_releases = 0
             if self._kidnap_lost:
                 self.get_logger().info(
                     f"Global relocalization recovered: score={result['score']:.3f} "
                     f"correspondences={result['effective_correspondences']}"
                 )
             self._kidnap_lost = False
-            self.publish_pose_and_tf(self.last_odom, ready=True)
+            self.publish_pose_and_tf(self.last_odom, ready=self.last_ready)
             self.publish_status(
-                True, "ready", "converged",
+                self.last_ready, "ready" if self.last_ready else "tracking", "converged",
                 score=result["score"],
                 effective_correspondences=result["effective_correspondences"],
                 iterations=result["iterations"],
@@ -738,6 +776,15 @@ class PcdRelocalizer3D(Node):
             )
         else:
             self._consecutive_rejections += 1
+            self._consecutive_accepts = 0
+            # Release readiness after sustained poor matches or rising score
+            current_score = float(result["score"]) if math.isfinite(result["score"]) else float("inf")
+            if self.last_ready and (
+                self._consecutive_rejections >= max(1, self.ready_release_required_consecutive)
+                or current_score > self.ready_release_score_threshold
+            ):
+                self.last_ready = False
+                self._consecutive_ready_releases += 1
             if (
                 self._consecutive_rejections >= self.kidnap_consecutive_rejections
                 and not self._kidnap_lost
