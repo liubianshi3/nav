@@ -74,7 +74,7 @@ RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
     && source /opt/ros/humble/setup.bash \
     && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|fast_lio|livox_ros_driver2' \
+        | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
         | awk '{print $1}' \
         | tr '\n' ' ') \
     && colcon build --packages-select ${OUR_PACKAGES} \

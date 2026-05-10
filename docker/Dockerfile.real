@@ -60,7 +60,7 @@ COPY docker/entrypoint.sh /usr/local/bin/a2-web-entrypoint
 RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
     && source /opt/ros/humble/setup.bash \
-    && colcon build --packages-skip fast_lio livox_ros_driver2 \
+    && colcon build --packages-skip fast_lio livox_ros_driver2 direct_lidar_inertial_odometry \
     && pip3 install --no-cache-dir -r web_console/backend/requirements.txt \
     && mkdir -p runtime/maps runtime/logs \
     && rm -rf build log
