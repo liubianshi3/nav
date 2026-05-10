@@ -149,15 +149,15 @@ def audit_localization(result: AuditResult, config_dir: Path) -> None:
             "pose_transient_local",
         ],
     )
-    result.require(params.get("input_pose_topic") == "/jt128/dlio/odom", "localization_gate input must be /jt128/dlio/odom in JT128 3D-first mode")
+    result.require(params.get("input_pose_topic") == "/amcl_pose", "localization_gate input must be /amcl_pose in Nav2 AMCL mode")
     result.require(
-        params.get("input_pose_msg_type") == "nav_msgs/msg/Odometry",
-        "localization_gate input_pose_msg_type must be nav_msgs/msg/Odometry",
+        params.get("input_pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
+        "localization_gate input_pose_msg_type must be geometry_msgs/msg/PoseWithCovarianceStamped",
     )
     result.require(params.get("status_topic") == "/a2/localization_ok", "localization status topic mismatch")
     result.require(
         not bool(params.get("pose_transient_local", True)),
-        "localization_gate must use volatile QoS for JT128 DLIO odom in 3D-first mode",
+        "localization_gate must use volatile QoS",
     )
     result.require(float(params.get("max_pose_age_sec", 999.0)) <= 10.0, "localization max_pose_age_sec too loose")
     result.require(float(params.get("max_xy_variance", 999.0)) <= 0.20, "localization max_xy_variance too loose")
@@ -200,8 +200,8 @@ def audit_real_mapping_stack(result: AuditResult, config_dir: Path) -> None:
         "slam.yaml mapping_stack_profile must be a known 3D-first or legacy fallback profile",
     )
     result.require(
-        mapping_profile == "front_lidar_pointcloud_3d",
-        "slam.yaml must default real mapping_stack_profile to front_lidar_pointcloud_3d",
+        mapping_profile == "slam_toolbox",
+        "slam.yaml must default mapping_stack_profile to slam_toolbox for Nav2-first navigation",
     )
 
     toolbox_cfg = load_yaml_unique(config_dir / "slam_toolbox_mapping.yaml")

@@ -23,6 +23,8 @@ public:
   : Node("a2_sdk_bridge")
   {
     use_mock_ = declare_parameter<bool>("use_mock", true);
+    robot_profile_ = declare_parameter<std::string>("robot_profile", "");
+    robot_model_ = declare_parameter<std::string>("robot_model", "");
     auto_detect_interface_ = declare_parameter<bool>("auto_detect_interface", true);
     allow_loopback_ = declare_parameter<bool>("allow_loopback", true);
     network_interface_ = declare_parameter<std::string>("network_interface", "");
@@ -283,7 +285,10 @@ private:
       ";state=" + state +
       ";ready=" + std::string(connected ? "true" : "false") +
       ";reason=" + status +
-      ";interface=" + (resolved_interface_.empty() ? "none" : resolved_interface_);
+      ";interface=" + (resolved_interface_.empty() ? "none" : resolved_interface_) +
+      ";sport_state_topic=" + sport_state_topic_ +
+      ";robot_profile=" + robot_profile_ +
+      ";robot_model=" + robot_model_;
     sdk_status_pub_->publish(status_msg);
   }
 
@@ -292,6 +297,8 @@ private:
   bool allow_loopback_{true};
   std::string network_interface_;
   std::vector<std::string> interface_candidates_;
+  std::string robot_profile_;
+  std::string robot_model_;
   std::string state_topic_;
   std::string sport_state_topic_;
   std::string mock_cmd_topic_;

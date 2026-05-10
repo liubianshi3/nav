@@ -10,6 +10,8 @@ find_package(Threads REQUIRED)
 
 add_executable(a2_control_bridge_node src/a2_control_bridge_node.cpp)
 target_compile_features(a2_control_bridge_node PRIVATE cxx_std_17)
+target_include_directories(a2_control_bridge_node PRIVATE
+  include)
 ament_target_dependencies(a2_control_bridge_node
   rclcpp
   geometry_msgs
@@ -69,5 +71,30 @@ endif()
 
 install(TARGETS a2_control_bridge_node
   DESTINATION lib/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_lint_auto REQUIRED)
+
+  ament_add_gtest(test_control_bridge
+    test/test_control_bridge.cpp
+    src/a2_control_bridge_node.cpp
+  )
+
+  target_compile_definitions(test_control_bridge PRIVATE
+    A2_CONTROL_BRIDGE_TEST_BUILD
+  )
+
+  target_include_directories(test_control_bridge PRIVATE
+    include
+  )
+
+  ament_target_dependencies(test_control_bridge
+    rclcpp
+    geometry_msgs
+    std_msgs
+    a2_system
+  )
+endif()
 
 ament_package()

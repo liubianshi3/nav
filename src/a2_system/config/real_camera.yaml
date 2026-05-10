@@ -1,0 +1,12 @@
+real_camera:
+  ros__parameters:
+    enabled: false
+    profile: disabled
+    driver_mode: external_pointcloud
+    input_pointcloud_topic: ""
+    output_pointcloud_topic: ""
+    output_frame_id: ""
+    restamp_on_receive: false
+    stale_timeout_sec: 1.0
+    use_for_costmap: false
+

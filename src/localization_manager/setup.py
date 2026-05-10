@@ -21,6 +21,7 @@ setup(
             "localization_gate = localization_manager.localization_gate:main",
             "manual_localization_publisher = localization_manager.manual_localization_publisher:main",
             "pcd_relocalizer_3d = localization_manager.pcd_relocalizer_3d:main",
+            "ndt_health_monitor = localization_manager.ndt_health_monitor:main",
         ],
     },
 )

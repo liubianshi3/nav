@@ -11,6 +11,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ManageMap.srv"
   "srv/NavCommand.srv"
   "srv/SetMode.srv"
+  "action/RunMission.action"
   DEPENDENCIES builtin_interfaces geometry_msgs)
 
 ament_export_dependencies(rosidl_default_runtime)

@@ -6,9 +6,9 @@ auto_scan_mission:
     waypoints_file: ${HOME}/a2_system_ws/src/a2_system/config/scan_waypoints.example.yaml
     reports_root: ${HOME}/a2_system_ws/runtime/reports/scan_mission
     map_topic: /map
-    pose_topic: /jt128/dlio/odom
-    pose_msg_type: nav_msgs/msg/Odometry
-    odom_topic: /jt128/dlio/odom
+    pose_topic: /amcl_pose
+    pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
+    odom_topic: /odom
     pointcloud_topic: /jt128/front/points
     localization_ok_topic: /a2/localization_ok
     localization_status_topic: /a2/localization/status
@@ -22,11 +22,11 @@ auto_scan_mission:
     mission_goal_topic: /a2/scan_mission/goal
     goal_frame: map
     require_map_frame: true
-    validate_waypoints_against_map: false
+    validate_waypoints_against_map: true
     allow_unknown_cells: false
     occupied_threshold: 65
     min_clearance_cells: 0
-    navigation_backend: pose_topic_3d
+    navigation_backend: nav2
     pose_goal_topic: /a2/nav3/goal_pose
     navigate_action_name: /navigate_to_pose
     manage_map_service: /map_manager/manage_map

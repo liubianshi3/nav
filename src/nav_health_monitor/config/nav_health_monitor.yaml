@@ -1,0 +1,9 @@
+nav_health_monitor:
+  ros__parameters:
+    warn_speed_scale: 0.5
+    warn_persistence_sec: 3.0
+    recovery_hold_sec: 5.0
+    estop_on_stale: true
+    cancel_goal_on_error: true
+    zero_cmd_on_degraded: false   # disabled: collision_monitor owns /cmd_vel_safe; use max_speed_scale instead
+    cmd_vel_topic: "/cmd_vel_safe"  # output target for zero-cmd belt-and-suspenders (when enabled)

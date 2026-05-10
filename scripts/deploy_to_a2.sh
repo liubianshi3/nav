@@ -33,12 +33,16 @@ rsync -az --delete \
 ssh "${REMOTE_USER_HOST}" "bash -lc '
 set -euo pipefail
 cd ${REMOTE_WS}
+rm -rf build/autoware_cmake build/autoware_ndt_scan_matcher \
+       install/autoware_cmake install/autoware_ndt_scan_matcher
 set +u
 source /opt/ros/humble/setup.bash
 set -u
 colcon build --symlink-install --packages-select \
   a2_interfaces unitree_api a2_system a2_bringup localization_manager nav2_integration tf_manager \
-  a2_state_publisher safety_manager map_manager
+  a2_state_publisher safety_manager map_manager slam_manager sensor_sync a2_sdk_bridge a2_control_bridge \
+  nav_health_monitor exploration_manager a2_ndt_adapter \
+  a2_ground_segmentation_cpp nav2_integration_cpp
 set +u
 source install/setup.bash
 set -u

@@ -30,11 +30,14 @@ class SafetySupervisor(Node):
         self.map_representation = self.declare_parameter("map_representation", "occupancy_grid_2d").value
         self.require_map = bool(self.declare_parameter("require_map", True).value)
         self.require_localization = bool(self.declare_parameter("require_localization", True).value)
+        ndt_health_topic = self.declare_parameter("ndt_health_topic", "/a2/ndt/healthy").value
+        self.require_ndt_health = bool(self.declare_parameter("require_ndt_health", True).value)
 
         self.last_lidar = None
         self.last_state = None
         self.last_map = None
         self.localization_ok = False
+        self.ndt_healthy = not self.require_ndt_health
 
         self.allow_motion_pub = self.create_publisher(Bool, self.allow_motion_topic, 10)
         self.map_ready_pub = self.create_publisher(Bool, self.map_ready_topic, 10)
@@ -56,6 +59,9 @@ class SafetySupervisor(Node):
         self.create_subscription(RobotState, robot_state_topic, self.on_state, 20)
         self.create_subscription(OccupancyGrid, map_topic, self.on_map, map_qos)
         self.create_subscription(Bool, localization_status_topic, self.on_localization, 10)
+        if ndt_health_topic:
+            self.create_subscription(Bool, ndt_health_topic, self.on_ndt_health, 10)
+            self.get_logger().info(f"NDT health check enabled: {ndt_health_topic}")
         self.create_timer(0.2, self.evaluate)
 
     def on_lidar(self, _msg):
@@ -73,6 +79,9 @@ class SafetySupervisor(Node):
     def on_localization(self, msg):
         self.localization_ok = msg.data
 
+    def on_ndt_health(self, msg):
+        self.ndt_healthy = msg.data
+
     def fresh(self, stamp, timeout):
         return stamp is not None and (self.get_clock().now() - stamp).nanoseconds * 1e-9 <= timeout
 
@@ -86,7 +95,8 @@ class SafetySupervisor(Node):
                 self.last_map, self.map_timeout_sec
             )
         localization_ready = self.localization_ok or not self.require_localization
-        allow_motion = lidar_ok and state_ok and map_ready and localization_ready
+        ndt_ready = self.ndt_healthy or not self.require_ndt_health
+        allow_motion = lidar_ok and state_ok and map_ready and localization_ready and ndt_ready
         estop = not lidar_ok or not state_ok
 
         reason = []
@@ -98,6 +108,8 @@ class SafetySupervisor(Node):
             reason.append("map_not_ready")
         if not localization_ready:
             reason.append("localization_not_ready")
+        if not ndt_ready:
+            reason.append("ndt_unhealthy")
 
         self.allow_motion_pub.publish(Bool(data=allow_motion))
         self.map_ready_pub.publish(Bool(data=map_ready))

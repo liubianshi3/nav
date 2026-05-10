@@ -20,7 +20,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
 from tf2_msgs.msg import TFMessage
-from sensor_msgs.msg import CompressedImage, Image, PointCloud2
+from sensor_msgs.msg import BatteryState, CompressedImage, Image, PointCloud2
 
 try:
     from PIL import Image as PilImage
@@ -62,6 +62,8 @@ except ImportError:  # pragma: no cover - runtime environment fallback
 
 from .config import AppConfig
 from .models import (
+    BatterySnapshot,
+    RecoveryStatus,
     DashboardSnapshot,
     CameraFrame,
     InitialPoseRequest,
@@ -200,9 +202,14 @@ class RosBridgeNode(Node):
         self.map_snapshot = MapSnapshot()
         self.pointcloud_snapshot = PointCloudSnapshot()
         self.pose = RobotPose()
-        self.status = RobotStatus()
+        self.status = RobotStatus(
+            planner_type="SmacPlannerHybrid",
+            bt_filename="a2_navigate_3d.xml",
+        )
         self.navigation = NavigationTaskState(updated_at=now_iso())
         self.camera = CameraFrame()
+        self.battery = BatterySnapshot()
+        self.recovery_status = RecoveryStatus()
         self.health = SystemHealth(ros_connected=True)
         self._last_tf_frame: str | None = None
         self._last_camera_publish_monotonic = 0.0
@@ -309,8 +316,10 @@ class RosBridgeNode(Node):
         self.create_subscription(TFMessage, ros.tf_topic, self._on_tf, 20)
         self.create_subscription(String, ros.real_report_topic, self._on_real_report, 10)
         self.create_subscription(String, ros.lidar_status_topic, self._on_lidar_status, 10)
+        self.create_subscription(String, ros.camera_status_topic, self._on_camera_status, 10)
         self.create_subscription(Bool, ros.localization_ok_topic, self._on_localization_ok, 10)
         self.create_subscription(String, ros.localization_status_topic, self._on_localization_status, 10)
+        self.create_subscription(String, ros.relocalization_status_topic, self._on_relocalization_status, 10)
         self.create_subscription(String, ros.map_manager_status_topic, self._on_map_manager_status, 10)
         self.create_subscription(String, ros.map_manager_active_map_topic, self._on_active_map, 10)
         self.create_subscription(String, ros.task_manager_status_topic, self._on_task_manager_status, 10)
@@ -320,6 +329,9 @@ class RosBridgeNode(Node):
             self.create_subscription(RobotState, ros.raw_state_topic, self._on_raw_state, 10)
         else:
             self.get_logger().warning("a2_interfaces.msg.RobotState is unavailable. /a2/raw_state will be skipped.")
+        self.create_subscription(BatteryState, ros.battery_topic, self._on_battery, 10)
+        self.create_subscription(String, ros.scan_mission_status_topic, self._on_scan_mission_status, 10)
+
         if self.config.camera.enabled:
             if self.config.camera.prefer_compressed:
                 self.create_subscription(CompressedImage, ros.camera_compressed_topic, self._on_compressed_image, 5)
@@ -767,6 +779,11 @@ class RosBridgeNode(Node):
             self.status.lidar_status = self._status_from_string(msg.data)
         self._publish("status", dump_model(self.status))
 
+    def _on_camera_status(self, msg: String) -> None:
+        with self._lock:
+            self.status.camera_status = self._status_from_string(msg.data)
+        self._publish("status", dump_model(self.status))
+
     def _on_localization_ok(self, msg: Bool) -> None:
         with self._lock:
             self.status.localization_ok = msg.data
@@ -775,6 +792,27 @@ class RosBridgeNode(Node):
     def _on_localization_status(self, msg: String) -> None:
         with self._lock:
             self.status.localization_status = self._status_from_string(msg.data)
+        self._publish("status", dump_model(self.status))
+
+    def _on_relocalization_status(self, msg: String) -> None:
+        """Parse NDT score from relocalization status string.
+
+        Format: state=...;ready=...;score=X.XXX;...
+        """
+        parsed, _fields = parse_status_string(msg.data)
+        score_val = None
+        healthy_val = None
+        try:
+            score_str = _fields.get("score", "")
+            if score_str:
+                score_val = float(score_str)
+        except (ValueError, TypeError):
+            pass
+        ready_str = _fields.get("ready", "false")
+        healthy_val = ready_str.lower() == "true"
+        with self._lock:
+            self.status.ndt_score = score_val
+            self.status.ndt_healthy = healthy_val
         self._publish("status", dump_model(self.status))
 
     def _on_map_manager_status(self, msg: String) -> None:
@@ -894,6 +932,40 @@ class RosBridgeNode(Node):
         with self._lock:
             self.status.raw_state = raw_state
         self._publish("status", dump_model(self.status))
+
+    def _on_battery(self, msg: BatteryState) -> None:
+        with self._lock:
+            self.battery.available = msg.present
+            self.battery.percentage = float(msg.percentage) if msg.percentage >= 0.0 else None
+            self.battery.voltage = float(msg.voltage) if msg.voltage > 0.0 else None
+            self.battery.charging = (
+                msg.power_supply_status == BatteryState.POWER_SUPPLY_STATUS_CHARGING
+            )
+            self.battery.stamp = datetime.fromtimestamp(
+                msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            ).isoformat()
+        self._publish("battery", dump_model(self.battery))
+
+    def _on_scan_mission_status(self, msg: String) -> None:
+        """Parse recovery_* fields from scan mission status."""
+        _parsed, fields = parse_status_string(msg.data)
+        rec = RecoveryStatus()
+        rec.raw = msg.data
+        rec.active = fields.get("state", "") == "recovery_active"
+        rec.step = fields.get("reason", None)
+        if rec.step and rec.step.startswith("step="):
+            rec.step = rec.step.split("=", 1)[1] if "=" in rec.step else rec.step
+        with self._lock:
+            if rec.active:
+                if rec.step and rec.step not in self.recovery_status.sequence:
+                    self.recovery_status.sequence.append(rec.step)
+                self.recovery_status.active = True
+                self.recovery_status.step = rec.step
+            elif self.recovery_status.active:
+                # Recovery just ended
+                self.recovery_status.active = False
+            self.recovery_status.raw = rec.raw
+        self._publish("recovery", dump_model(self.recovery_status))
 
     def _on_compressed_image(self, msg: CompressedImage) -> None:
         if not self._camera_throttle_ready():
@@ -1089,6 +1161,8 @@ class RosBridgeNode(Node):
                 navigation=navigation,
                 camera=deep_copy_model(self.camera),
                 health=health,
+                battery=deep_copy_model(self.battery),
+                recovery=deep_copy_model(self.recovery_status),
             )
 
     def get_map_snapshot(self) -> MapSnapshot:
@@ -1297,9 +1371,9 @@ class RosBridgeNode(Node):
                 )
 
             covariance = [0.0] * 36
-            covariance[0] = 0.25
-            covariance[7] = 0.25
-            covariance[35] = 0.068
+            covariance[0] = float(self.config.navigation.initial_pose_covariance_xy)
+            covariance[7] = float(self.config.navigation.initial_pose_covariance_xy)
+            covariance[35] = float(self.config.navigation.initial_pose_covariance_yaw)
 
             previous_pose_stamp = self.pose.stamp
             deadline = time.monotonic() + self.config.navigation.initial_pose_wait_timeout_sec

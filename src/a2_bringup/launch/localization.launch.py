@@ -43,6 +43,14 @@ def _launch_setup(context, *args, **kwargs):
                 }],
             )
         )
+    if runtime_mode == "real" and not enable_nav2_bringup:
+        gate_pose_topic = "/odom"
+        gate_pose_msg_type = "nav_msgs/msg/Odometry"
+        gate_max_pose_age_sec = 5.0
+    else:
+        gate_pose_topic = "/amcl_pose"
+        gate_pose_msg_type = "geometry_msgs/msg/PoseWithCovarianceStamped"
+        gate_max_pose_age_sec = 1.5
     actions.append(
         Node(
             package="localization_manager",
@@ -50,6 +58,9 @@ def _launch_setup(context, *args, **kwargs):
             name="localization_gate",
             parameters=[f"{a2_system_share}/config/localization.yaml", {
                 "runtime_mode": runtime_mode,
+                "input_pose_topic": gate_pose_topic,
+                "input_pose_msg_type": gate_pose_msg_type,
+                "max_pose_age_sec": gate_max_pose_age_sec,
                 "latch_valid_pose": enable_nav2_bringup,
                 "use_sim_time": use_sim_time,
             }],

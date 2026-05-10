@@ -1,0 +1,18 @@
+real_camera:
+  ros__parameters:
+    enabled: true
+    profile: intel_realsense_d435i
+    driver_mode: external_pointcloud
+    input_pointcloud_topic: /camera/depth/color/points
+    output_pointcloud_topic: /camera/depth/color/points_compat
+    output_frame_id: camera_link
+    restamp_on_receive: true
+    stale_timeout_sec: 1.0
+    use_for_costmap: true
+    min_obstacle_height: 0.05
+    max_obstacle_height: 2.0
+    obstacle_min_range: 0.2
+    obstacle_max_range: 4.0
+    raytrace_min_range: 0.2
+    raytrace_max_range: 5.0
+

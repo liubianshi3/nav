@@ -6,6 +6,7 @@ safety_supervisor:
     map_representation: pointcloud_map_3d
     require_map: false
     localization_status_topic: /a2/localization_ok
+    require_ndt_health: false
     allow_motion_topic: /a2/allow_motion
     map_ready_topic: /a2/map_ready
     estop_topic: /a2/estop

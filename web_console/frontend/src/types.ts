@@ -73,6 +73,7 @@ export interface RobotStatus {
   localization_ok: boolean | null;
   real_report: TextStatus;
   lidar_status: TextStatus;
+  camera_status: TextStatus;
   localization_status: TextStatus;
   map_manager_status: TextStatus;
   task_manager_status: TextStatus;
@@ -81,6 +82,10 @@ export interface RobotStatus {
   velocity_linear_x: number | null;
   velocity_angular_z: number | null;
   raw_state: RawStateSummary | null;
+  ndt_score: number | null;
+  ndt_healthy: boolean | null;
+  planner_type: string | null;
+  bt_filename: string | null;
 }
 
 export interface NavigationGoal {
@@ -251,6 +256,24 @@ export interface StackStatus {
   message: string | null;
 }
 
+export interface RecoveryStatus {
+  active: boolean;
+  step: string | null;
+  sequence: string[];
+  recovered: boolean | null;
+  duration_sec: number | null;
+  attempts: number;
+  raw: string | null;
+}
+
+export interface BatterySnapshot {
+  available: boolean;
+  percentage: number | null;
+  voltage: number | null;
+  charging: boolean | null;
+  stamp: string | null;
+}
+
 export interface SystemHealth {
   backend_ok: boolean;
   ros_connected: boolean;
@@ -279,6 +302,8 @@ export interface DashboardSnapshot {
   navigation: NavigationTaskState;
   camera: CameraFrame;
   health: SystemHealth;
+  battery: BatterySnapshot;
+  recovery: RecoveryStatus;
 }
 
 export interface BackendEvent<T> {

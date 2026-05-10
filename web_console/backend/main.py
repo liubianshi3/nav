@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -322,6 +324,147 @@ def create_app(config_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=status_code, detail=detail) from exc
         return FileResponse(file_path)
 
+    @app.post("/api/stack/transition-to-navigation")
+    async def transition_to_navigation(request: SaveMapRequest):
+        """Orchestrate mapping → navigation transition in one call.
+
+        Sequence: save map → project PCD→2D → stop mapping → start navigation.
+        Each step has timeout + retry. Intermediate state is preserved on failure.
+        """
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+
+        map_id = request.map_id.strip() or datetime.now().strftime("map_%Y%m%d_%H%M%S")
+        steps: list[dict] = []
+        t_start = time.monotonic()
+
+        async def _step(name: str, fn, *, timeout: float = 30.0, retries: int = 2) -> bool:
+            for attempt in range(retries + 1):
+                step_start = time.monotonic()
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(fn), timeout=timeout
+                    )
+                    steps.append({
+                        "step": name, "ok": True, "attempt": attempt + 1,
+                        "duration_sec": round(time.monotonic() - step_start, 2),
+                    })
+                    return True
+                except asyncio.TimeoutError:
+                    if attempt >= retries:
+                        steps.append({
+                            "step": name, "ok": False, "attempt": attempt + 1,
+                            "error": "timeout",
+                            "duration_sec": round(time.monotonic() - step_start, 2),
+                        })
+                        return False
+                    await asyncio.sleep(1.0)
+                except Exception as exc:
+                    if attempt >= retries:
+                        steps.append({
+                            "step": name, "ok": False, "attempt": attempt + 1,
+                            "error": str(exc)[:200],
+                            "duration_sec": round(time.monotonic() - step_start, 2),
+                        })
+                        return False
+                    await asyncio.sleep(1.0)
+            return False
+
+        # Step 1: Save map via ROS service
+        ok = await _step("save_map", lambda: node.save_managed_map(map_id), timeout=20.0)
+        if not ok:
+            return {
+                "ok": False, "map_id": map_id,
+                "message": "保存地图失败",
+                "steps": steps,
+                "duration_sec": round(time.monotonic() - t_start, 1),
+            }
+
+        # Optional Step 2: Evaluate map quality (PCD) → JSON report
+        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
+        map_dir = maps_dir / map_id
+        pcd_path = map_dir / "pointcloud_map_3d.pcd"
+        workspace = Path(stack_controller.config.workspace).expanduser().resolve()
+        quality_tool = workspace / "install" / "a2_system" / "lib" / "a2_system" / "check_map_quality.py"
+
+        if pcd_path.exists() and quality_tool.exists():
+            def _run_quality():
+                return subprocess.run(
+                    [
+                        "python3",
+                        str(quality_tool),
+                        str(pcd_path),
+                        "--output",
+                        str(map_dir / "map_quality.json"),
+                        "--voxel-size",
+                        "1.0",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+
+            ok = await _step("map_quality", _run_quality, timeout=65.0)
+            if not ok:
+                # Quality failure should not fully block transition; surface in steps
+                pass
+
+        # Step 3: Project PCD → 2D
+        tool_path = workspace / "install" / "a2_system" / "lib" / "a2_system" / "pcd_to_2d_map.py"
+
+        if pcd_path.exists() and tool_path.exists():
+            ok = await _step(
+                "project_pcd_to_2d",
+                lambda: subprocess.run(
+                    ["python3", str(tool_path), str(pcd_path), "--output", str(map_dir), "--resolution", "0.05"],
+                    capture_output=True, text=True, timeout=60,
+                ),
+                timeout=65.0,
+            )
+            if not ok:
+                # Projection failed but map is saved — non-fatal, navigation can use saved 2D map if present
+                pass
+
+        # Step 4: Stop mapping stack
+        ok = await _step("stop_mapping", stack_controller.stop_if_running, timeout=15.0)
+        if not ok:
+            return {
+                "ok": False, "map_id": map_id,
+                "message": "停止建图栈失败",
+                "steps": steps,
+                "duration_sec": round(time.monotonic() - t_start, 1),
+            }
+
+        # Step 5: Start navigation stack
+        await asyncio.sleep(2.0)  # Let processes fully exit
+        nav_info = None
+        try:
+            nav_info = await asyncio.to_thread(stack_controller.start_navigation, map_id)
+        except StackControlError as exc:
+            steps.append({"step": "start_navigation", "ok": False, "error": str(exc)})
+            return {
+                "ok": False, "map_id": map_id,
+                "message": f"导航启动失败: {exc}",
+                "steps": steps,
+                "duration_sec": round(time.monotonic() - t_start, 1),
+            }
+
+        steps.append({
+            "step": "start_navigation", "ok": True,
+            "nav_info": nav_info,
+        })
+
+        return {
+            "ok": True,
+            "map_id": map_id,
+            "map_yaml": str(map_dir / "map.yaml"),
+            "map_quality": str((map_dir / "map_quality.json").resolve()) if (map_dir / "map_quality.json").exists() else None,
+            "message": f"建图→导航切换完成: {map_id}",
+            "steps": steps,
+            "duration_sec": round(time.monotonic() - t_start, 1),
+        }
+
     @app.post("/api/maps/save")
     async def save_map(request: SaveMapRequest):
         node = ros_runtime.node
@@ -352,6 +495,84 @@ def create_app(config_path: str | None = None) -> FastAPI:
             "map": jsonable_encoder(saved),
             "maps": jsonable_encoder(stack_controller.list_maps()),
             "native_slam_save": jsonable_encoder(native_save) if native_save is not None else None,
+        }
+
+    @app.post("/api/maps/project-2d")
+    async def project_pcd_to_2d(request: SaveMapRequest):
+        """Run pcd_to_2d_map.py to generate Nav2-compatible 2D map from saved PCD."""
+        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
+        map_dir = maps_dir / request.map_id
+        if not map_dir.exists():
+            raise HTTPException(status_code=404, detail=f"地图目录不存在: {map_dir}")
+        pcd_path = map_dir / "pointcloud_map_3d.pcd"
+        if not pcd_path.exists():
+            raise HTTPException(status_code=404, detail=f"PCD文件不存在: {pcd_path}")
+        tool_path = Path(stack_controller.config.workspace).expanduser().resolve() / "install" / "a2_system" / "lib" / "a2_system" / "pcd_to_2d_map.py"
+        if not tool_path.exists():
+            raise HTTPException(status_code=503, detail=f"投影工具未找到: {tool_path}")
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["python3", str(tool_path), str(pcd_path), "--output", str(map_dir), "--resolution", "0.05"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail="投影超时（>60秒）")
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"投影失败: {result.stderr.strip() or result.stdout.strip()}")
+        map_yaml = map_dir / "map.yaml"
+        return {
+            "ok": True,
+            "map_id": request.map_id,
+            "map_yaml": str(map_yaml),
+            "navigation_ready": map_yaml.exists(),
+            "stdout": result.stdout.strip(),
+        }
+
+    @app.post("/api/maps/quality")
+    async def evaluate_map_quality(request: SaveMapRequest):
+        """Run check_map_quality.py on saved PCD and return JSON report content."""
+        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
+        map_dir = maps_dir / request.map_id
+        if not map_dir.exists():
+            raise HTTPException(status_code=404, detail=f"地图目录不存在: {map_dir}")
+        pcd_path = map_dir / "pointcloud_map_3d.pcd"
+        if not pcd_path.exists():
+            raise HTTPException(status_code=404, detail=f"PCD文件不存在: {pcd_path}")
+        tool_path = Path(stack_controller.config.workspace).expanduser().resolve() / "install" / "a2_system" / "lib" / "a2_system" / "check_map_quality.py"
+        if not tool_path.exists():
+            raise HTTPException(status_code=503, detail=f"质量评估工具未找到: {tool_path}")
+
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "python3",
+                    str(tool_path),
+                    str(pcd_path),
+                    "--output",
+                    str(map_dir / "map_quality.json"),
+                    "--voxel-size",
+                    "1.0",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail="质量评估超时（>60秒）")
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"质量评估失败: {result.stderr.strip() or result.stdout.strip()}")
+        report_path = map_dir / "map_quality.json"
+        report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+        return {
+            "ok": True,
+            "map_id": request.map_id,
+            "report_path": str(report_path) if report_path else None,
+            "report": report,
+            "stdout": result.stdout.strip(),
         }
 
     @app.get("/api/tasks/routes")

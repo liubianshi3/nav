@@ -12,6 +12,9 @@ pose_goal_controller_3d:
     # the launch command after verifying localization and clear surroundings.
     dry_run: true
     require_localization_ok: true
+    require_obstacle_cloud: true
+    obstacle_cloud_topic: /jt128/front/points
+    obstacle_cloud_timeout_sec: 1.0
 
     control_hz: 10.0
     pose_timeout_sec: 0.5

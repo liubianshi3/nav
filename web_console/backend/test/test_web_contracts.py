@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.config import load_config
 from backend.models import CameraFrame, DashboardSnapshot, MapMediaEntry, MapMediaListing, TaskRouteStatus, VirtualObstacleListing, VirtualObstacleZone
-from backend.stack_control import MAPPING_NODES, NAVIGATION_NODES_3D, STACK_CLEANUP_PATTERNS
+from backend.stack_control import MAPPING_NODES, NAVIGATION_NODES, STACK_CLEANUP_PATTERNS
 
 
 def test_dashboard_snapshot_contains_camera_contract():
@@ -26,41 +26,42 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.camera_image_topic == "/camera/image_raw"
     assert config.navigation.initial_pose_wait_timeout_sec >= 5.0
     assert config.navigation.initial_pose_publish_interval_sec > 0.0
-    assert config.navigation.backend == "pose_topic_3d"
+    assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/goal_pose_"
     assert config.navigation.cancel_stop_topic == "/cmd_vel"
     assert config.navigation.cancel_retarget_current_pose is True
-    assert config.navigation.require_map_for_goal is False
+    assert config.navigation.require_map_for_goal is True
     assert config.native_slam.enabled is True
     assert config.native_slam.request_topic == "/api/slam_operate/request"
     assert config.native_slam.response_topic == "/api/slam_operate/response"
     assert config.native_slam.response_timeout_sec >= 1.0
-    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points"
+    assert config.ros.pointcloud_topic == "/jt128/front/points"
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points"
     assert config.ros.task_manager_service == "/a2/task_manager/command"
-    assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
+    assert config.ros.localization_pose_topic == "/amcl_pose"
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
-    assert config.ros.pose_goal_status_topic == "/a2/nav3/status"
+    assert config.ros.pose_goal_status_topic == "/a2/nav2/status"
     assert config.ros.pointcloud_primary_stale_sec > 0.0
     assert config.ros.pointcloud_preview_max_points >= 20000
-    assert config.stack.start_script.endswith("start_jt128_3d_stack.sh")
+    assert config.stack.start_script.endswith("start_real_stack.sh")
 
 
-def test_navigation_contract_uses_3d_pose_backend_not_amcl_by_default():
-    labels = {label for _, label, _ in NAVIGATION_NODES_3D}
-    patterns = {pattern for _, _, pattern in NAVIGATION_NODES_3D}
+def test_navigation_contract_uses_nav2_by_default():
+    labels = {label for _, label, _ in NAVIGATION_NODES}
+    patterns = {pattern for _, _, pattern in NAVIGATION_NODES}
 
-    assert "JT128 3D navigation launch" in labels
-    assert "3D PCD relocalizer" in labels
-    assert "3D localization gate" in labels
-    assert "localization_gate" in patterns
-    assert "jt128_3d_navigation.launch.py" in patterns
-    assert "pcd_relocalizer_3d" in patterns
-    assert "pose_goal_controller_3d" in patterns
-    assert "manual localization" not in labels
-    assert "manual_localization_publisher" not in patterns
-    assert "amcl" in STACK_CLEANUP_PATTERNS
-    assert "task_manager.py" in STACK_CLEANUP_PATTERNS
+    assert "AMCL localization" in labels
+    assert "goal bridge" in labels
+    assert "map server" in labels
+    assert "planner server" in labels
+    assert "controller server" in labels
+    assert "bt navigator" in labels
+    assert "amcl" in patterns
+    assert "planner_server" in patterns
+    assert "controller_server" in patterns
+    assert "bt_navigator" in patterns
+    assert "pcd_relocalizer_3d" in STACK_CLEANUP_PATTERNS
+    assert "pose_goal_controller_3d" in STACK_CLEANUP_PATTERNS
 
 
 def test_mapping_contract_accepts_slam_toolbox_and_native_fallbacks():

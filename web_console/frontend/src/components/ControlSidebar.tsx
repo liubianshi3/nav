@@ -22,6 +22,7 @@ export interface ControlSidebarProps {
   startMappingReason: string | null;
   startNavigationReason: string | null;
   saveMapReason: string | null;
+  projectPcdReason: string | null;
   sendGoalReason: string | null;
   setInitialPoseReason: string | null;
   stackBusy: boolean;
@@ -31,6 +32,7 @@ export interface ControlSidebarProps {
   onStartNavigation: () => void;
   onStopStack: () => void;
   onSaveMap: () => void;
+  onProjectPcd: () => void;
   onSetInitialPose: () => void;
   onSendGoal: () => void;
   onCancelGoal: () => void;
@@ -56,10 +58,12 @@ export function ControlSidebar(props: ControlSidebarProps) {
         stackBusy={props.stackBusy}
         startNavigationReason={props.startNavigationReason}
         saveMapReason={props.saveMapReason}
+        projectPcdReason={props.projectPcdReason}
         onSelectedMapChange={props.onSelectedMapChange}
         onSaveMapIdChange={props.onSaveMapIdChange}
         onStartNavigation={props.onStartNavigation}
         onSaveMap={props.onSaveMap}
+        onProjectPcd={props.onProjectPcd}
       />
       <NavigationTaskSection navigation={props.navigation} />
       <SelectedGoalSection
@@ -115,10 +119,12 @@ export function MapManagementSection({
   stackBusy,
   startNavigationReason,
   saveMapReason,
+  projectPcdReason,
   onSelectedMapChange,
   onSaveMapIdChange,
   onStartNavigation,
   onSaveMap,
+  onProjectPcd,
 }: Pick<
   ControlSidebarProps,
   | "stack"
@@ -128,10 +134,12 @@ export function MapManagementSection({
   | "stackBusy"
   | "startNavigationReason"
   | "saveMapReason"
+  | "projectPcdReason"
   | "onSelectedMapChange"
   | "onSaveMapIdChange"
   | "onStartNavigation"
   | "onSaveMap"
+  | "onProjectPcd"
 >) {
   const isMapping = stack?.mode === "mapping";
   const isNavigation = stack?.mode === "navigation";
@@ -207,6 +215,14 @@ export function MapManagementSection({
         保存当前地图
       </button>
       <p className="panel-message">{formatNullable(saveMapReason, "当前可保存建图结果")}</p>
+      <button
+        className="secondary-button full-width-button"
+        disabled={stackBusy || !selectedMapId || !selectedMap?.has_pointcloud_3d}
+        onClick={onProjectPcd}
+      >
+        PCD → 2D 投影
+      </button>
+      <p className="panel-message">{formatNullable(projectPcdReason, "从已保存的3D点云生成Nav2导航用2D地图")}</p>
     </section>
   );
 }

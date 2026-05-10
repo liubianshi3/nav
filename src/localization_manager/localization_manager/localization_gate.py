@@ -84,11 +84,23 @@ class LocalizationGate(Node):
             self.create_subscription(PoseWithCovarianceStamped, pose_topic, self.on_pose, pose_qos)
         self.create_timer(0.2, self.evaluate)
 
+    def _covariance_from_pose(self, msg):
+        if isinstance(msg, Odometry):
+            return msg.pose.covariance
+        return msg.pose.covariance
+
+    def _pose_quality_ok(self, covariance):
+        return covariance[0] <= self.max_xy_variance and covariance[7] <= self.max_xy_variance and covariance[35] <= self.max_yaw_variance
+
     def on_pose(self, msg):
         self.last_pose = msg
+        if self._pose_quality_ok(self._covariance_from_pose(msg)):
+            self.last_valid_pose_time = self.get_clock().now()
 
     def on_odom_pose(self, msg):
         self.last_pose = msg
+        if self._pose_quality_ok(self._covariance_from_pose(msg)):
+            self.last_valid_pose_time = self.get_clock().now()
 
     def _extract_pose_age_and_covariance(self):
         now = self.get_clock().now()
@@ -98,10 +110,7 @@ class LocalizationGate(Node):
         else:
             pose_time = rclpy.time.Time.from_msg(stamp)
             age = (now - pose_time).nanoseconds * 1e-9
-        if isinstance(self.last_pose, Odometry):
-            covariance = self.last_pose.pose.covariance
-        else:
-            covariance = self.last_pose.pose.covariance
+        covariance = self._covariance_from_pose(self.last_pose)
         return now, age, covariance
 
     def evaluate(self):

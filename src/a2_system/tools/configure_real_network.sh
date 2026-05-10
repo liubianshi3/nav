@@ -128,6 +128,8 @@ ip link set "${IFACE}" up
 ensure_addr "${IFACE}" "${A2_HOST_IP}/${A2_CONTROL_PREFIX_LEN}"
 if [[ "${REAL_LIDAR_PROFILE}" == "unitree_native_fused" || "${REAL_LIDAR_DRIVER_MODE}" == "external_pointcloud" ]]; then
   echo "sensor_subnet_skipped=real_lidar_native_source profile=${REAL_LIDAR_PROFILE} driver_mode=${REAL_LIDAR_DRIVER_MODE}"
+elif [[ "${REAL_LIDAR_PROFILE}" == "hesai_jt128_front" || "${REAL_LIDAR_DRIVER_MODE}" == "dedicated_hesai_ros_driver" ]]; then
+  echo "sensor_subnet_skipped=dedicated_hesai_jt128 profile=${REAL_LIDAR_PROFILE} driver_mode=${REAL_LIDAR_DRIVER_MODE}"
 else
   ensure_addr "${IFACE}" "${MID360_HOST_IP}/${MID360_PREFIX_LEN}"
 fi

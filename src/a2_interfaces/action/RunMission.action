@@ -1,0 +1,29 @@
+# RunMission: drive an `auto_scan_mission` execution from a parent node.
+# Replaces the previous task_manager subprocess Popen path.
+#
+# Backward compatibility:
+#   - The mission node continues to publish /a2/scan_mission/status,
+#     /a2/scan_mission/report, /a2/scan_mission/progress unchanged.
+#   - This action only ADDS native ROS-level lifecycle and progress.
+# ---
+# Goal
+string mission_name
+string waypoints_file
+bool require_real_ready
+bool stop_on_failure
+---
+# Result
+bool success
+string reason
+string report_json_path
+string report_csv_path
+uint32 succeeded_waypoints
+uint32 total_waypoints
+---
+# Feedback
+string state            # waypoint_running / preflight_wait / recovery_active / mission_complete / ...
+string reason
+uint32 current_waypoint_index
+uint32 total_waypoints
+float32 progress        # [0.0, 1.0]
+string last_status_kv   # mirror of /a2/scan_mission/status payload

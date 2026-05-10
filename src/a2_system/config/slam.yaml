@@ -2,11 +2,11 @@ slam_manager:
   ros__parameters:
     mode: external_odom
     external_stack_profile: external_odom
-    mapping_stack_profile: front_lidar_pointcloud_3d
-    primary_map_representation: pointcloud_map_3d
-    localization_representation: pointcloud_map_3d
-    navigation_representation: pointcloud_map_3d
-    web_map_representation: pointcloud_map_3d
+    mapping_stack_profile: slam_toolbox
+    primary_map_representation: occupancy_grid_2d
+    localization_representation: occupancy_grid_2d
+    navigation_representation: occupancy_grid_2d
+    web_map_representation: occupancy_grid_2d
     front_lidar_input_topic: /jt128/front/points
     front_lidar_input_type: sensor_msgs/msg/PointCloud2
     pointcloud_projection_enabled: false

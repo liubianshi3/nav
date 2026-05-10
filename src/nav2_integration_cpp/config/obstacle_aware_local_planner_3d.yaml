@@ -1,0 +1,60 @@
+obstacle_aware_local_planner_3d:
+  ros__parameters:
+    # I/O contract (kept identical to legacy pose_goal_controller_3d).
+    goal_topic: /a2/nav3/goal_pose
+    legacy_goal_topic: /goal_pose_
+    pose_topic: /a2/relocalization/pose
+    cmd_topic: /cmd_vel
+    status_topic: /a2/nav3/status
+    localization_ok_topic: /a2/localization_ok
+
+    # Obstacle source (additive vs legacy).
+    obstacle_cloud_topic: /a2/obstacle/points
+    require_obstacle_cloud: true
+    obstacle_cloud_timeout_sec: 1.0
+    obstacle_max_consider_range: 4.0
+    obstacle_min_z: -0.10
+    obstacle_max_z: 1.50
+
+    # Recovery override (consumed when no admissible trajectory; still gated
+    # by the same hard_clearance + control_bridge motion_gate).
+    recovery_cmd_topic: /a2/recovery/cmd_vel
+    recovery_cmd_timeout_sec: 0.4
+
+    map_frame: map
+    dry_run: false
+    require_localization_ok: true
+    control_hz: 10.0
+    pose_timeout_sec: 0.5
+    goal_timeout_sec: 60.0
+    max_goal_distance_from_current: 1.5
+
+    # Velocity limits (kept conservative; control_bridge clamps again).
+    max_linear_x: 0.18
+    max_linear_y: 0.12
+    max_yaw_rate: 0.30
+    min_linear_x: 0.0
+
+    # DWA grid.
+    n_vx: 7
+    n_vy: 5
+    n_wz: 9
+    sim_time: 1.2
+    sim_step: 0.1
+
+    # Clearance shaping.
+    inflation_radius: 0.40
+    hard_clearance: 0.20
+
+    # Cost weights.
+    obstacle_cost_weight: 2.0
+    goal_dist_weight: 1.0
+    goal_heading_weight: 0.6
+    forward_progress_weight: 0.4
+    velocity_smoothness_weight: 0.3
+
+    # Tolerances.
+    goal_tolerance_xy: 0.15
+    goal_tolerance_yaw: 0.18
+
+    block_grace_sec: 3.0

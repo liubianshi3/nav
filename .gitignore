@@ -1,6 +1,6 @@
 build/
 install/
-log/
+/log/
 
 runtime/logs/
 runtime/outdoor_demo_logs/

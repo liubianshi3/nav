@@ -8,14 +8,14 @@ server:
 
 ros:
   map_topic: /map
-  pointcloud_topic: /jt128/dlio/map_points
+  pointcloud_topic: /jt128/front/points
   pointcloud_fallback_topic: /jt128/front/points
   pointcloud_primary_stale_sec: 2.0
   pointcloud_preview_max_points: 20000
   task_manager_service: /a2/task_manager/command
-  localization_pose_topic: /a2/relocalization/pose
+  localization_pose_topic: /amcl_pose
   localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
-  odom_topic: /jt128/dlio/odom
+  odom_topic: /odom
   tf_topic: /tf
   tf_static_topic: /tf_static
   real_report_topic: /a2/real/report
@@ -25,12 +25,12 @@ ros:
   map_manager_status_topic: /a2/map_manager/status
   map_manager_active_map_topic: /a2/map_manager/active_map
   task_manager_status_topic: /a2/task_manager/status
-  pose_goal_status_topic: /a2/nav3/status
+  pose_goal_status_topic: /a2/nav2/status
   sdk_status_topic: /a2/sdk/status
   raw_state_topic: /a2/raw_state
 
 navigation:
-  backend: pose_topic_3d
+  backend: nav2
   action_name: /navigate_to_pose
   goal_topic: /goal_pose_
   goal_frame: map
@@ -45,8 +45,10 @@ navigation:
   cancel_timeout_sec: 3.0
   initial_pose_wait_timeout_sec: 8.0
   initial_pose_publish_interval_sec: 0.4
+  initial_pose_covariance_xy: 0.05
+  initial_pose_covariance_yaw: 0.03
   allow_send_goal: true
-  require_map_for_goal: false
+  require_map_for_goal: true
   require_localization_ready: true
   pose_goal_tolerance_m: 0.35
   pose_goal_yaw_tolerance_rad: 0.35
@@ -72,6 +74,6 @@ stack:
   workspace: /opt/a2_system_ws
   network_interface: net1
   map_root: /opt/a2_system_ws/runtime/maps
-  start_script: /opt/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
-  stop_script: /opt/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh
+  start_script: /opt/a2_system_ws/src/a2_system/tools/start_real_stack.sh
+  stop_script: /opt/a2_system_ws/src/a2_system/tools/stop_stack.sh
   command_timeout_sec: 15.0

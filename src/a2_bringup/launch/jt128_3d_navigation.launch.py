@@ -3,9 +3,9 @@ from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription, OpaqueFunction, SetLaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -52,6 +52,44 @@ def _pointcloud_guard_action():
     )
 
 
+def _resolve_nav2_map_arguments(context, *args, **kwargs):
+    enable_nav2_3d = LaunchConfiguration("enable_nav2_3d").perform(context).strip().lower()
+    if enable_nav2_3d not in ("1", "true", "t", "yes", "y", "on"):
+        return []
+
+    explicit_map = LaunchConfiguration("nav2_3d_map").perform(context).strip()
+    if explicit_map:
+        return [LogInfo(msg=f"Nav2 3D map YAML: {explicit_map}")]
+
+    map_root = Path(LaunchConfiguration("map_root").perform(context))
+    map_id = LaunchConfiguration("map_id").perform(context).strip()
+    pcd_path = LaunchConfiguration("pcd_path").perform(context).strip()
+
+    candidates: list[Path] = []
+    if map_id:
+        candidates.append(map_root / map_id / "map.yaml")
+    if pcd_path:
+        candidates.append(Path(pcd_path).expanduser().resolve().parent / "map.yaml")
+
+    for candidate in candidates:
+        if candidate.exists():
+            resolved = str(candidate)
+            return [
+                SetLaunchConfiguration("nav2_3d_map", resolved),
+                LogInfo(msg=f"Resolved Nav2 3D map YAML from navigation assets: {resolved}"),
+            ]
+
+    detail = f"map_id={map_id or 'none'};pcd_path={pcd_path or 'none'}"
+    return [
+        LogInfo(
+            msg=(
+                "Nav2 3D is enabled but no map YAML could be resolved automatically. "
+                f"Pass nav2_3d_map explicitly or add map.yaml beside the selected 3D map. ({detail})"
+            )
+        )
+    ]
+
+
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     unitree_ddsc_env = _unitree_ddsc_env()
@@ -70,6 +108,11 @@ def generate_launch_description():
             DeclareLaunchArgument("sdk_interface", default_value="eth0"),
             DeclareLaunchArgument("control_interface", default_value="eth0"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
+            DeclareLaunchArgument("enable_nav2_3d", default_value="true",
+                                  description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
+            DeclareLaunchArgument("nav2_3d_map", default_value="",
+                                  description="Path to 2D projected map YAML for Nav2 3D mode"),
+            OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
                     "Starting JT128 3D navigation: loading PCD, running the first-pass "
@@ -99,7 +142,10 @@ def generate_launch_description():
                 condition=IfCondition(LaunchConfiguration("start_robot_state")),
                 parameters=[
                     f"{a2_system_share}/config/state_bridge.yaml",
-                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
+                    {
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "publish_tf": False,
+                    },
                 ],
             ),
             Node(
@@ -144,6 +190,36 @@ def generate_launch_description():
                 }.items(),
             ),
             _pointcloud_guard_action(),
+            # ── Ground segmentation → /a2/obstacle/points + /a2/traversability ──
+            Node(
+                package="a2_ground_segmentation_cpp",
+                executable="ground_segmentation_cpp_node",
+                name="ground_segmentation",
+                parameters=[
+                    f"{get_package_share_directory('a2_ground_segmentation_cpp')}/config/ground_segmentation_cpp.yaml",
+                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
+                ],
+                output="screen",
+            ),
+            # ── Collision monitor: /cmd_vel → stop/slowdown filter → /cmd_vel_safe ──
+            Node(
+                package="nav2_collision_monitor",
+                executable="collision_monitor",
+                name="collision_monitor",
+                parameters=[
+                    f"{a2_system_share}/config/collision_monitor.yaml",
+                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
+                ],
+                output="screen",
+            ),
+            # ── Battery publisher → /a2/battery ──
+            Node(
+                package="a2_system",
+                executable="a2_battery_publisher.py",
+                name="a2_battery_publisher",
+                parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
+                output="screen",
+            ),
             Node(
                 package="localization_manager",
                 executable="localization_gate",
@@ -162,6 +238,22 @@ def generate_launch_description():
                 ],
             ),
             Node(
+                package="localization_manager",
+                executable="ndt_health_monitor",
+                name="ndt_health_monitor",
+                parameters=[
+                    {
+                        "ndt_status_topic": "/a2/relocalization/status",
+                        "health_pub_topic": "/a2/ndt/healthy",
+                        "health_status_topic": "/a2/ndt/health_status",
+                        "min_score": 0.5,
+                        "consecutive_failures_threshold": 5,
+                        "eval_frequency": 5.0,
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    },
+                ],
+            ),
+            Node(
                 package="safety_manager",
                 executable="safety_supervisor",
                 name="safety_supervisor",
@@ -174,6 +266,8 @@ def generate_launch_description():
                         "map_representation": "pointcloud_map_3d",
                         "require_map": False,
                         "require_localization": True,
+                        "ndt_health_topic": "/a2/ndt/healthy",
+                        "require_ndt_health": True,
                         "lidar_timeout_sec": 1.5,
                         "state_timeout_sec": 1.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -194,34 +288,33 @@ def generate_launch_description():
                     }
                 ],
             ),
-            Node(
-                package="nav2_integration",
-                executable="goal_bridge",
-                name="goal_bridge",
-                parameters=[
-                    f"{a2_system_share}/config/nav2.yaml",
-                    {
-                        "runtime_mode": "real",
-                        "navigation_backend": "pose_topic_3d",
-                        "pose_goal_topic": "/a2/nav3/goal_pose",
-                        "legacy_pose_goal_topic": "/goal_pose_",
-                        "map_frame": "map",
-                        "use_sim_time": LaunchConfiguration("use_sim_time"),
-                    },
-                ],
+            # Nav2 3D planning stack (replaces pose_goal_controller_3d + goal_bridge)
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(
+                        get_package_share_directory("a2_bringup"),
+                        "launch",
+                        "nav2_3d.launch.py",
+                    )
+                ),
+                condition=IfCondition(LaunchConfiguration("enable_nav2_3d")),
+                launch_arguments={
+                    "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    "map": LaunchConfiguration("nav2_3d_map"),
+                }.items(),
             ),
+            # Fallback when Nav2 3D is disabled: obstacle-aware DWA-Lite planner
+            # (C++ port of pose_goal_controller_3d with active obstacle avoidance).
             Node(
-                package="nav2_integration",
-                executable="pose_goal_controller_3d",
-                name="pose_goal_controller_3d",
-                output="screen",
+                package="nav2_integration_cpp",
+                executable="obstacle_aware_local_planner_3d",
+                name="obstacle_aware_local_planner_3d",
+                condition=UnlessCondition(LaunchConfiguration("enable_nav2_3d")),
                 parameters=[
-                    f"{a2_system_share}/config/pose_goal_controller_3d.yaml",
-                    {
-                        "dry_run": LaunchConfiguration("dry_run"),
-                        "use_sim_time": LaunchConfiguration("use_sim_time"),
-                    },
+                    f"{get_package_share_directory('nav2_integration_cpp')}/config/obstacle_aware_local_planner_3d.yaml",
+                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 ],
+                output="screen",
             ),
             Node(
                 package="a2_control_bridge",

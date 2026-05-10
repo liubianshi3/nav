@@ -14,6 +14,7 @@ import {
   fetchTaskRoutes,
   runTaskRoute,
   saveCurrentMap,
+  projectPcdTo2d,
   saveMapObstacle,
   saveTaskRoute,
   sendInitialPose,
@@ -36,6 +37,8 @@ import {
 import { MapCanvas } from "./components/MapCanvas";
 import { MediaDock } from "./components/MediaDock";
 import {
+  BatterySection,
+  RecoverySection,
   ConnectionStatusSection,
   HealthSection,
   NodeStatusSection,
@@ -102,6 +105,7 @@ function createEmptySnapshot(): DashboardSnapshot {
       localization_ok: null,
       real_report: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       lidar_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
+      camera_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       localization_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       map_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       task_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
@@ -110,6 +114,10 @@ function createEmptySnapshot(): DashboardSnapshot {
       velocity_linear_x: null,
       velocity_angular_z: null,
       raw_state: null,
+      ndt_score: null,
+      ndt_healthy: null,
+      planner_type: null,
+      bt_filename: null,
     },
     navigation: {
       state: "idle",
@@ -131,6 +139,22 @@ function createEmptySnapshot(): DashboardSnapshot {
       format: null,
       data_url: null,
       stale: true,
+    },
+    battery: {
+      available: false,
+      percentage: null,
+      voltage: null,
+      charging: null,
+      stamp: null,
+    },
+    recovery: {
+      active: false,
+      step: null,
+      sequence: [],
+      recovered: null,
+      duration_sec: null,
+      attempts: 0,
+      raw: null,
     },
     health: {
       backend_ok: false,
@@ -514,6 +538,14 @@ export default function App() {
         : !saveMapId
           ? "请先填写地图名"
           : "当前建图结果可保存到地图目录";
+  const projectPcdReason =
+    stackTransitioning
+      ? "栈正在启动或停止，暂时不能执行投影"
+      : !selectedMapId
+        ? "请先选择一个地图"
+        : selectedMap?.has_pointcloud_3d !== true
+          ? "所选地图不含3D点云，无法投影"
+          : "从已保存的3D点云生成Nav2导航用2D地图";
   const setInitialPoseReason =
     !selectedGoal
       ? "请先在 2D 或 3D 视图里选一个点"
@@ -621,6 +653,25 @@ export default function App() {
     } catch (error) {
       setLastSuccess(null);
       setLastError(error instanceof Error ? error.message : "保存地图失败");
+    } finally {
+      setStackBusy(false);
+    }
+  };
+
+  const handleProjectPcd = async () => {
+    if (!selectedMapId) {
+      setLastError("请先选择一个地图");
+      return;
+    }
+    setStackBusy(true);
+    try {
+      const result = await projectPcdTo2d(selectedMapId);
+      setLastSuccess(`PCD→2D 投影完成: ${result.map_yaml} (导航${result.navigation_ready ? "可用" : "未就绪"})`);
+      setLastError(null);
+      await refreshStack();
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "PCD投影失败");
     } finally {
       setStackBusy(false);
     }
@@ -999,10 +1050,12 @@ export default function App() {
               stackBusy={stackTransitioning}
               startNavigationReason={startNavigationReason}
               saveMapReason={saveMapReason}
+              projectPcdReason={projectPcdReason}
               onSelectedMapChange={setSelectedMapId}
               onSaveMapIdChange={setSaveMapId}
               onStartNavigation={handleStartNavigation}
               onSaveMap={handleSaveMap}
+              onProjectPcd={handleProjectPcd}
             />
           </DrawerPanel>
 
@@ -1036,6 +1089,8 @@ export default function App() {
               onDeleteObstacle={handleDeleteObstacle}
             />
             <NodeStatusSection stack={stack} />
+            <BatterySection battery={snapshot.battery} />
+            <RecoverySection recovery={snapshot.recovery} />
             <RuntimeInfoSection status={snapshot.status} />
             <HealthSection health={snapshot.health} />
           </DrawerPanel>

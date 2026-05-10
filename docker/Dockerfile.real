@@ -1,5 +1,5 @@
-ARG NODE_IMAGE=node:20-bookworm-slim
-ARG ROS_IMAGE=ros:humble-ros-base-jammy
+ARG NODE_IMAGE=registry.cn-hangzhou.aliyuncs.com/linuxsuren/node:20-bookworm
+ARG ROS_IMAGE=registry.cn-hangzhou.aliyuncs.com/linuxsuren/ros:humble-ros-base-jammy
 
 FROM ${NODE_IMAGE} AS web-build
 WORKDIR /web
@@ -37,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-nav2-bringup \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-sensor-msgs-py \
+    ros-humble-pcl-ros \
+    ros-humble-pcl-conversions \
     && rm -rf /var/lib/apt/lists/*
 
 # Build with the same real Unitree SDK installed on the A2 host.
@@ -44,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   DOCKER_BUILDKIT=1 docker build --build-context unitree_sdk=/opt/unitree_robotics ...
 COPY --from=unitree_sdk / /opt/unitree_robotics/
 RUN test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake
+COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
 
 WORKDIR /opt/a2_system_ws
 COPY src ./src

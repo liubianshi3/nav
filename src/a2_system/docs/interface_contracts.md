@@ -17,7 +17,8 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/map` | `nav_msgs/msg/OccupancyGrid` | `slam_toolbox` or `native_map_relay` | web, `map_manager`, Nav2 | real | Canonical 2D navigation map |
 | `/jt128/dlio/map_points` | `sensor_msgs/msg/PointCloud2` | DLIO map node | `map_manager`, PCD tools | real | Canonical 3D pointcloud map |
 | `/a2/map/pointcloud_3d` | `sensor_msgs/msg/PointCloud2` | `pointcloud_map_loader` | 3D relocalization | real | Loaded PCD map for relocalization |
-| `/a2/relocalization/pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | `pcd_relocalizer_3d` | `localization_gate`, 3D control | real | 3D localization output in `map` frame |
+| `/a2/relocalization/pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | `a2_ndt_adapter` or `pcd_relocalizer_3d` | `localization_gate`, 3D control | real | 3D localization output in `map` frame |
+| `/a2/relocalization/status` | `std_msgs/msg/String` | `a2_ndt_adapter` or `pcd_relocalizer_3d` | diagnostics, Web, dry-run checks | real | Parseable key-value NDT readiness, score, iteration, and map-cell status |
 | `/camera/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` | A2 camera driver or image transport | web console | real | Preferred low-bandwidth camera stream |
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | Nav2 or `pose_goal_controller_3d` | `a2_control_bridge` | real | Canonical velocity command |
 | `/a2/command_limited` | `geometry_msgs/msg/TwistStamped` | `a2_control_bridge` | diagnostics | real | Saturated and gated command |
@@ -40,8 +41,8 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/a2/map_manager/status` | `std_msgs/msg/String` | `map_manager` | tools/UI | real | Save, load, list, promote state and active map |
 | `/a2/system_mode` | `std_msgs/msg/String` | `map_manager` | tools/UI | real | `mapping`, `navigation`, etc. |
 | `/a2/nav2/status` | `std_msgs/msg/String` | `goal_bridge` | tools/UI | real | Unified navigation execution report |
-| `/a2/nav3/status` | `std_msgs/msg/String` | `pose_goal_controller_3d` | tools/UI | real | 3D local navigation execution report |
-| `/a2/nav3/goal_pose` | `geometry_msgs/msg/PoseStamped` | `goal_bridge`, `task_manager` | `pose_goal_controller_3d` | real | Canonical 3D local-goal contract |
+| `/a2/nav3/status` | `std_msgs/msg/String` | `obstacle_aware_local_planner_3d` | tools/UI | real | 3D local navigation execution report, including planner blocked/recovery hints |
+| `/a2/nav3/goal_pose` | `geometry_msgs/msg/PoseStamped` | `goal_bridge`, `task_manager` | `obstacle_aware_local_planner_3d` | real | Canonical 3D local-goal contract |
 | `/goal_pose_` | `geometry_msgs/msg/PoseStamped` | compatibility publisher | legacy 3D consumers | real | Deprecated compatibility alias for `/a2/nav3/goal_pose` |
 | `/a2/task_manager/status` | `std_msgs/msg/String` | `task_manager` | tools/UI | real | Unified task orchestration state |
 | `/a2/task_manager/report` | `std_msgs/msg/String` | `task_manager` | tools/UI | real | Latest route mission report path mirrored from `/a2/scan_mission/report` |
@@ -52,12 +53,17 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/a2/sdk/status` | `std_msgs/msg/String` | `a2_sdk_bridge` | tools/UI | real | Unified SDK readiness report |
 | `/a2/control/status` | `std_msgs/msg/String` | `a2_control_bridge` | tools/UI | real | Unified control bridge readiness and motion gate report |
 | `/a2/real/report` | `std_msgs/msg/String` | `real_readiness_monitor` | tools/UI | real | Aggregate stack readiness report with flattened `slam_state/slam_ready/slam_reason` |
+| `/a2/ndt/healthy` | `std_msgs/msg/Bool` | `ndt_health_monitor` | `safety_supervisor` | real | NDT health gate (healthy=true) |
+| `/a2/ndt/health_status` | `std_msgs/msg/String` | `ndt_health_monitor` | tools/UI | real | `state={healthy|degrading|failed|ndt_not_ready};score=...;ndt_ready=...` |
+| `/a2/recovery/cmd_vel` | `geometry_msgs/msg/Twist` | `auto_scan_mission` | `obstacle_aware_local_planner_3d`/`collision_monitor` | real | Recovery FSM velocity hints (safety chain enforced) |
+| `/a2/battery` | `sensor_msgs/msg/BatteryState` | `a2_battery_publisher` | web backend/tools | real | Battery snapshot (available/percentage/voltage/charging) |
 
 ## Action Contracts
 
 | Action | Type | Client | Server | Purpose |
 |---|---|---|---|---|
 | `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | `goal_bridge`, `auto_scan_mission`, web backend | Nav2 BT navigator | Canonical single-goal navigation action |
+| `/run_mission` | `a2_interfaces/action/RunMission` | `task_manager` | `auto_scan_mission` | Mission execution (goal/feedback/result), mirrors `/a2/scan_mission/*` topics |
 
 ## Service Contracts
 

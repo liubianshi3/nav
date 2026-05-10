@@ -1,7 +1,9 @@
 occupancy_mapper:
   ros__parameters:
     map_topic: /map
-    pointcloud_topic: /jt128/front/points
+    # Input pointcloud is pre-segmented (ground removed by a2_ground_segmentation).
+    # Z limits here act as a secondary safety filter only.
+    pointcloud_topic: /a2/obstacle/points
     odom_topic: /odom
     frame_id: map
     width: 600
@@ -14,7 +16,7 @@ occupancy_mapper:
     min_range: 0.3
     max_range: 10.0
     obstacle_min_z: 0.05
-    obstacle_max_z: 1.2
+    obstacle_max_z: 2.5
     hit_log_odds: 0.9
     miss_log_odds: 0.2
     min_log_odds: -2.0

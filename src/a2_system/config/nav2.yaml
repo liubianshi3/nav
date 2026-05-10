@@ -1,7 +1,7 @@
 goal_bridge:
   ros__parameters:
     exploration_goal_topic: /a2/exploration/goal
-    navigation_backend: pose_topic_3d
+    navigation_backend: nav2
     pose_goal_topic: /a2/nav3/goal_pose
     legacy_pose_goal_topic: /goal_pose_
     navigate_action_name: navigate_to_pose

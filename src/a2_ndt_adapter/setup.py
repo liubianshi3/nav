@@ -17,9 +17,9 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='dell',
-    maintainer_email='codex@local',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer_email='dell@example.com',
+    description='A2 adapter for Autoware NDT scan matching localization.',
+    license='Apache-2.0',
     extras_require={
         'test': [
             'pytest',

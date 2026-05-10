@@ -8,3 +8,5 @@ real_lidar:
     output_frame_id: jt128_front_link
     restamp_on_receive: false
     stale_timeout_sec: 1.0
+    enable_ground_segmentation: true
+    enable_collision_monitor: true

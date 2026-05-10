@@ -5,7 +5,7 @@ a2_control_bridge:
     allow_loopback: true
     network_interface: ""
     interface_candidates: ["lo"]
-    cmd_topic: /cmd_vel
+    cmd_topic: /cmd_vel_safe
     estop_topic: /a2/estop
     localization_ok_topic: /a2/localization_ok
     map_ready_topic: /a2/map_ready

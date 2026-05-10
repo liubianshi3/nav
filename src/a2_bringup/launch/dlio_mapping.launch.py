@@ -128,7 +128,7 @@ def _launch_setup(context, *args, **kwargs):
                         "map_root": map_root,
                         "map_representation": "pointcloud_map_3d",
                         "pointcloud_topic_3d": "/jt128/dlio/map_points",
-                        "pointcloud_fallback_topic_3d": "",
+                        "pointcloud_fallback_topic_3d": pointcloud_topic,
                         "use_sim_time": use_sim_time,
                     },
                 ],

@@ -1,0 +1,7 @@
+static_tf_manager:
+  ros__parameters:
+    base_height: 0.28
+
+a2_sdk_bridge:
+  ros__parameters:
+    robot_model: unitree_a2

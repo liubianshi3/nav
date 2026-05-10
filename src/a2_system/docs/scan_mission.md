@@ -66,6 +66,16 @@ Dry-run behavior:
 - does not save a map
 - writes the same Markdown report format
 
+## Map Validation
+
+The mission validates each waypoint against the latest `/map` occupancy grid before executing navigation goals:
+
+- rejects waypoints landing on occupied cells (`occupied_threshold`)
+- rejects waypoints that violate the configured clearance radius (`min_clearance_cells`)
+- rejects unknown cells when `allow_unknown_cells` is false
+
+This validation runs in both dry-run and real runs when `validate_waypoints_against_map` is enabled.
+
 ## Real Run
 
 After dry-run passes and the physical area is safe:

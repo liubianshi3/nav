@@ -113,14 +113,14 @@ def check_nav2_stack(result: CheckResult) -> None:
 
 def check_localization(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "localization.yaml"), "localization_gate", "ros__parameters", default={})
-    result.require(params.get("input_pose_topic") == "/jt128/dlio/odom", "localization_gate must consume /jt128/dlio/odom in JT128 3D-first mode")
+    result.require(params.get("input_pose_topic") == "/amcl_pose", "localization_gate must consume /amcl_pose in Nav2 AMCL mode")
     result.require(
-        params.get("input_pose_msg_type") == "nav_msgs/msg/Odometry",
-        "localization_gate must consume nav_msgs/msg/Odometry in 3D-first mode",
+        params.get("input_pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
+        "localization_gate must consume geometry_msgs/msg/PoseWithCovarianceStamped in AMCL mode",
     )
     result.require(
         not bool(params.get("pose_transient_local", True)),
-        "localization_gate must use volatile QoS for JT128 DLIO odom in 3D-first mode",
+        "localization_gate must use volatile QoS",
     )
     result.require(bool(params.get("latch_valid_pose", False)), "localization_gate must latch recently valid poses")
     result.require(float(params.get("max_pose_age_sec", 999.0)) <= 10.0, "max_pose_age_sec must be bounded for real readiness")
@@ -147,7 +147,7 @@ def check_real_lidar(result: CheckResult) -> None:
 
 def check_goal_bridge(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "nav2.yaml"), "goal_bridge", "ros__parameters", default={})
-    result.require(params.get("navigation_backend") == "pose_topic_3d", "goal_bridge must default to pose_topic_3d")
+    result.require(params.get("navigation_backend") == "nav2", "goal_bridge must default to nav2")
     result.require(
         params.get("pose_goal_topic") == "/a2/nav3/goal_pose",
         "goal_bridge pose_goal_topic must be /a2/nav3/goal_pose",
@@ -158,21 +158,29 @@ def check_goal_bridge(result: CheckResult) -> None:
     result.require(float(params.get("action_wait_timeout_sec", 0.0)) > 0.0, "goal_bridge must define action_wait_timeout_sec")
 
 
+def check_pose_goal_controller_3d(result: CheckResult) -> None:
+    params = get(load_yaml(CONFIG_DIR / "pose_goal_controller_3d.yaml"), "pose_goal_controller_3d", "ros__parameters", default={})
+    result.require(params.get("goal_topic") == "/a2/nav3/goal_pose", "3D pose controller goal_topic must remain /a2/nav3/goal_pose")
+    result.require(params.get("pose_topic") == "/a2/relocalization/pose", "3D pose controller pose_topic must remain /a2/relocalization/pose")
+    result.require(params.get("cmd_topic") == "/cmd_vel", "3D pose controller cmd_topic must remain /cmd_vel")
+    result.require(bool(params.get("dry_run", False)), "3D pose controller must default to dry_run")
+    result.require(bool(params.get("require_localization_ok", False)), "3D pose controller must require localization_ok")
+    result.require(bool(params.get("require_obstacle_cloud", False)), "3D pose controller must require obstacle pointcloud")
+    result.require(params.get("obstacle_cloud_topic") == "/jt128/front/points", "3D pose controller obstacle_cloud_topic must remain /jt128/front/points")
+    result.require(float(params.get("obstacle_cloud_timeout_sec", 999.0)) <= 1.5, "3D pose controller obstacle cloud timeout must be bounded")
+
+
 def check_scan_mission(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "scan_mission.yaml"), "auto_scan_mission", "ros__parameters", default={})
     waypoint_yaml = load_yaml(CONFIG_DIR / "scan_waypoints.example.yaml")
     waypoints = waypoint_yaml.get("waypoints", [])
     scan_launch = (BRINGUP_DIR / "scan_mission.launch.py").read_text(encoding="utf-8")
 
-    result.require(params.get("navigation_backend") == "pose_topic_3d", "scan mission must default to pose_topic_3d")
+    result.require(params.get("navigation_backend") == "nav2", "scan mission must default to nav2")
+    result.require(params.get("pose_topic") == "/amcl_pose", "scan mission must consume /amcl_pose in AMCL mode")
     result.require(
-        params.get("pose_goal_topic") == "/a2/nav3/goal_pose",
-        "scan mission pose goal topic must be /a2/nav3/goal_pose",
-    )
-    result.require(params.get("pose_topic") == "/jt128/dlio/odom", "scan mission must consume /jt128/dlio/odom pose in JT128 3D-first mode")
-    result.require(
-        params.get("pose_msg_type") == "nav_msgs/msg/Odometry",
-        "scan mission pose_msg_type must be nav_msgs/msg/Odometry in 3D-first mode",
+        params.get("pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
+        "scan mission pose_msg_type must be geometry_msgs/msg/PoseWithCovarianceStamped in AMCL mode",
     )
     result.require(params.get("pointcloud_topic") == "/jt128/front/points", "scan mission must use JT128 front pointcloud")
     result.require(params.get("navigate_action_name") == "/navigate_to_pose", "scan mission must keep Nav2 action as fallback")
@@ -181,8 +189,8 @@ def check_scan_mission(result: CheckResult) -> None:
     result.require(params.get("goal_frame") == "map", "scan mission goals must be emitted in map frame")
     result.require(bool(params.get("require_map_frame", False)), "scan mission must require map frame by default")
     result.require(
-        not bool(params.get("validate_waypoints_against_map", True)),
-        "3D-first scan mission must not require 2D /map validation by default",
+        bool(params.get("validate_waypoints_against_map", False)),
+        "scan mission must validate waypoints against /map by default",
     )
     result.require(not bool(params.get("allow_unknown_cells", True)), "scan mission must block unknown cells by default")
     result.require(int(params.get("occupied_threshold", 100)) <= 70, "scan mission occupied threshold must be <= 70")
@@ -256,8 +264,8 @@ def check_real_mapping_source_contract(result: CheckResult) -> None:
         "mapping.launch.py must support slam_toolbox",
     )
     result.require(
-        slam_params.get("mapping_stack_profile") == "front_lidar_pointcloud_3d",
-        "slam.yaml must default mapping_stack_profile to front_lidar_pointcloud_3d",
+        slam_params.get("mapping_stack_profile") == "slam_toolbox",
+        "slam.yaml must default mapping_stack_profile to slam_toolbox for Nav2-first navigation",
     )
     result.require(
         slam_toolbox_params.get("scan_topic") == "/scan",
@@ -353,6 +361,7 @@ def main() -> int:
     check_state_bridge(result)
     check_real_lidar(result)
     check_goal_bridge(result)
+    check_pose_goal_controller_3d(result)
     check_scan_mission(result)
     check_launch_defaults(result)
     check_real_entrypoints(result)
