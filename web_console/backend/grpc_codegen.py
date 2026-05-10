@@ -44,6 +44,8 @@ def generate_proto_stubs(*, repo_root: Path, out_root: Path) -> Path:
         if result != 0:
             raise RuntimeError(f"protoc failed for {proto_file} (exit={result})")
 
+    _ensure_package_tree(out_root, ["common"])
+    _ensure_package_tree(out_root, ["device"])
     _ensure_package_tree(out_root, ["physical"])
     _ensure_package_tree(out_root, ["physical", "common"])
     _ensure_package_tree(out_root, ["physical", "device"])
@@ -66,4 +68,3 @@ def ensure_grpc_generated() -> Path:
     generated_root = generate_proto_stubs(repo_root=repo_root, out_root=out_root)
     marker.write_text("ok", encoding="utf-8")
     return generated_root
-

@@ -50,6 +50,7 @@ COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
 
 WORKDIR /opt/a2_system_ws
 COPY src ./src
+COPY proto ./proto
 COPY web_console/backend ./web_console/backend
 COPY web_console/scripts ./web_console/scripts
 COPY web_console/systemd ./web_console/systemd

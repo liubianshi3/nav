@@ -54,10 +54,10 @@ class _AlarmState:
 class A2GrpcServices:
     def __init__(self, *, ros_runtime: RosRuntime, stack_controller: StackController) -> None:
         ensure_grpc_generated()
-        from physical.common import alarm_pb2, registry_pb2
-        from physical.common import alarm_pb2_grpc, registry_pb2_grpc
-        from physical.device import laser_navigation_pb2, robot_dog_pb2
-        from physical.device import laser_navigation_pb2_grpc, robot_dog_pb2_grpc
+        from common import alarm_pb2, registry_pb2
+        from common import alarm_pb2_grpc, registry_pb2_grpc
+        from device import laser_navigation_pb2, robot_dog_pb2
+        from device import laser_navigation_pb2_grpc, robot_dog_pb2_grpc
 
         self.alarm_pb2 = alarm_pb2
         self.registry_pb2 = registry_pb2
