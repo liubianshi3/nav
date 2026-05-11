@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import math
 import time
 from dataclasses import dataclass, field
@@ -9,8 +10,10 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import grpc
+from PIL import Image as PilImage
 
 from .grpc_codegen import ensure_grpc_generated
+from .map_formats import _occupancy_bytes_from_nav2_luma, _parse_nav2_map_yaml, _read_pgm_luma
 from .models import NavigationGoal, NavigationGoalRequest
 from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
@@ -320,18 +323,22 @@ class A2GrpcServices:
             return self.p.laser_navigation_pb2.StartMappingResponse(success=True, session_id="mapping", message=str(result.get("message", "ok")))
 
         async def StopMapping(self, request, context):
-            node = self.p.ros_runtime.node
             map_id = (request.map_name or "").strip() or (request.session_id or "").strip() or f"map_{int(time.time())}"
-            try:
-                await asyncio.to_thread(self.p.stack_controller.stop)
-            except StackControlError as exc:
-                return self.p.laser_navigation_pb2.StopMappingResponse(success=False, map_id="", message=str(exc))
-            if bool(request.save_map) and node is not None:
+            if bool(request.save_map):
+                node = await self.p._node_or_abort(context)
                 try:
                     await asyncio.to_thread(node.save_managed_map, map_id)
                 except Exception as exc:
                     return self.p.laser_navigation_pb2.StopMappingResponse(success=False, map_id=map_id, message=str(exc))
-            return self.p.laser_navigation_pb2.StopMappingResponse(success=True, map_id=map_id, message="ok")
+            try:
+                result = await asyncio.to_thread(self.p.stack_controller.stop)
+            except StackControlError as exc:
+                return self.p.laser_navigation_pb2.StopMappingResponse(success=False, map_id=map_id, message=str(exc))
+            return self.p.laser_navigation_pb2.StopMappingResponse(
+                success=True,
+                map_id=map_id,
+                message=str((result or {}).get("message") or "ok"),
+            )
 
         async def ListMaps(self, request, context):
             maps = await asyncio.to_thread(self.p.stack_controller.list_maps, include_incompatible=True)
@@ -348,7 +355,11 @@ class A2GrpcServices:
                         map_name=m.map_id,
                         mapping_type=mapping_type,
                         created_at=_iso_to_ms(m.created_at),
-                        updated_at=_iso_to_ms(m.created_at),
+                        updated_at=(
+                            int((self.p.stack_controller.map_root / m.map_id / "metadata.yaml").stat().st_mtime * 1000)
+                            if (self.p.stack_controller.map_root / m.map_id / "metadata.yaml").exists()
+                            else _iso_to_ms(m.created_at)
+                        ),
                     )
                 )
             return self.p.laser_navigation_pb2.ListMapsResponse(maps=items)
@@ -372,21 +383,77 @@ class A2GrpcServices:
                 await context.abort(grpc.StatusCode.NOT_FOUND, "map not found")
 
             fmt = int(request.format or 0)
-            if fmt == self.p.laser_navigation_pb2.MAP_FORMAT_OCCUPANCY_GRID:
-                node = await self.p._node_or_abort(context)
-                snapshot = node.get_map_snapshot()
-                data_bytes = bytes((v & 0xFF) for v in snapshot.data)
-                origin = self.p.laser_navigation_pb2.PositionResponse(
-                    x=float(snapshot.origin.x),
-                    y=float(snapshot.origin.y),
-                    theta=float(snapshot.origin.yaw),
-                    confidence=1.0,
-                    timestamp=_iso_to_ms(snapshot.stamp),
-                )
+            map_yaml_path = Path(map_info.map_yaml) if map_info.map_yaml else None
+            if map_yaml_path is None or not map_yaml_path.exists():
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "map.yaml is missing")
+            try:
+                image_rel, resolution, origin_tuple = _parse_nav2_map_yaml(map_yaml_path)
+            except Exception as exc:
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
+            image_path = (map_yaml_path.parent / image_rel).resolve()
+            if not image_path.exists():
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "map image not found")
+
+            res = float(resolution or (map_info.resolution or 0.0) or 0.0)
+            origin = self.p.laser_navigation_pb2.PositionResponse(
+                x=float(origin_tuple[0]),
+                y=float(origin_tuple[1]),
+                theta=float(origin_tuple[2]),
+                confidence=1.0,
+                timestamp=0,
+            )
+
+            if fmt in (0, self.p.laser_navigation_pb2.MAP_FORMAT_PGM):
+                if image_path.suffix.lower() == ".pgm":
+                    width, height, _ = _read_pgm_luma(image_path)
+                    raw = image_path.read_bytes()
+                else:
+                    img = PilImage.open(image_path).convert("L")
+                    width, height = img.size
+                    raw = image_path.read_bytes()
                 meta = self.p.laser_navigation_pb2.MapMetadata(
-                    width=float(snapshot.width),
-                    height=float(snapshot.height),
-                    resolution=float(snapshot.resolution),
+                    width=float(width),
+                    height=float(height),
+                    resolution=res,
+                    origin=origin,
+                )
+                return self.p.laser_navigation_pb2.GetMapResponse(
+                    map_id=map_id,
+                    map_name=map_id,
+                    map_data=raw,
+                    metadata=meta,
+                )
+
+            if fmt == self.p.laser_navigation_pb2.MAP_FORMAT_PNG:
+                img = PilImage.open(image_path).convert("L")
+                width, height = img.size
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                meta = self.p.laser_navigation_pb2.MapMetadata(
+                    width=float(width),
+                    height=float(height),
+                    resolution=res,
+                    origin=origin,
+                )
+                return self.p.laser_navigation_pb2.GetMapResponse(
+                    map_id=map_id,
+                    map_name=map_id,
+                    map_data=buf.getvalue(),
+                    metadata=meta,
+                )
+
+            if fmt == self.p.laser_navigation_pb2.MAP_FORMAT_OCCUPANCY_GRID:
+                if image_path.suffix.lower() == ".pgm":
+                    width, height, luma = _read_pgm_luma(image_path)
+                else:
+                    img = PilImage.open(image_path).convert("L")
+                    width, height = img.size
+                    luma = img.tobytes()
+                data_bytes = _occupancy_bytes_from_nav2_luma(width, height, luma)
+                meta = self.p.laser_navigation_pb2.MapMetadata(
+                    width=float(width),
+                    height=float(height),
+                    resolution=res,
                     origin=origin,
                 )
                 return self.p.laser_navigation_pb2.GetMapResponse(
@@ -396,32 +463,12 @@ class A2GrpcServices:
                     metadata=meta,
                 )
 
-            map_yaml_path = Path(map_info.map_yaml) if map_info.map_yaml else None
-            if map_yaml_path is None or not map_yaml_path.exists():
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "map.yaml is missing")
-
-            payload = (map_yaml_path.read_text(encoding="utf-8") or "").splitlines()
-            image_rel = ""
-            for line in payload:
-                if ":" not in line:
-                    continue
-                key, value = line.split(":", 1)
-                if key.strip() == "image":
-                    image_rel = value.strip().strip("'\"")
-                    break
-            if not image_rel:
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "map.yaml missing image field")
-
-            image_path = (map_yaml_path.parent / image_rel).resolve()
-            if not image_path.exists():
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "map image not found")
-
             raw = image_path.read_bytes()
             return self.p.laser_navigation_pb2.GetMapResponse(
                 map_id=map_id,
                 map_name=map_id,
                 map_data=raw,
-                metadata=self.p.laser_navigation_pb2.MapMetadata(),
+                metadata=self.p.laser_navigation_pb2.MapMetadata(origin=origin, resolution=res),
             )
 
         async def ListMapPresets(self, request, context):
