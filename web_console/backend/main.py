@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_config
+from .grpc_server import GrpcServer
 from .models import (
     DashboardSnapshot,
     InitialPoseRequest,
@@ -145,9 +146,21 @@ def create_app(config_path: str | None = None) -> FastAPI:
     async def on_startup() -> None:
         ws_manager.set_loop(asyncio.get_running_loop())
         ros_runtime.start()
+        if getattr(config, "grpc", None) is not None and bool(config.grpc.enabled):
+            grpc_server = GrpcServer(
+                ros_runtime=ros_runtime,
+                stack_controller=stack_controller,
+                host=str(config.grpc.host),
+                port=int(config.grpc.port),
+            )
+            await grpc_server.start()
+            app.state.grpc_server = grpc_server
 
     @app.on_event("shutdown")
     async def on_shutdown() -> None:
+        grpc_server = getattr(app.state, "grpc_server", None)
+        if grpc_server is not None:
+            await grpc_server.stop()
         ros_runtime.stop()
 
     @app.get("/api/health")

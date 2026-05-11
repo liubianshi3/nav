@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package physical.device;
+
+option go_package = "github.com/feishu/core/proto/device";
+
+service RobotDogService {
+  rpc Move(MoveRequest) returns (MoveResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
+  rpc GetBattery(BatteryRequest) returns (BatteryResponse);
+  rpc SetPosture(PostureRequest) returns (PostureResponse);
+  rpc GetPose(PoseRequest) returns (PoseResponse);
+  rpc Walk(WalkRequest) returns (WalkResponse);
+  rpc GetSensors(SensorsRequest) returns (SensorsResponse);
+  rpc SetMode(SetModeRequest) returns (SetModeResponse);
+  rpc GetMode(GetModeRequest) returns (GetModeResponse);
+  rpc WatchRobotDogStatus(WatchRobotDogStatusRequest) returns (stream RobotDogStatus);
+}
+
+enum RobotDogMode {
+  ROBOT_DOG_MODE_UNSPECIFIED = 0;
+  ROBOT_DOG_MODE_REMOTE_CONTROL = 1;
+  ROBOT_DOG_MODE_API = 2;
+}
+
+message SetModeRequest {
+  string device_id = 1;
+  RobotDogMode mode = 2;
+}
+
+message SetModeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetModeRequest {
+  string device_id = 1;
+}
+
+message GetModeResponse {
+  RobotDogMode mode = 1;
+}
+
+message MoveRequest {
+  string device_id = 1;
+  float velocity_x = 2;
+  float velocity_y = 3;
+  float angular_velocity = 4;
+  int32 pointIndex = 5;
+}
+
+message MoveResponse {
+  bool success = 1;
+  string message = 2;
+  string task_id = 3;
+}
+
+message StopRequest {
+  string device_id = 1;
+  StopType type = 2;
+}
+
+enum StopType {
+  STOP_TYPE_UNSPECIFIED = 0;
+  STOP_TYPE_IMMEDIATE = 1;
+  STOP_TYPE_SMOOTH = 2;
+}
+
+message StopResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message BatteryRequest {
+  string device_id = 1;
+}
+
+message BatteryResponse {
+  int32 percentage = 1;
+  bool is_charging = 2;
+  int32 estimated_minutes = 3;
+  BatteryHealth health = 4;
+}
+
+enum BatteryHealth {
+  BATTERY_HEALTH_UNSPECIFIED = 0;
+  BATTERY_HEALTH_GOOD = 1;
+  BATTERY_HEALTH_FAIR = 2;
+  BATTERY_HEALTH_POOR = 3;
+}
+
+message PostureRequest {
+  string device_id = 1;
+  PostureType posture = 2;
+  int32 duration_ms = 3;
+}
+
+enum PostureType {
+  POSTURE_TYPE_UNSPECIFIED = 0;
+  POSTURE_TYPE_STAND = 1;
+  POSTURE_TYPE_SIT = 2;
+  POSTURE_TYPE_LIE = 3;
+  POSTURE_TYPE_STRETCH = 4;
+}
+
+message PostureResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message PoseRequest {
+  string device_id = 1;
+}
+
+message PoseResponse {
+  float position_x = 1;
+  float position_y = 2;
+  float position_z = 3;
+  float rotation_x = 4;
+  float rotation_y = 5;
+  float rotation_z = 6;
+  float rotation_w = 7;
+}
+
+message WalkRequest {
+  string device_id = 1;
+  float x = 2;
+  float y = 3;
+  float theta = 4;
+  WalkMode mode = 5;
+  int32 pointIndex = 6;
+}
+
+enum WalkMode {
+  WALK_MODE_UNSPECIFIED = 0;
+  WALK_MODE_NORMAL = 1;
+  WALK_MODE_CRAWL = 2;
+  WALK_MODE_TROT = 3;
+}
+
+message WalkResponse {
+  bool success = 1;
+  string message = 2;
+  string task_id = 3;
+}
+
+message SensorsRequest {
+  string device_id = 1;
+}
+
+message SensorsResponse {
+  repeated SensorData sensors = 1;
+  int64 timestamp = 2;
+}
+
+message SensorData {
+  string name = 1;
+  float value = 2;
+  string unit = 3;
+}
+
+message WatchRobotDogStatusRequest {
+  string device_id = 1;
+}
+
+message RobotDogStatus {
+  string device_id = 1;
+  PoseResponse pose = 2;
+  BatteryResponse battery = 3;
+  repeated SensorData sensors = 4;
+  RobotDogState state = 5;
+  int64 timestamp = 6;
+  RobotDogMode mode = 7;
+}
+
+enum RobotDogState {
+  ROBOT_DOG_STATE_UNSPECIFIED = 0;
+  ROBOT_DOG_STATE_IDLE = 1;
+  ROBOT_DOG_STATE_MOVING = 2;
+  ROBOT_DOG_STATE_STOPPING = 3;
+  ROBOT_DOG_STATE_CHARGING = 4;
+}

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package physical.common;
+
+option go_package = "github.com/feishu/core/proto/common";
+
+service RegistryService {
+  rpc Register(RegistryRegisterRequest) returns (RegistryRegisterResponse);
+  rpc Unregister(RegistryUnregisterRequest) returns (RegistryUnregisterResponse);
+  rpc List(RegistryListRequest) returns (RegistryListResponse);
+}
+
+message UpstreamInfo {
+  string name = 1;
+  string type = 2;
+  string version = 3;
+  string addr = 4;
+  repeated string services = 5;
+  repeated UpstreamMetaEntry meta = 6;
+}
+
+enum UpstreamMetaKey {
+  UPSTREAM_META_KEY_UNSPECIFIED = 0;
+  UPSTREAM_META_KEY_DEVICE_MODEL = 1;
+  UPSTREAM_META_KEY_DEVICE_VENDOR = 2;
+  UPSTREAM_META_KEY_DEVICE_VERSION = 3;
+  UPSTREAM_META_KEY_CUSTOM = 1000;
+}
+
+message UpstreamMetaEntry {
+  UpstreamMetaKey key = 1;
+  string value = 2;
+  string custom_key = 3;
+}
+
+message RegistryRegisterRequest {
+  UpstreamInfo upstream = 1;
+}
+
+message RegistryRegisterResponse {
+  UpstreamInfo upstream = 1;
+}
+
+message RegistryUnregisterRequest {
+  string addr = 1;
+}
+
+message RegistryUnregisterResponse {
+  bool ok = 1;
+}
+
+message RegistryListRequest {
+  bool include_proxy_info = 1;
+}
+
+message RegistryListResponse {
+  repeated UpstreamInfo upstreams = 1;
+  string proxy_grpc_listen = 2;
+  int32 proxy_grpc_port = 3;
+}

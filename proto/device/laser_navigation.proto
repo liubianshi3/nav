@@ -1,0 +1,244 @@
+syntax = "proto3";
+
+package physical.device;
+
+option go_package = "github.com/feishu/core/proto/device";
+
+service LaserNavigationService {
+  rpc GetPosition(PositionRequest) returns (PositionResponse);
+  rpc SetTarget(SetTargetRequest) returns (SetTargetResponse);
+  rpc CancelTarget(CancelTargetRequest) returns (CancelTargetResponse);
+  rpc StartMapping(StartMappingRequest) returns (StartMappingResponse);
+  rpc StopMapping(StopMappingRequest) returns (StopMappingResponse);
+  rpc GetMap(GetMapRequest) returns (GetMapResponse);
+  rpc SelectMap(SelectMapRequest) returns (SelectMapResponse);
+  rpc ListMaps(ListMapsRequest) returns (ListMapsResponse);
+  rpc ListMapPresets(ListMapPresetsRequest) returns (ListMapPresetsResponse);
+  rpc GetScanData(ScanDataRequest) returns (ScanDataResponse);
+  rpc GetPath(GetPathRequest) returns (GetPathResponse);
+  rpc WatchNavigationStatus(WatchNavigationStatusRequest) returns (stream NavigationStatus);
+}
+
+message PositionRequest {
+  string device_id = 1;
+}
+
+message PositionResponse {
+  float x = 1;
+  float y = 2;
+  float theta = 3;
+  float confidence = 4;
+  int64 timestamp = 5;
+}
+
+message SetTargetRequest {
+  string device_id = 1;
+  float target_x = 2;
+  float target_y = 3;
+  float target_theta = 4;
+  NavigationMode mode = 5;
+  bool avoid_obstacles = 6;
+}
+
+enum NavigationMode {
+  NAVIGATION_MODE_UNSPECIFIED = 0;
+  NAVIGATION_MODE_DIRECT = 1;
+  NAVIGATION_MODE_PLANNED = 2;
+  NAVIGATION_MODE_FOLLOW = 3;
+}
+
+message SetTargetResponse {
+  bool success = 1;
+  string message = 2;
+  string task_id = 3;
+  float estimated_time = 4;
+}
+
+message CancelTargetRequest {
+  string device_id = 1;
+  string task_id = 2;
+}
+
+message CancelTargetResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message StartMappingRequest {
+  string device_id = 1;
+  string map_name = 2;
+  MappingType mapping_type = 3;
+}
+
+enum MappingType {
+  MAPPING_TYPE_UNSPECIFIED = 0;
+  MAPPING_TYPE_2D = 1;
+  MAPPING_TYPE_3D = 2;
+}
+
+message StartMappingResponse {
+  bool success = 1;
+  string session_id = 2;
+  string message = 3;
+}
+
+message StopMappingRequest {
+  string device_id = 1;
+  string session_id = 2;
+  string map_name = 3;
+  bool save_map = 4;
+}
+
+message StopMappingResponse {
+  bool success = 1;
+  string map_id = 2;
+  string message = 3;
+}
+
+message ListMapsRequest {
+  string device_id = 1;
+}
+
+message MapInfo {
+  string map_id = 1;
+  string map_name = 2;
+  MappingType mapping_type = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+}
+
+message ListMapsResponse {
+  repeated MapInfo maps = 1;
+}
+
+message ListMapPresetsRequest {
+  string device_id = 1;
+  string map_id = 2;
+}
+
+message Pose2D {
+  float x = 1;
+  float y = 2;
+  float theta = 3;
+}
+
+message MapPreset {
+  string preset_id = 1;
+  string preset_name = 2;
+  Pose2D pose = 3;
+  string description = 4;
+}
+
+message ListMapPresetsResponse {
+  repeated MapPreset presets = 1;
+}
+
+message GetMapRequest {
+  string device_id = 1;
+  string map_id = 2;
+  MapFormat format = 3;
+}
+
+enum MapFormat {
+  MAP_FORMAT_UNSPECIFIED = 0;
+  MAP_FORMAT_PGM = 1;
+  MAP_FORMAT_PNG = 2;
+  MAP_FORMAT_OCCUPANCY_GRID = 3;
+}
+
+message GetMapResponse {
+  string map_id = 1;
+  string map_name = 2;
+  bytes map_data = 3;
+  MapMetadata metadata = 4;
+}
+
+message SelectMapRequest {
+  string device_id = 1;
+  string map_id = 2;
+}
+
+message SelectMapResponse {
+  bool success = 1;
+  string message = 2;
+  string current_map_id = 3;
+}
+
+message MapMetadata {
+  float width = 1;
+  float height = 2;
+  float resolution = 3;
+  PositionResponse origin = 4;
+}
+
+message ScanDataRequest {
+  string device_id = 1;
+  int32 angle_min = 2;
+  int32 angle_max = 3;
+  // When true, the response may include point cloud data in PCD file format.
+  // For large point clouds, the server may return a download URL instead of inline bytes.
+  bool include_pcd = 4;
+}
+
+message ScanDataResponse {
+  repeated float ranges = 1;
+  repeated float angles = 2;
+  int32 points_count = 3;
+  float angle_min = 4;
+  float angle_max = 5;
+  float range_min = 6;
+  float range_max = 7;
+  int64 timestamp = 8;
+  // Raw .pcd file bytes (PCD v0.7). Present when requested and payload size allows.
+  bytes pcd_data = 9;
+  // Download URL for .pcd content when the payload is too large to return inline.
+  string pcd_url = 10;
+}
+
+message GetPathRequest {
+  string device_id = 1;
+  float start_x = 2;
+  float start_y = 3;
+  float goal_x = 4;
+  float goal_y = 5;
+}
+
+message GetPathResponse {
+  bool success = 1;
+  repeated PathPoint path = 2;
+  float total_distance = 3;
+  float estimated_time = 4;
+  string error_message = 5;
+}
+
+message PathPoint {
+  float x = 1;
+  float y = 2;
+  float theta = 3;
+  float velocity = 4;
+}
+
+message WatchNavigationStatusRequest {
+  string device_id = 1;
+}
+
+message NavigationStatus {
+  string device_id = 1;
+  PositionResponse current_position = 2;
+  NavigationState state = 3;
+  bool is_moving = 4;
+  string task_id = 5;
+  PositionResponse target_position = 6;
+  repeated PathPoint remaining_path = 7;
+  float battery_level = 8;
+  int64 timestamp = 9;
+}
+
+enum NavigationState {
+  NAVIGATION_STATE_UNSPECIFIED = 0;
+  NAVIGATION_STATE_IDLE = 1;
+  NAVIGATION_STATE_NAVIGATING = 2;
+  NAVIGATION_STATE_MAPPING = 3;
+  NAVIGATION_STATE_LOCALIZING = 4;
+  NAVIGATION_STATE_ERROR = 5;
+}

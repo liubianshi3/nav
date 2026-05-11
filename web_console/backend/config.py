@@ -18,6 +18,13 @@ class ServerConfig:
 
 
 @dataclass
+class GrpcConfig:
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 50051
+
+
+@dataclass
 class RosTopicConfig:
     map_topic: str = "/map"
     pointcloud_topic: str = "/jt128/front/points"
@@ -117,6 +124,7 @@ class StackConfig:
 @dataclass
 class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
+    grpc: GrpcConfig = field(default_factory=GrpcConfig)
     ros: RosTopicConfig = field(default_factory=RosTopicConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)

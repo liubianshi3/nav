@@ -6,6 +6,11 @@ server:
   static_dir: backend/static
   websocket_path: /ws
 
+grpc:
+  enabled: true
+  host: 0.0.0.0
+  port: 50051
+
 ros:
   map_topic: /map
   pointcloud_topic: /jt128/front/points
