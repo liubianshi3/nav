@@ -56,7 +56,6 @@ COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
 
 WORKDIR /opt/a2_system_ws
 COPY src ./src
-COPY proto ./proto
 COPY web_console/backend ./web_console/backend
 COPY web_console/scripts ./web_console/scripts
 COPY web_console/systemd ./web_console/systemd
@@ -71,7 +70,7 @@ RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
     && source /opt/ros/humble/setup.bash \
     && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
+        | grep -vE 'autoware_|fast_lio|livox_ros_driver2' \
         | awk '{print $1}' \
         | tr '\n' ' ') \
     && colcon build --packages-select ${OUR_PACKAGES} \
