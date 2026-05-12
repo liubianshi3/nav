@@ -1,0 +1,9 @@
+<CycloneDDS>
+  <Domain id="any">
+    <Discovery>
+      <Peers>
+        <Peer address="a2_sim" />
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

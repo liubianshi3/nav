@@ -1,0 +1,61 @@
+services:
+  a2_sim:
+    container_name: a2_sim
+    image: registry.cn-hangzhou.aliyuncs.com/linuxsuren/device-navigation-sim:dev
+    init: true
+    privileged: true
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    command: ${A2_SIM_MODE:-sim-full}
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      DISPLAY: ${DISPLAY:-}
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
+      XDG_RUNTIME_DIR: ${XDG_RUNTIME_DIR:-}
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      ALSOFT_DRIVERS: "null"
+    volumes:
+      - ${A2_SIM_X11_SOCKET:-/tmp/.X11-unix}:/tmp/.X11-unix:ro
+      - ${A2_SIM_WSLG_ROOT:-/mnt/wslg}:/mnt/wslg
+    networks:
+      - a2_ros2
+
+  a2-system-ws:
+    image: registry.cn-hangzhou.aliyuncs.com/linuxsuren/device-navigation:dev
+    init: true
+    privileged: true
+    restart: unless-stopped
+    depends_on:
+      - a2_sim
+    ports:
+      - "${A2_WEB_PORT:-8080}:8080"
+      - "${A2_GRPC_PORT:-50051}:50051"
+    networks:
+      - a2_ros2
+    environment:
+      A2_WORKSPACE: /opt/a2_system_ws
+      CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}
+      A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
+      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
+      A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
+      A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
+      A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}
+      A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-false}
+      A2_LIVE_MOTION: ${A2_LIVE_MOTION:-false}
+      A2_STACK_REQUIRED: ${A2_STACK_REQUIRED:-false}
+    volumes:
+      - ${A2_HOST_MAP_ROOT:-./runtime/maps}:/opt/a2_system_ws/runtime/maps
+      - ${A2_HOST_LOG_ROOT:-./runtime/logs}:/opt/a2_system_ws/runtime/logs
+      - ${A2_HOST_ROUTE_ROOT:-./runtime/routes}:/opt/a2_system_ws/runtime/routes
+      - ${A2_HOST_REPORT_ROOT:-./runtime/reports}:/opt/a2_system_ws/runtime/reports
+      - ${A2_HOST_TEST_RECORD_ROOT:-./runtime/test_records}:/opt/a2_system_ws/runtime/test_records
+
+networks:
+  a2_ros2:
+    driver: bridge
