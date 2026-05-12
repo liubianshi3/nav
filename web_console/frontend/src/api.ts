@@ -2,10 +2,13 @@ import type {
   DashboardSnapshot,
   InitialPoseRequestPayload,
   InitialPoseResult,
+  LightStatusPayload,
   MapMediaListing,
   NavigationGoal,
   NavigationTaskState,
   SavedMapInfo,
+  SetLightDebugResponse,
+  SetLightRequestPayload,
   StackStatus,
   SystemHealth,
   TaskRouteDetail,
@@ -194,4 +197,19 @@ export async function stopTaskRoute(): Promise<TaskRouteStatus> {
 
 export async function fetchTaskRouteStatus(): Promise<TaskRouteStatus> {
   return handleJson<TaskRouteStatus>(await fetch("/api/tasks/routes/status"));
+}
+
+export async function debugSetLight(payload: SetLightRequestPayload): Promise<SetLightDebugResponse> {
+  const response = await fetch("/api/debug/light/set", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleJson<SetLightDebugResponse>(response);
+}
+
+export async function debugGetLightStatus(deviceId: string): Promise<LightStatusPayload> {
+  return handleJson<LightStatusPayload>(await fetch(`/api/debug/light/status?device_id=${encodeURIComponent(deviceId)}`));
 }

@@ -223,6 +223,31 @@ class SystemHealth(BaseModel):
     last_error: str | None = None
 
 
+class LightColorPayload(BaseModel):
+    r: int = Field(default=0, ge=0, le=255)
+    g: int = Field(default=0, ge=0, le=255)
+    b: int = Field(default=0, ge=0, le=255)
+
+
+class SetLightRequestPayload(BaseModel):
+    device_id: str = "a2"
+    on: bool = False
+    intensity: int = Field(default=0, ge=0, le=255)
+    color_mode: int = Field(default=0, ge=0, le=255)
+    rgb: LightColorPayload = Field(default_factory=LightColorPayload)
+    color_temperature_kelvin: int = Field(default=0, ge=0, le=65535)
+
+
+class LightStatusPayload(BaseModel):
+    device_id: str = "a2"
+    on: bool = False
+    intensity: int = Field(default=0, ge=0, le=255)
+    color_mode: int = Field(default=0, ge=0, le=255)
+    rgb: LightColorPayload = Field(default_factory=LightColorPayload)
+    color_temperature_kelvin: int = Field(default=0, ge=0, le=65535)
+    timestamp: int = 0
+
+
 class NodeCheck(BaseModel):
     key: str
     label: str

@@ -1,7 +1,8 @@
 services:
   a2_sim:
     container_name: a2_sim
-    image: registry.cn-hangzhou.aliyuncs.com/linuxsuren/device-navigation-sim:dev
+    #image: registry.cn-hangzhou.aliyuncs.com/linuxsuren/device-navigation-sim:dev
+    image: a2-sim:dev
     init: true
     privileged: true
     restart: unless-stopped
