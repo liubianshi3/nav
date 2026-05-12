@@ -51,20 +51,27 @@ class _AlarmState:
     alarms: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
+@dataclass
+class _LightState:
+    status_by_device: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
 class A2GrpcServices:
     def __init__(self, *, ros_runtime: RosRuntime, stack_controller: StackController) -> None:
         ensure_grpc_generated()
-        from common import alarm_pb2, registry_pb2
-        from common import alarm_pb2_grpc, registry_pb2_grpc
+        from common import alarm_pb2, light_pb2, registry_pb2
+        from common import alarm_pb2_grpc, light_pb2_grpc, registry_pb2_grpc
         from device import laser_navigation_pb2, robot_dog_pb2
         from device import laser_navigation_pb2_grpc, robot_dog_pb2_grpc
 
         self.alarm_pb2 = alarm_pb2
+        self.light_pb2 = light_pb2
         self.registry_pb2 = registry_pb2
         self.laser_navigation_pb2 = laser_navigation_pb2
         self.robot_dog_pb2 = robot_dog_pb2
 
         self.alarm_pb2_grpc = alarm_pb2_grpc
+        self.light_pb2_grpc = light_pb2_grpc
         self.registry_pb2_grpc = registry_pb2_grpc
         self.laser_navigation_pb2_grpc = laser_navigation_pb2_grpc
         self.robot_dog_pb2_grpc = robot_dog_pb2_grpc
@@ -73,10 +80,12 @@ class A2GrpcServices:
         self.stack_controller = stack_controller
         self.registry_state = _RegistryState()
         self.alarm_state = _AlarmState()
+        self.light_state = _LightState()
         self.robot_mode: dict[str, int] = {}
 
     def add_to_server(self, server: grpc.aio.Server) -> None:
         self.alarm_pb2_grpc.add_AlarmServiceServicer_to_server(self._AlarmService(self), server)
+        self.light_pb2_grpc.add_LightServiceServicer_to_server(self._LightService(self), server)
         self.registry_pb2_grpc.add_RegistryServiceServicer_to_server(self._RegistryService(self), server)
         self.laser_navigation_pb2_grpc.add_LaserNavigationServiceServicer_to_server(
             self._LaserNavigationService(self),
@@ -256,6 +265,78 @@ class A2GrpcServices:
                 acknowledged_count=ack,
                 cleared_count=cleared,
                 by_device={device_id: total},
+            )
+
+    class _LightService:
+        def __init__(self, parent: "A2GrpcServices") -> None:
+            self.p = parent
+
+        def _status_from_cache(self, device_id: str) -> Any:
+            cached = self.p.light_state.status_by_device.get(device_id) or {}
+            rgb = cached.get("rgb") or {}
+            return self.p.light_pb2.LightStatus(
+                device_id=device_id,
+                on=bool(cached.get("on", False)),
+                intensity=int(cached.get("intensity", 0)),
+                color_mode=int(cached.get("color_mode", 0)),
+                rgb=self.p.light_pb2.LightColor(
+                    r=int(rgb.get("r", 0)),
+                    g=int(rgb.get("g", 0)),
+                    b=int(rgb.get("b", 0)),
+                ),
+                color_temperature_kelvin=int(cached.get("color_temperature_kelvin", 0)),
+                timestamp=int(cached.get("timestamp", 0)) or _now_ms(),
+            )
+
+        async def GetLightStatus(self, request, context):
+            device_id = (request.device_id or "").strip() or "a2"
+            return self._status_from_cache(device_id)
+
+        async def SetLight(self, request, context):
+            device_id = (request.device_id or "").strip() or "a2"
+            intensity = int(getattr(request, "intensity", 0) or 0)
+            color_mode = int(getattr(request, "color_mode", 0) or 0)
+            rgb = getattr(request, "rgb", None)
+            payload = {
+                "device_id": device_id,
+                "on": bool(getattr(request, "on", False)),
+                "intensity": int(max(0, min(255, intensity))),
+                "color_mode": int(color_mode),
+                "rgb": {
+                    "r": int(max(0, min(255, int(getattr(rgb, "r", 0) or 0)))),
+                    "g": int(max(0, min(255, int(getattr(rgb, "g", 0) or 0)))),
+                    "b": int(max(0, min(255, int(getattr(rgb, "b", 0) or 0)))),
+                },
+                "color_temperature_kelvin": int(max(0, min(65535, int(getattr(request, "color_temperature_kelvin", 0) or 0)))),
+                "timestamp": _now_ms(),
+            }
+            self.p.light_state.status_by_device[device_id] = payload
+
+            success = True
+            message = "ok"
+            node = self.p.ros_runtime.node
+            if node is None:
+                success = False
+                message = "ROS runtime is not started"
+            else:
+                try:
+                    node.set_light(
+                        device_id=device_id,
+                        on=payload["on"],
+                        intensity=payload["intensity"],
+                        color_mode=payload["color_mode"],
+                        r=payload["rgb"]["r"],
+                        g=payload["rgb"]["g"],
+                        b=payload["rgb"]["b"],
+                        color_temperature_kelvin=payload["color_temperature_kelvin"],
+                    )
+                except RosBridgeError as exc:
+                    success = False
+                    message = str(exc)
+            return self.p.light_pb2.SetLightResponse(
+                success=success,
+                message=message,
+                status=self._status_from_cache(device_id),
             )
 
     class _LaserNavigationService:

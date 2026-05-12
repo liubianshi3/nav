@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package physical.common;
+
+option go_package = "github.com/feishu/core/proto/common";
+
+service SpeakerService {
+  rpc PlayAudio(PlayAudioRequest) returns (PlayAudioResponse);
+  rpc StopAudio(StopAudioRequest) returns (StopAudioResponse);
+  rpc GetSpeakerStatus(GetSpeakerStatusRequest) returns (SpeakerStatus);
+}
+
+service MicrophoneService {
+  rpc CaptureAudio(CaptureAudioRequest) returns (CaptureAudioResponse);
+  rpc GetMicrophoneStatus(GetMicrophoneStatusRequest) returns (MicrophoneStatus);
+}
+
+enum AudioFormat {
+  AUDIO_FORMAT_UNSPECIFIED = 0;
+  AUDIO_FORMAT_PCM_S16LE = 1;
+  AUDIO_FORMAT_WAV = 2;
+  AUDIO_FORMAT_MP3 = 3;
+  AUDIO_FORMAT_AAC = 4;
+}
+
+enum AudioOutput {
+  AUDIO_OUTPUT_UNSPECIFIED = 0;
+  AUDIO_OUTPUT_AUDIO_URL = 1;
+  AUDIO_OUTPUT_AUDIO_DATA = 2;
+}
+
+message PlayAudioRequest {
+  string device_id = 1;
+  string audio_url = 2;
+  bytes audio_data = 3;
+  AudioFormat format = 4;
+  uint32 volume = 5;
+  bool loop = 6;
+}
+
+message PlayAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string session_id = 3;
+  SpeakerStatus status = 4;
+}
+
+message StopAudioRequest {
+  string device_id = 1;
+  string session_id = 2;
+}
+
+message StopAudioResponse {
+  bool success = 1;
+  string message = 2;
+  SpeakerStatus status = 3;
+}
+
+message GetSpeakerStatusRequest {
+  string device_id = 1;
+}
+
+message SpeakerStatus {
+  string device_id = 1;
+  bool supported = 2;
+  bool is_playing = 3;
+  uint32 volume = 4;
+  bool loop = 5;
+  AudioFormat format = 6;
+  string source_url = 7;
+  string session_id = 8;
+  int64 started_at = 9;
+  int64 timestamp = 10;
+}
+
+message CaptureAudioRequest {
+  string device_id = 1;
+  int32 duration_ms = 2;
+  AudioFormat format = 3;
+  AudioOutput output = 4;
+  int32 sample_rate_hz = 5;
+  int32 channels = 6;
+}
+
+message CaptureAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string audio_url = 3;
+  bytes audio_data = 4;
+  int64 timestamp = 5;
+}
+
+message GetMicrophoneStatusRequest {
+  string device_id = 1;
+}
+
+message MicrophoneStatus {
+  string device_id = 1;
+  bool supported = 2;
+  bool is_capturing = 3;
+  int32 sample_rate_hz = 4;
+  int32 channels = 5;
+  AudioFormat last_format = 6;
+  int32 last_duration_ms = 7;
+  int64 last_capture_at = 8;
+  int64 timestamp = 9;
+}

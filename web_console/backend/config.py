@@ -54,6 +54,7 @@ class RosTopicConfig:
     camera_compressed_topic: str = "/camera/image_raw/compressed"
     battery_topic: str = "/a2/battery"
     scan_mission_status_topic: str = "/a2/scan_mission/status"
+    light_command_topic: str = "/a2/light/command"
 
 
 @dataclass

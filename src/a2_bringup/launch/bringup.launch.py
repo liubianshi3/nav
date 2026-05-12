@@ -125,6 +125,23 @@ def _launch_setup(context, *args, **kwargs):
             ],
         ),
         Node(
+            package="a2_sdk_bridge",
+            executable="a2_light_bridge_node",
+            name="a2_light_bridge",
+            additional_env=unitree_ddsc_env,
+            parameters=[{
+                "runtime_mode": runtime_mode,
+                "use_mock": False,
+                "allow_loopback": False,
+                "network_interface": network_interface,
+                "command_topic": "/a2/light/command",
+                "lowcmd_topic": "rt/lowcmd",
+                "send_repeat": 5,
+                "send_hz": 10.0,
+                "use_sim_time": use_sim_time,
+            }],
+        ),
+        Node(
             package="a2_state_publisher",
             executable="a2_state_publisher_node",
             name="a2_state_publisher",

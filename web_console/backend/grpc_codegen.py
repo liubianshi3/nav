@@ -60,11 +60,35 @@ def ensure_grpc_generated() -> Path:
     repo_root = here.parents[2]
     out_root = here.parent / "grpc_gen"
     marker = out_root / ".generated"
+    proto_root = repo_root / "proto"
+    proto_files = sorted(proto_root.rglob("*.proto")) if proto_root.exists() else []
+    latest_proto_mtime = max((path.stat().st_mtime for path in proto_files), default=0.0)
+    expected = [
+        out_root / "common" / "alarm_pb2.py",
+        out_root / "common" / "registry_pb2.py",
+        out_root / "common" / "light_pb2.py",
+    ]
+    regenerate = False
     if marker.exists():
+        try:
+            generated_mtime = float(marker.read_text(encoding="utf-8").strip() or "0")
+        except Exception:
+            generated_mtime = 0.0
+        if latest_proto_mtime > generated_mtime:
+            regenerate = True
+        if not regenerate:
+            for path in expected:
+                if not path.exists():
+                    regenerate = True
+                    break
+    else:
+        regenerate = True
+
+    if not regenerate:
         if str(out_root) not in sys.path:
             sys.path.insert(0, str(out_root))
         return out_root
 
     generated_root = generate_proto_stubs(repo_root=repo_root, out_root=out_root)
-    marker.write_text("ok", encoding="utf-8")
+    marker.write_text(str(latest_proto_mtime), encoding="utf-8")
     return generated_root

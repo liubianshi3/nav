@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package physical.common;
+
+option go_package = "github.com/feishu/core/proto/common";
+
+service LightService {
+  rpc SetLight(SetLightRequest) returns (SetLightResponse);
+  rpc GetLightStatus(GetLightStatusRequest) returns (LightStatus);
+}
+
+enum LightColorMode {
+  LIGHT_COLOR_MODE_UNSPECIFIED = 0;
+  LIGHT_COLOR_MODE_WHITE = 1;
+  LIGHT_COLOR_MODE_RGB = 2;
+  LIGHT_COLOR_MODE_CCT = 3;
+}
+
+message LightColor {
+  uint32 r = 1;
+  uint32 g = 2;
+  uint32 b = 3;
+}
+
+message SetLightRequest {
+  string device_id = 1;
+  bool on = 2;
+  uint32 intensity = 3;
+  LightColorMode color_mode = 4;
+  LightColor rgb = 5;
+  uint32 color_temperature_kelvin = 6;
+}
+
+message SetLightResponse {
+  bool success = 1;
+  string message = 2;
+  LightStatus status = 3;
+}
+
+message GetLightStatusRequest {
+  string device_id = 1;
+}
+
+message LightStatus {
+  string device_id = 1;
+  bool on = 2;
+  uint32 intensity = 3;
+  LightColorMode color_mode = 4;
+  LightColor rgb = 5;
+  uint32 color_temperature_kelvin = 6;
+  int64 timestamp = 7;
+}
