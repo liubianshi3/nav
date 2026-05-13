@@ -34,6 +34,12 @@ ros:
   sdk_status_topic: /a2/sdk/status
   raw_state_topic: /a2/raw_state
 
+camera:
+  enabled: true
+  prefer_compressed: false
+  max_broadcast_hz: 2.0
+  jpeg_quality: 70
+
 navigation:
   backend: nav2
   action_name: /navigate_to_pose

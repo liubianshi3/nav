@@ -46,6 +46,14 @@ def test_default_config_exposes_camera_topics():
     assert config.stack.start_script.endswith("start_real_stack.sh")
 
 
+def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
+    config = load_config(Path(__file__).resolve().parents[1] / "config.docker.yaml")
+
+    assert config.camera.enabled is True
+    assert config.camera.prefer_compressed is False
+    assert config.ros.camera_image_topic == "/camera/image_raw"
+
+
 def test_navigation_contract_uses_nav2_by_default():
     labels = {label for _, label, _ in NAVIGATION_NODES}
     patterns = {pattern for _, _, pattern in NAVIGATION_NODES}

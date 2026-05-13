@@ -1,5 +1,5 @@
-ARG NODE_IMAGE=registry.cn-hangzhou.aliyuncs.com/linuxsuren/node:20-bookworm
-ARG ROS_IMAGE=registry.cn-hangzhou.aliyuncs.com/linuxsuren/ros:humble-ros-base-jammy
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:20-bookworm
+ARG ROS_IMAGE=docker.m.daocloud.io/library/ros:humble-ros-base-jammy
 
 FROM ${NODE_IMAGE} AS web-build
 WORKDIR /web
@@ -17,42 +17,54 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV A2_WORKSPACE=/opt/a2_system_ws
 ENV UNITREE_SDK2_ROOT=/opt/unitree_robotics
 ENV CONFIG_PATH=/opt/a2_system_ws/web_console/backend/config.docker.yaml
-ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib:/opt/unitree_robotics/lib/x86_64
+ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib
+
+ARG A2_BUILD_PROFILE=full
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
-    build-essential \
     cmake \
     curl \
-    iproute2 \
-    iputils-ping \
-    net-tools \
     procps \
     python3-colcon-common-extensions \
     python3-pip \
     python3-setuptools \
-    python3-venv \
     python3-yaml \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-sensor-msgs-py \
     ros-humble-tf-transformations \
-    ros-humble-robot-localization \
-    ros-humble-imu-tools \
-    ros-humble-pointcloud-to-laserscan \
-    ros-humble-autoware-internal-debug-msgs \
-    ros-humble-autoware-map-msgs \
-    ros-humble-autoware-ndt-scan-matcher \
-    ros-humble-slam-toolbox \
-    ros-humble-pcl-ros \
-    ros-humble-pcl-conversions \
+    && if [[ "${A2_BUILD_PROFILE}" != "sim-smoke" ]]; then \
+      apt-get install -y --no-install-recommends \
+        build-essential \
+        iproute2 \
+        iputils-ping \
+        net-tools \
+        python3-venv \
+        ros-humble-navigation2 \
+        ros-humble-nav2-bringup \
+        ros-humble-robot-localization \
+        ros-humble-imu-tools \
+        ros-humble-pointcloud-to-laserscan \
+        ros-humble-autoware-internal-debug-msgs \
+        ros-humble-autoware-map-msgs \
+        ros-humble-autoware-ndt-scan-matcher \
+        ros-humble-slam-toolbox \
+        ros-humble-pcl-ros \
+        ros-humble-pcl-conversions; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
 
 # Use the bundled Unitree SDK so the image can build on hosts without buildx.
 COPY docker/unitree_sdk/ /opt/unitree_robotics/
-RUN test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake
 COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
+RUN if [[ "${TARGETARCH:-}" != "amd64" ]]; then \
+      rm -rf /opt/unitree_robotics/lib/cmake/unitree_sdk2 \
+        /opt/unitree_robotics/lib/x86_64 \
+        /opt/unitree_robotics/lib/*.so* \
+        /opt/unitree_robotics/lib/*.a; \
+    fi
 
 WORKDIR /opt/a2_system_ws
 COPY src ./src
@@ -70,10 +82,14 @@ RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
     && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
     && source /opt/ros/humble/setup.bash \
-    && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
-        | awk '{print $1}' \
-        | tr '\n' ' ') \
+    && if [[ "${A2_BUILD_PROFILE}" == "sim-smoke" ]]; then \
+        OUR_PACKAGES="a2_interfaces a2_system"; \
+      else \
+        OUR_PACKAGES=$(colcon list \
+          | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
+          | awk '{print $1}' \
+          | tr '\n' ' '); \
+      fi \
     && colcon build --packages-select ${OUR_PACKAGES} \
     && pip3 config set global.index-url ${PIP_INDEX_URL} \
     && pip3 install --no-cache-dir -r web_console/backend/requirements.txt \
