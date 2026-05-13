@@ -46,6 +46,7 @@ import {
   RuntimeInfoSection,
   SystemStatusSection,
 } from "./components/StatusSidebar";
+import { LightDebugPanel } from "./components/LightDebugPanel";
 import { useBackendSocket } from "./hooks/useBackendSocket";
 import type {
   BackendEvent,
@@ -1121,6 +1122,7 @@ export default function App() {
                 </button>
               </div>
             </section>
+            <LightDebugPanel />
             <ConnectionStatusSection
               backendConnected={backendConnected}
               websocketConnected={websocketConnected}
