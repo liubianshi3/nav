@@ -114,7 +114,7 @@ class A2NdtAdapter(Node):
         
         # Parameters
         self.declare_parameter('live_cloud_topic', '/jt128/front/points')
-        self.declare_parameter('odom_topic', '/jt128/dlio/odom')
+        self.declare_parameter('odom_topic', '/odometry/local')
         self.declare_parameter('map_topic', '/a2/map/pointcloud_3d')
         self.declare_parameter('pose_topic', '/a2/relocalization/pose')
         self.declare_parameter('status_topic', '/a2/relocalization/status')
@@ -147,6 +147,7 @@ class A2NdtAdapter(Node):
         self.map_to_odom = np.eye(4)
         self.has_seed = False
         self.awaiting_first_ndt_fix = False
+        self._received_first_odom = False
         self.last_score = -1.0
         self.last_score_stamp = None
         self.last_odom_stamp = None
@@ -180,11 +181,20 @@ class A2NdtAdapter(Node):
         self.create_timer(1.0, self.publish_periodic_status)
         self.create_timer(0.05, self.publish_periodic_tf)
 
-        self.get_logger().info("A2 NDT Adapter initialized.")
+        self.get_logger().info(
+            "A2 NDT Adapter initialized. "
+            f"using odom_topic={self.get_parameter('odom_topic').value} "
+            f"ndt_initial_pose_topic={self.get_parameter('ndt_initial_pose_topic').value}"
+        )
 
     def on_odom(self, msg: Odometry):
         self.last_odom_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
         self.last_odom_stamp = self.get_clock().now()
+        if not self._received_first_odom:
+            self._received_first_odom = True
+            self.get_logger().info(
+                f"Received first odom msg from {self.get_parameter('odom_topic').value}"
+            )
         self.publish_map_to_odom_tf()
 
         # If we have a seed, provide the initial guess to NDT
@@ -430,12 +440,16 @@ class A2NdtAdapter(Node):
         return translation <= max_translation and rotation <= max_rotation
 
     def publish_periodic_status(self):
-        if not self.has_seed:
+        if self.last_odom_to_base is None:
+            odom_topic = self.get_parameter('odom_topic').value
+            self.publish_status(False, "waiting_odom", "no_odom")
+            self.get_logger().warn(
+                f"NDT status: waiting for odom topic {odom_topic}",
+                throttle_duration_sec=5.0,
+            )
+        elif not self.has_seed:
             self.publish_status(False, "waiting_seed", "send_initialpose")
             self.get_logger().info("NDT status: waiting for initial pose (/initialpose)", throttle_duration_sec=5.0)
-        elif self.last_odom_to_base is None:
-            self.publish_status(False, "waiting_odom", "no_dlio_odom")
-            self.get_logger().info("NDT status: waiting for DLIO odom (/jt128/dlio/odom)", throttle_duration_sec=5.0)
         elif self.last_score < 0:
             self.publish_status(False, "waiting_first_score", "ndt_not_scored_yet")
             self.get_logger().info("NDT status: waiting for first NDT score", throttle_duration_sec=5.0)

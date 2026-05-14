@@ -7,7 +7,7 @@
 #   - Local costmap uses PointCloud2 observations (obstacle + traversability)
 #   - DWB has vy_samples=5 for lateral movement (A2 can strafe)
 #   - Reverse motion is disabled for industrial acceptance probes.
-#   - velocity_smoother uses /jt128/dlio/odom for CLOSED_LOOP feedback
+#   - velocity_smoother uses /odometry/local for CLOSED_LOOP feedback
 #   - collision_monitor is lifecycle-managed
 # =============================================================================
 
@@ -122,7 +122,7 @@ bt_navigator:
     use_sim_time: false
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /jt128/dlio/odom
+    odom_topic: /odometry/local
     bt_xml_filename: "/tmp/a2_navigate_3d.xml"
     default_nav_to_pose_bt_xml: "/tmp/a2_navigate_3d.xml"
     default_nav_through_poses_bt_xml: "/tmp/a2_navigate_through_poses_3d.xml"
@@ -228,7 +228,7 @@ velocity_smoother:
     min_velocity: [0.0, -0.12, -0.45]
     max_accel: [0.6, 0.4, 1.0]
     max_decel: [-0.8, -0.4, -1.4]
-    odom_topic: /jt128/dlio/odom
+    odom_topic: /odometry/local
     odom_duration: 0.2
     deadband_velocity: [0.01, 0.01, 0.02]
     velocity_timeout: 1.0

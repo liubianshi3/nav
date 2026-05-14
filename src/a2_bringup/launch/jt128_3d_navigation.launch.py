@@ -103,6 +103,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_robot_state", default_value="true"),
             DeclareLaunchArgument("start_task_manager", default_value="true"),
             DeclareLaunchArgument("start_scan_mission", default_value="true"),
+            DeclareLaunchArgument("start_ekf_local", default_value="true"),
 
             DeclareLaunchArgument("start_safety", default_value="true"),
             DeclareLaunchArgument("enable_motion", default_value="false"),
@@ -182,6 +183,21 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(
+                        get_package_share_directory("a2_bringup"),
+                        "launch",
+                        "ekf_local.launch.py",
+                    )
+                ),
+                condition=IfCondition(LaunchConfiguration("start_ekf_local")),
+                launch_arguments={
+                    "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    "enable_ekf_local": "true",
+                    "output_topic": "/odometry/local",
+                }.items(),
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(
                         get_package_share_directory("a2_ndt_adapter"),
                         "launch",
                         "ndt_adapter.launch.py",
@@ -240,6 +256,7 @@ def generate_launch_description():
                             "scan_mission",
                         ),
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
+                        "odom_topic": "/odometry/local",
                     },
                 ],
                 output="screen",
@@ -337,6 +354,7 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                     "map": LaunchConfiguration("nav2_3d_map"),
+                    "enable_global_ekf_debug": "false",
                 }.items(),
             ),
             # Fallback when Nav2 3D is disabled: obstacle-aware DWA-Lite planner

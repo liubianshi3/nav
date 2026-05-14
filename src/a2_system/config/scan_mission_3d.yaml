@@ -5,7 +5,7 @@ auto_scan_mission:
     pose_topic: /a2/relocalization/pose
     pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
     map_topic: /a2/map/pointcloud_3d
-    odom_topic: /jt128/dlio/odom
+    odom_topic: /odometry/local
     pointcloud_topic: /jt128/front/points
     localization_ok_topic: /a2/localization_ok
     localization_status_topic: /a2/localization/status
