@@ -62,7 +62,7 @@ docker compose -f docker/docker-compose.a2.yml up -d --build
 Useful startup modes:
 
 ```bash
-# Default: map exists -> navigation dry-run, else mapping.
+8080# Default: map exists -> navigation dry-run, else mapping.
 A2_DOCKER_START_MODE=auto docker compose -f docker/docker-compose.a2.yml up -d
 
 # Web only, no robot stack.
@@ -106,3 +106,4 @@ before running the production container on the same port:
 ```bash
 sudo systemctl stop a2-web-console.service
 ```
+

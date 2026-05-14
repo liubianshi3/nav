@@ -245,6 +245,38 @@ export interface VirtualObstacleUpsertPayload {
   radius: number;
 }
 
+export interface LightColorPayload {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export interface LightStatusPayload {
+  device_id: string;
+  on: boolean;
+  intensity: number;
+  color_mode: number;
+  rgb: LightColorPayload;
+  color_temperature_kelvin: number;
+  timestamp: number;
+}
+
+export interface SetLightRequestPayload {
+  device_id: string;
+  on: boolean;
+  intensity: number;
+  color_mode: number;
+  rgb: LightColorPayload;
+  color_temperature_kelvin: number;
+}
+
+export interface SetLightDebugResponse {
+  ok: boolean;
+  success: boolean;
+  message: string;
+  status: LightStatusPayload;
+}
+
 export interface StackStatus {
   mode: "stopped" | "starting" | "mapping" | "navigation" | string;
   pid: number | null;

@@ -1,0 +1,9 @@
+string device_id
+bool on
+uint8 intensity
+uint8 color_mode
+uint8 r
+uint8 g
+uint8 b
+uint16 color_temperature_kelvin
+builtin_interfaces/Time stamp

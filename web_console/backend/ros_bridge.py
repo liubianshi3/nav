@@ -33,6 +33,11 @@ except ImportError:  # pragma: no cover - runtime environment fallback
     RobotState = None
 
 try:
+    from a2_interfaces.msg import LightCommand
+except ImportError:  # pragma: no cover - runtime environment fallback
+    LightCommand = None
+
+try:
     from a2_interfaces.srv import ManageMap, NavCommand
 except ImportError:  # pragma: no cover - runtime environment fallback
     ManageMap = None
@@ -255,6 +260,13 @@ class RosBridgeNode(Node):
             self.config.navigation.cancel_stop_topic,
             10,
         )
+        self.light_command_publisher = None
+        if LightCommand is not None:
+            self.light_command_publisher = self.create_publisher(
+                LightCommand,
+                self.config.ros.light_command_topic,
+                10,
+            )
         self.native_slam_publisher = None
         if self.config.native_slam.enabled and Request is not None:
             self.native_slam_publisher = self.create_publisher(
@@ -1414,6 +1426,32 @@ class RosBridgeNode(Node):
                 "attempts": attempts,
                 "message": message,
             }
+
+    def set_light(
+        self,
+        *,
+        device_id: str,
+        on: bool,
+        intensity: int,
+        color_mode: int,
+        r: int,
+        g: int,
+        b: int,
+        color_temperature_kelvin: int,
+    ) -> None:
+        if self.light_command_publisher is None or LightCommand is None:
+            raise RosBridgeError("灯光控制未启用")
+        msg = LightCommand()
+        msg.device_id = device_id
+        msg.on = bool(on)
+        msg.intensity = max(0, min(255, int(intensity)))
+        msg.color_mode = max(0, min(255, int(color_mode)))
+        msg.r = max(0, min(255, int(r)))
+        msg.g = max(0, min(255, int(g)))
+        msg.b = max(0, min(255, int(b)))
+        msg.color_temperature_kelvin = max(0, min(65535, int(color_temperature_kelvin)))
+        msg.stamp = self.get_clock().now().to_msg()
+        self.light_command_publisher.publish(msg)
 
     def _initial_pose_ready(self, previous_pose_stamp: str | None) -> tuple[bool, TextStatus]:
         with self._lock:

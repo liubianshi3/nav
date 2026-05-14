@@ -18,14 +18,17 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_config
+from .grpc_server import GrpcServer
 from .models import (
     DashboardSnapshot,
     InitialPoseRequest,
+    LightStatusPayload,
     MapMediaListing,
     NavigationGoalRequest,
     RunTaskRouteRequest,
     SaveMapRequest,
     SaveTaskRouteRequest,
+    SetLightRequestPayload,
     StartNavigationRequest,
     TaskRouteDetail,
     TaskRouteSummary,
@@ -145,9 +148,21 @@ def create_app(config_path: str | None = None) -> FastAPI:
     async def on_startup() -> None:
         ws_manager.set_loop(asyncio.get_running_loop())
         ros_runtime.start()
+        if getattr(config, "grpc", None) is not None and bool(config.grpc.enabled):
+            grpc_server = GrpcServer(
+                ros_runtime=ros_runtime,
+                stack_controller=stack_controller,
+                host=str(config.grpc.host),
+                port=int(config.grpc.port),
+            )
+            await grpc_server.start()
+            app.state.grpc_server = grpc_server
 
     @app.on_event("shutdown")
     async def on_shutdown() -> None:
+        grpc_server = getattr(app.state, "grpc_server", None)
+        if grpc_server is not None:
+            await grpc_server.stop()
         ros_runtime.stop()
 
     @app.get("/api/health")
@@ -166,6 +181,76 @@ def create_app(config_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="ROS runtime 未启动")
         ros_thread_alive = bool(ros_runtime.thread and ros_runtime.thread.is_alive())
         return node.build_snapshot(ros_thread_alive=ros_thread_alive)
+
+    def _dump_light_status(status: Any) -> LightStatusPayload:
+        rgb = getattr(status, "rgb", None)
+        return LightStatusPayload(
+            device_id=str(getattr(status, "device_id", "") or "a2"),
+            on=bool(getattr(status, "on", False)),
+            intensity=int(getattr(status, "intensity", 0) or 0),
+            color_mode=int(getattr(status, "color_mode", 0) or 0),
+            rgb={
+                "r": int(getattr(rgb, "r", 0) or 0),
+                "g": int(getattr(rgb, "g", 0) or 0),
+                "b": int(getattr(rgb, "b", 0) or 0),
+            },
+            color_temperature_kelvin=int(getattr(status, "color_temperature_kelvin", 0) or 0),
+            timestamp=int(getattr(status, "timestamp", 0) or 0),
+        )
+
+    @app.post("/api/debug/light/set")
+    async def debug_set_light(request: SetLightRequestPayload):
+        if not config.grpc.enabled:
+            raise HTTPException(status_code=409, detail="gRPC 未启用，无法通过 gRPC 调试 SetLight")
+        from .grpc_codegen import ensure_grpc_generated
+
+        ensure_grpc_generated()
+        from common import light_pb2, light_pb2_grpc
+        import grpc
+
+        target = f"127.0.0.1:{int(config.grpc.port)}"
+        try:
+            async with grpc.aio.insecure_channel(target) as channel:
+                stub = light_pb2_grpc.LightServiceStub(channel)
+                response = await stub.SetLight(
+                    light_pb2.SetLightRequest(
+                        device_id=(request.device_id or "").strip() or "a2",
+                        on=bool(request.on),
+                        intensity=int(request.intensity),
+                        color_mode=int(request.color_mode),
+                        rgb=light_pb2.LightColor(r=int(request.rgb.r), g=int(request.rgb.g), b=int(request.rgb.b)),
+                        color_temperature_kelvin=int(request.color_temperature_kelvin),
+                    )
+                )
+        except grpc.aio.AioRpcError as exc:
+            raise HTTPException(status_code=502, detail=f"gRPC SetLight 调用失败: {exc.details() or exc.code().name}") from exc
+        return {
+            "ok": True,
+            "success": bool(getattr(response, "success", False)),
+            "message": str(getattr(response, "message", "") or ""),
+            "status": _dump_light_status(getattr(response, "status", None) or light_pb2.LightStatus()),
+        }
+
+    @app.get("/api/debug/light/status", response_model=LightStatusPayload)
+    async def debug_get_light_status(device_id: str = "a2"):
+        if not config.grpc.enabled:
+            raise HTTPException(status_code=409, detail="gRPC 未启用，无法通过 gRPC 调试 GetLightStatus")
+        from .grpc_codegen import ensure_grpc_generated
+
+        ensure_grpc_generated()
+        from common import light_pb2, light_pb2_grpc
+        import grpc
+
+        target = f"127.0.0.1:{int(config.grpc.port)}"
+        try:
+            async with grpc.aio.insecure_channel(target) as channel:
+                stub = light_pb2_grpc.LightServiceStub(channel)
+                response = await stub.GetLightStatus(
+                    light_pb2.GetLightStatusRequest(device_id=(device_id or "").strip() or "a2")
+                )
+        except grpc.aio.AioRpcError as exc:
+            raise HTTPException(status_code=502, detail=f"gRPC GetLightStatus 调用失败: {exc.details() or exc.code().name}") from exc
+        return _dump_light_status(response)
 
     @app.post("/api/navigation/goal")
     async def send_goal(request: NavigationGoalRequest):

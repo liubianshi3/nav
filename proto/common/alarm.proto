@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package physical.common;
+
+option go_package = "github.com/feishu/core/proto/common";
+
+service AlarmService {
+  rpc GetAlarms(GetAlarmsRequest) returns (GetAlarmsResponse);
+  rpc AcknowledgeAlarm(AcknowledgeAlarmRequest) returns (Alarm);
+  rpc ClearAlarm(ClearAlarmRequest) returns (Alarm);
+  rpc WatchAlarms(WatchAlarmsRequest) returns (stream Alarm);
+  rpc GetAlarmStatistics(GetAlarmStatisticsRequest) returns (GetAlarmStatisticsResponse);
+}
+
+message GetAlarmsRequest {
+  string device_id = 1;
+  AlarmSeverity severity = 2;
+  AlarmState state = 3;
+  int64 start_time = 4;
+  int64 end_time = 5;
+  int32 page = 6;
+  int32 page_size = 7;
+}
+
+message GetAlarmsResponse {
+  repeated Alarm alarms = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message WatchAlarmsRequest {
+  string device_id = 1;
+  AlarmSeverity min_severity = 2;
+}
+
+message AcknowledgeAlarmRequest {
+  string alarm_id = 1;
+  string acknowledged_by = 2;
+  string comment = 3;
+}
+
+message ClearAlarmRequest {
+  string alarm_id = 1;
+  string cleared_by = 2;
+  string reason = 3;
+}
+
+message Alarm {
+  string id = 1;
+  string device_id = 2;
+  AlarmSeverity severity = 3;
+  AlarmState state = 4;
+  string title = 5;
+  string description = 6;
+  string source = 7;
+  int64 triggered_at = 8;
+  int64 acknowledged_at = 9;
+  int64 cleared_at = 10;
+  string acknowledged_by = 11;
+  string cleared_by = 12;
+  map<string, string> metadata = 13;
+}
+
+message GetAlarmStatisticsRequest {
+  string device_id = 1;
+  int64 start_time = 2;
+  int64 end_time = 3;
+}
+
+message GetAlarmStatisticsResponse {
+  int32 total_count = 1;
+  int32 critical_count = 2;
+  int32 warning_count = 3;
+  int32 info_count = 4;
+  int32 active_count = 5;
+  int32 acknowledged_count = 6;
+  int32 cleared_count = 7;
+  map<string, int32> by_device = 8;
+}
+
+enum AlarmSeverity {
+  ALARM_SEVERITY_UNSPECIFIED = 0;
+  ALARM_SEVERITY_INFO = 1;
+  ALARM_SEVERITY_WARNING = 2;
+  ALARM_SEVERITY_ERROR = 3;
+  ALARM_SEVERITY_CRITICAL = 4;
+}
+
+enum AlarmState {
+  ALARM_STATE_UNSPECIFIED = 0;
+  ALARM_STATE_ACTIVE = 1;
+  ALARM_STATE_ACKNOWLEDGED = 2;
+  ALARM_STATE_CLEARED = 3;
+}
