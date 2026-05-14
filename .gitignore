@@ -28,3 +28,4 @@ __pycache__/
 
 src/third_party/FAST_LIO/
 src/third_party/livox_ros_driver2/
+robot.tar

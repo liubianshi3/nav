@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import math
 import time
 from dataclasses import dataclass, field
@@ -17,6 +18,9 @@ from .map_formats import _occupancy_bytes_from_nav2_luma, _parse_nav2_map_yaml, 
 from .models import NavigationGoal, NavigationGoalRequest
 from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
+
+
+logger = logging.getLogger(__name__)
 
 
 def _now_ms() -> int:
@@ -422,7 +426,31 @@ class A2GrpcServices:
             )
 
         async def ListMaps(self, request, context):
-            maps = await asyncio.to_thread(self.p.stack_controller.list_maps, include_incompatible=True)
+            start = time.monotonic()
+            peer = None
+            try:
+                peer = context.peer()
+            except Exception:
+                peer = None
+            device_id = (getattr(request, "device_id", "") or "").strip()
+            logger.info(
+                "grpc ListMaps start peer=%s device_id=%s map_root=%s include_incompatible=%s",
+                peer,
+                device_id or "-",
+                str(self.p.stack_controller.map_root),
+                True,
+            )
+            try:
+                maps = await asyncio.to_thread(self.p.stack_controller.list_maps, include_incompatible=True)
+            except Exception:
+                duration_ms = int((time.monotonic() - start) * 1000)
+                logger.exception(
+                    "grpc ListMaps failed peer=%s device_id=%s duration_ms=%s",
+                    peer,
+                    device_id or "-",
+                    duration_ms,
+                )
+                raise
             items = []
             for m in maps:
                 mapping_type = self.p.laser_navigation_pb2.MAPPING_TYPE_UNSPECIFIED
@@ -443,6 +471,14 @@ class A2GrpcServices:
                         ),
                     )
                 )
+            duration_ms = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "grpc ListMaps ok peer=%s device_id=%s count=%s duration_ms=%s",
+                peer,
+                device_id or "-",
+                len(items),
+                duration_ms,
+            )
             return self.p.laser_navigation_pb2.ListMapsResponse(maps=items)
 
         async def SelectMap(self, request, context):

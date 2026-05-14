@@ -20,44 +20,61 @@ ENV UNITREE_SDK2_ROOT=/opt/unitree_robotics
 ENV CONFIG_PATH=/opt/a2_system_ws/web_console/backend/config.docker.yaml
 ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib:/opt/unitree_robotics/lib/x86_64
 
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list
+ARG UBUNTU_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/ubuntu
+ARG UBUNTU_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/ubuntu
+ARG ROS2_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/ros2/ubuntu
+RUN sed -i "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_MIRROR}|g; s|http://security.ubuntu.com/ubuntu|${UBUNTU_SECURITY_MIRROR}|g" /etc/apt/sources.list \
+    && sed -i "s|^URIs: .*|URIs: ${ROS2_MIRROR}|" /etc/apt/sources.list.d/ros2.sources \
+    && sed -i "s|^Types: .*|Types: deb|" /etc/apt/sources.list.d/ros2.sources
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get -o Acquire::Retries=5 update \
-    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
-    bash \
-    build-essential \
-    ccache \
-    cmake \
-    curl \
-    iproute2 \
-    iputils-ping \
-    net-tools \
-    procps \
-    python3-colcon-common-extensions \
-    python3-pip \
-    python3-setuptools \
-    python3-venv \
-    python3-yaml \
-    ros-humble-navigation2 \
-    ros-humble-nav2-bringup \
-    ros-humble-rmw-cyclonedds-cpp \
-    ros-humble-sensor-msgs-py \
-    ros-humble-tf-transformations \
-    ros-humble-robot-localization \
-    ros-humble-imu-tools \
-    ros-humble-octomap \
-    ros-humble-octomap-msgs \
-    ros-humble-octomap-ros \
-    ros-humble-octomap-server \
-    ros-humble-pointcloud-to-laserscan \
-    ros-humble-autoware-internal-debug-msgs \
-    ros-humble-autoware-map-msgs \
-    ros-humble-autoware-ndt-scan-matcher \
-    ros-humble-slam-toolbox \
-    ros-humble-pcl-ros \
-    ros-humble-pcl-conversions \
+    APT_OPTS=(-o Acquire::Retries=10 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::http::Pipeline-Depth=0) \
+    && ok=0 \
+    && for i in 1 2 3 4 5; do \
+        apt-get "${APT_OPTS[@]}" update \
+        && apt-get "${APT_OPTS[@]}" install -y --no-install-recommends --fix-missing \
+            bash \
+            build-essential \
+            ccache \
+            cmake \
+            curl \
+            iproute2 \
+            iputils-ping \
+            net-tools \
+            procps \
+            python3-colcon-common-extensions \
+            python3-pip \
+            python3-setuptools \
+            python3-venv \
+            python3-yaml \
+            ros-humble-navigation2 \
+            ros-humble-nav2-bringup \
+            ros-humble-rmw-cyclonedds-cpp \
+            ros-humble-sensor-msgs-py \
+            ros-humble-tf-transformations \
+            ros-humble-robot-localization \
+            ros-humble-imu-tools \
+            ros-humble-octomap \
+            ros-humble-octomap-msgs \
+            ros-humble-octomap-ros \
+            ros-humble-octomap-server \
+            ros-humble-pointcloud-to-laserscan \
+            ros-humble-autoware-internal-debug-msgs \
+            ros-humble-autoware-map-msgs \
+            ros-humble-autoware-ndt-scan-matcher \
+            ros-humble-slam-toolbox \
+            ros-humble-pcl-ros \
+            ros-humble-pcl-conversions \
+        && ok=1 \
+        && break; \
+        dpkg --configure -a || true; \
+        apt-get -f install -y || true; \
+        apt-get clean; \
+        echo "apt-get failed (attempt ${i}/5), retrying..." >&2; \
+        sleep 10; \
+      done \
+    && test "${ok}" = "1" \
     && rm -rf /var/lib/apt/lists/*
 
 # Use the bundled Unitree SDK so the image can build on hosts without buildx.
@@ -100,18 +117,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/a2-web-entrypoint \
     && find /opt/a2_system_ws/web_console/scripts /opt/a2_system_ws/src/a2_system/tools -type f -name "*.sh" -print0 | xargs -0 sed -i 's/\r$//' \
     && chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
-    && mkdir -p runtime/maps runtime/logs \
-    && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
-    && source /opt/ros/humble/setup.bash \
-    && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|direct_lidar_inertial_odometry|fast_lio|livox_ros_driver2' \
-        | awk '{print $1}' \
-        | tr '\n' ' ') \
-    && colcon build --packages-select ${OUR_PACKAGES} \
-    && pip3 config set global.index-url ${PIP_INDEX_URL} \
-    && pip3 install --no-cache-dir -r web_console/backend/requirements.txt \
-    && mkdir -p runtime/maps runtime/logs \
-    && rm -rf build log
+    && mkdir -p runtime/maps runtime/logs
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/a2-web-entrypoint"]
