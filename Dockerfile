@@ -40,6 +40,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-tf-transformations \
     ros-humble-robot-localization \
     ros-humble-imu-tools \
+    ros-humble-octomap \
+    ros-humble-octomap-msgs \
+    ros-humble-octomap-ros \
+    ros-humble-octomap-server \
     ros-humble-pointcloud-to-laserscan \
     ros-humble-autoware-internal-debug-msgs \
     ros-humble-autoware-map-msgs \
@@ -71,7 +75,7 @@ RUN chmod +x /usr/local/bin/a2-web-entrypoint \
     && rm -rf src/third_party/autoware_localization/autoware_utils_pkg \
     && source /opt/ros/humble/setup.bash \
     && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
+        | grep -vE 'autoware_|direct_lidar_inertial_odometry|fast_lio|livox_ros_driver2' \
         | awk '{print $1}' \
         | tr '\n' ' ') \
     && colcon build --packages-select ${OUR_PACKAGES} \

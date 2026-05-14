@@ -3,10 +3,8 @@ services:
     image: ${A2_DOCKER_IMAGE:-a2-system-ws:real}
     init: true
     build:
-      context: .
-      dockerfile: docker/Dockerfile.real
-      additional_contexts:
-        unitree_sdk: ${UNITREE_SDK_PATH:-./docker/unitree_sdk}
+      context: ..
+      dockerfile: Dockerfile
     network_mode: host
     privileged: true
     restart: unless-stopped

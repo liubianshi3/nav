@@ -16,6 +16,6 @@ cd "${REPO_ROOT}"
 docker build \
   --build-arg "NODE_IMAGE=${NODE_IMAGE}" \
   --build-arg "ROS_IMAGE=${ROS_IMAGE}" \
-  -f docker/Dockerfile.real \
+  -f Dockerfile \
   -t "${IMAGE_NAME}" \
   .
