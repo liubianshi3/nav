@@ -1,0 +1,265 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package autoware_diagnostic_graph_aggregator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.51.0 (2026-05-01)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* perf(system/autoware_diagnostic_graph_aggregator): use emplace/emplace_back to avoid temporary object creation (`#12239 <https://github.com/mitsudome-r/autoware_universe/issues/12239>`_)
+  Co-authored-by: Ryohsuke Mitsudome <43976834+mitsudome-r@users.noreply.github.com>
+* feat(diagnostic_graph_aggregator): add param for initial latch (`#11715 <https://github.com/mitsudome-r/autoware_universe/issues/11715>`_)
+* feat(autoware_diagnostic_graph_aggregator): adopt cie (`#12323 <https://github.com/mitsudome-r/autoware_universe/issues/12323>`_)
+  * feat: adopt cie
+  * style(pre-commit): autofix
+  * revert target_include directories
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+  * update launch (`#11 <https://github.com/mitsudome-r/autoware_universe/issues/11>`_)
+  * fix: revert register node
+  * fix: switch agnocast on launch file
+  * fix: duplication
+  * feat: change multithread
+  * Revert "feat: change multithread"
+  This reverts commit 84e086d34548c39ed2195acd6056514777ed1335.
+  * Revert "fix: duplication"
+  This reverts commit 71ec248b21244359fcb0f21d740ae0267d3d2ff9.
+  * Revert "fix: switch agnocast on launch file"
+  This reverts commit 427d55da47040dbfe4049f1d5d5fd7fcd61360fb.
+  * Revert "fix: revert register node"
+  This reverts commit b2c047f2b109ec1420fb842167e73226c0535db9.
+  * Revert "update launch (`#11 <https://github.com/mitsudome-r/autoware_universe/issues/11>`_)"
+  This reverts commit d28141c8287db16e63d1ed0e7dc5f192f2dc741c.
+  * fix: remove unnecessary lines
+  * fix: remove unnecessary lines
+  * fix: revert executor
+  ---------
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* feat(fault_injection): modify the mechanism for changing Diagnostics (`#11810 <https://github.com/mitsudome-r/autoware_universe/issues/11810>`_)
+  * feat(fault_injection): modify the mechanism for changing Diagnostics
+  * feat(autoware_diagnostic_graph_aggregator): parameterization of input topics
+  * chore: modify QoS settings
+  * fix: fix config file for testing
+  * docs: update image
+  * style(pre-commit): autofix
+  * Update simulator/autoware_fault_injection/include/autoware/fault_injection/fault_injection_node.hpp
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+  * Update simulator/autoware_fault_injection/src/fault_injection_node/fault_injection_node.cpp
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+  * Update simulator/autoware_fault_injection/src/fault_injection_node/fault_injection_node.cpp
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+  ---------
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+  Co-authored-by: Junya Sasaki <junya.sasaki@tier4.jp>
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+* Contributors: Keisuke Shima, Takagi, Isamu, Tetsuhiro Kawaguchi, github-actions, nishikawa-masaki
+
+0.50.0 (2026-02-14)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat: system related packages support jazzy (`#11626 <https://github.com/autowarefoundation/autoware_universe/issues/11626>`_)
+* Contributors: Ryohsuke Mitsudome, 心刚
+
+0.49.0 (2025-12-30)
+-------------------
+* Merge remote-tracking branch 'origin/main' into prepare-0.49.0-changelog
+* feat(diagnostic_graph_aggregator): "var" substitution support (`#11802 <https://github.com/autowarefoundation/autoware_universe/issues/11802>`_)
+  * implement vars substitution
+  * add test
+  * update launch
+  * update doc
+  * add parameter passing
+  * fix [build/include_what_you_use]
+  * format code
+  * format table
+  * unify same namespace block
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+  * refactor(autoware_diagnostic_graph_aggregator): use YAML map format for graph_vars parameter
+  * update path.md
+  ---------
+  Co-authored-by: Junya Sasaki <j2sasaki1990@gmail.com>
+* Contributors: Autumn60, Ryohsuke Mitsudome
+
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* docs(diagnostic_graph_aggregator): add readme for latch and hysteresis (`#11174 <https://github.com/autowarefoundation/autoware_universe/issues/11174>`_)
+  * docs(diagnostic_graph_aggregator): add readme for latch and hysteresis
+  * fix latch description
+  ---------
+  Co-authored-by: Junya Sasaki <junya.sasaki@tier4.jp>
+* Contributors: Ryohsuke Mitsudome, Takagi, Isamu
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* feat(diagnostic_graph_aggregator): diagnostic graph test interface (`#10455 <https://github.com/autowarefoundation/autoware_universe/issues/10455>`_)
+* feat(diagnostic_graph_aggregator): add initializing flag (`#10893 <https://github.com/autowarefoundation/autoware_universe/issues/10893>`_)
+* Contributors: Takagi, Isamu
+
+0.46.0 (2025-06-20)
+-------------------
+* Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base
+* feat(diagnostic_graph_aggregator): support latch and dependent error (`#10829 <https://github.com/autowarefoundation/autoware_universe/issues/10829>`_)
+  * update aggregator
+  * update utils
+  * update hazard converter
+  * update adapi
+  * fix build error
+  * ignore spell check for yamls
+  * fix copyright year
+  * ignore spell check for timeline
+  * change link index to fix out of bounds access
+  * reflect link index change to utils
+  * fix for cppcheck
+  * fix for cppcheck
+  ---------
+* feat(autoware_diagnostic_graph_aggregator): support regex for edits in configuration (`#10671 <https://github.com/autowarefoundation/autoware_universe/issues/10671>`_)
+  * feat(autoware_diagnostic_graph_aggregator): support regex for edits in configuration
+  * style(pre-commit): autofix
+  * MR fixes
+  ---------
+  Co-authored-by: Marek Piechula <mpiechula@autonomous-systems.pl>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Marek Piechula, TaikiYamada4, Takagi, Isamu
+
+0.45.0 (2025-05-22)
+-------------------
+
+0.44.2 (2025-06-10)
+-------------------
+
+0.44.1 (2025-05-01)
+-------------------
+
+0.44.0 (2025-04-18)
+-------------------
+
+0.43.0 (2025-03-21)
+-------------------
+* Merge remote-tracking branch 'origin/main' into chore/bump-version-0.43
+* chore: rename from `autoware.universe` to `autoware_universe` (`#10306 <https://github.com/autowarefoundation/autoware_universe/issues/10306>`_)
+* docs(diagnostic_graph_aggregator): update document (`#10199 <https://github.com/autowarefoundation/autoware_universe/issues/10199>`_)
+* Contributors: Hayato Mizushima, Mamoru Sobue, Yutaka Kondo
+
+0.42.0 (2025-03-03)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(diagnostic_graph_aggregator): remove edit feature (`#10062 <https://github.com/autowarefoundation/autoware_universe/issues/10062>`_)
+  Co-authored-by: Junya Sasaki <junya.sasaki@tier4.jp>
+* Contributors: Fumiya Watanabe, Takagi, Isamu
+
+0.41.2 (2025-02-19)
+-------------------
+* chore: bump version to 0.41.1 (`#10088 <https://github.com/autowarefoundation/autoware_universe/issues/10088>`_)
+* Contributors: Ryohsuke Mitsudome
+
+0.41.1 (2025-02-10)
+-------------------
+
+0.41.0 (2025-01-29)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat: apply `autoware` prefix for `component_state_monitor` and its dependencies (`#9961 <https://github.com/autowarefoundation/autoware_universe/issues/9961>`_)
+* Contributors: Fumiya Watanabe, Junya Sasaki
+
+0.40.0 (2024-12-12)
+-------------------
+* Merge branch 'main' into release-0.40.0
+* Revert "chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)"
+  This reverts commit c9f0f2688c57b0f657f5c1f28f036a970682e7f5.
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* fix(cpplint): include what you use - system (`#9573 <https://github.com/autowarefoundation/autoware_universe/issues/9573>`_)
+* 0.39.0
+* update changelog
+* Merge commit '6a1ddbd08bd' into release-0.39.0
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* feat(diagnostic_graph_aggregator): implement diagnostic graph dump functionality (`#9261 <https://github.com/autowarefoundation/autoware_universe/issues/9261>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Fumiya Watanabe, M. Fatih Cırıt, Ryohsuke Mitsudome, Yutaka Kondo
+
+0.39.0 (2024-11-25)
+-------------------
+* Merge commit '6a1ddbd08bd' into release-0.39.0
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* feat(diagnostic_graph_aggregator): implement diagnostic graph dump functionality (`#9261 <https://github.com/autowarefoundation/autoware_universe/issues/9261>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Yutaka Kondo
+
+0.38.0 (2024-11-08)
+-------------------
+* unify package.xml version to 0.37.0
+* fix(diagnostic_graph_aggregator): fix unusedFunction (`#8580 <https://github.com/autowarefoundation/autoware_universe/issues/8580>`_)
+  fix: unusedFunction
+  Co-authored-by: kobayu858 <129580202+kobayu858@users.noreply.github.com>
+* fix(diagnostic_graph_aggregator): fix noConstructor (`#8508 <https://github.com/autowarefoundation/autoware_universe/issues/8508>`_)
+  fix:noConstructor
+* fix(diagnostic_graph_aggregator): fix cppcheck warning of functionStatic (`#8266 <https://github.com/autowarefoundation/autoware_universe/issues/8266>`_)
+  * fix: deal with functionStatic warning
+  * suppress warning by comment
+  ---------
+* fix(diagnostic_graph_aggregator): fix uninitMemberVar (`#8313 <https://github.com/autowarefoundation/autoware_universe/issues/8313>`_)
+  * fix:funinitMemberVar
+  * fix:funinitMemberVar
+  * fix:uninitMemberVar
+  * fix:clang format
+  ---------
+* fix(diagnostic_graph_aggregator): fix functionConst (`#8279 <https://github.com/autowarefoundation/autoware_universe/issues/8279>`_)
+  * fix:functionConst
+  * fix:functionConst
+  * fix:clang format
+  ---------
+* fix(diagnostic_graph_aggregator): fix constParameterReference (`#8054 <https://github.com/autowarefoundation/autoware_universe/issues/8054>`_)
+  fix:constParameterReference
+* fix(diagnostic_graph_aggregator): fix constVariableReference (`#8062 <https://github.com/autowarefoundation/autoware_universe/issues/8062>`_)
+  * fix:constVariableReference
+  * fix:constVariableReference
+  * fix:constVariableReference
+  * fix:constVariableReference
+  ---------
+* fix(diagnostic_graph_aggregator): fix shadowFunction (`#7838 <https://github.com/autowarefoundation/autoware_universe/issues/7838>`_)
+  * fix(diagnostic_graph_aggregator): fix shadowFunction
+  * feat: modify variable name
+  ---------
+  Co-authored-by: Takagi, Isamu <isamu.takagi@tier4.jp>
+* fix(diagnostic_graph_aggregator): fix uselessOverride warning (`#7768 <https://github.com/autowarefoundation/autoware_universe/issues/7768>`_)
+  * fix(diagnostic_graph_aggregator): fix uselessOverride warning
+  * restore and suppress inline
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* fix(diagnostic_graph_aggregator): fix shadowArgument warning in create_unit_config (`#7664 <https://github.com/autowarefoundation/autoware_universe/issues/7664>`_)
+* feat(diagnostic_graph_aggregator): componentize node (`#7025 <https://github.com/autowarefoundation/autoware_universe/issues/7025>`_)
+* fix(diagnostic_graph_aggregator): fix a bug where unit links were incorrectly updated (`#6932 <https://github.com/autowarefoundation/autoware_universe/issues/6932>`_)
+  fix(diagnostic_graph_aggregator): fix unit link filter
+* feat: remake diagnostic graph packages (`#6715 <https://github.com/autowarefoundation/autoware_universe/issues/6715>`_)
+* Contributors: Hayate TOBA, Koichi98, Ryuta Kambe, Takagi, Isamu, Yutaka Kondo, kobayu858, taisa1
+
+0.26.0 (2024-04-03)
+-------------------
+* feat(diagnostic_graph_aggregator): update tools (`#6614 <https://github.com/autowarefoundation/autoware_universe/issues/6614>`_)
+* docs(diagnostic_graph_aggregator): update documents (`#6613 <https://github.com/autowarefoundation/autoware_universe/issues/6613>`_)
+* feat(diagnostic_graph_aggregator): add dump tool (`#6427 <https://github.com/autowarefoundation/autoware_universe/issues/6427>`_)
+* feat(diagnostic_graph_aggregator): change default publish rate (`#5872 <https://github.com/autowarefoundation/autoware_universe/issues/5872>`_)
+* feat(diagnostic_graph_aggregator): rename system_diagnostic_graph package (`#5827 <https://github.com/autowarefoundation/autoware_universe/issues/5827>`_)
+* Contributors: Takagi, Isamu

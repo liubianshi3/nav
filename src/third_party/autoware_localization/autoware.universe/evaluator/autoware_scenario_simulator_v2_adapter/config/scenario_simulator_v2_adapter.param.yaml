@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    metric_topic_list:
+      - /planning/planning_evaluator/metrics
+      - /control/control_evaluator/metrics
+      - /system/processing_time_checker/metrics

@@ -1,0 +1,18 @@
+task_manager:
+  ros__parameters:
+    route_root: ${A2_WORKSPACE}/runtime/routes
+    map_frame: map
+    navigation_backend: pose_topic_3d
+    pose_goal_topic: /a2/nav3/goal_pose
+    navigate_action_name: /navigate_to_pose
+    manage_map_service: /map_manager/manage_map
+    set_mode_service: /map_manager/set_mode
+    initial_pose_topic: /initialpose
+    active_map_topic: /a2/map_manager/active_map
+    nav_status_topic: /a2/nav2/status
+    mission_status_topic: /a2/scan_mission/status
+    mission_report_topic: /a2/scan_mission/report
+    task_status_topic: /a2/task_manager/status
+    task_report_topic: /a2/task_manager/report
+    command_timeout_sec: 10.0
+    route_stop_timeout_sec: 5.0

@@ -1,0 +1,22 @@
+network:
+  a2_control_subnet: 192.168.123.0/24
+  a2_host_ip: 192.168.123.10
+  a2_control_prefix_len: 24
+  a2_sensor_subnet: 192.168.124.0/24
+  network_interface: ""
+  interface_candidates: []
+  auto_detect_interface: true
+  allow_loopback_for_mock: true
+  mid360_host_ip: 192.168.124.10
+  mid360_prefix_len: 24
+  mid360_ip: 192.168.124.20
+  mid360_command_port: 56100
+  mid360_push_port: 56200
+  mid360_data_port: 56300
+  mid360_imu_port: 56400
+  mid360_log_port: 56500
+  mid360_host_command_port: 56101
+  mid360_host_push_port: 56201
+  mid360_host_data_port: 56301
+  mid360_host_imu_port: 56401
+  mid360_host_log_port: 56501

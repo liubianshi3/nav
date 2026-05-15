@@ -1,0 +1,17 @@
+builtin_interfaces/Time stamp
+string source_mode
+string frame_id
+bool connected
+bool imu_valid
+bool odom_valid
+float32[3] position
+float32[3] velocity
+float32[4] orientation_xyzw
+float32[3] rpy
+float32[3] linear_acceleration
+float32[3] angular_velocity
+float32 body_height
+float32 yaw_speed
+uint8 motion_mode
+float32 progress
+uint8 gait_type

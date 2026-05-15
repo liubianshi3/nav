@@ -1,0 +1,5 @@
+real_camera:
+  ros__parameters:
+    enabled: false
+    profile: disabled
+

@@ -1,0 +1,101 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package tier4_planning_factor_rviz_plugin
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.51.0 (2026-05-01)
+-------------------
+
+0.50.0 (2026-02-14)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* refactor(tier4_planning_factor_rviz_plugin): use service call to retrieve vehicle info (`#11827 <https://github.com/autowarefoundation/autoware_universe/issues/11827>`_)
+  * refactor(tier4_planning_factor_rviz_plugin): use service call to retrieve vehicle info
+  * fix(planning_factor_rviz_plugin): change log level from INFO to WARN_ONCE while waiting for vehicle_info service
+  ---------
+* Contributors: Ryohsuke Mitsudome, Yukinari Hisaki
+
+0.49.0 (2025-12-30)
+-------------------
+
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(planning_factor_rviz_plugin): add wall visualization of UNKNOWN behavior (`#11344 <https://github.com/autowarefoundation/autoware_universe/issues/11344>`_)
+  add wall visualization of UNKNOWN behavior
+* feat(planning_factor_rviz_plugin): change some property (`#11218 <https://github.com/autowarefoundation/autoware_universe/issues/11218>`_)
+  * add show safety factors flag
+  * remove baselink2flont property
+  ---------
+* fix(tier4_planning_factor_rviz_plugin): remove unused function (`#11193 <https://github.com/autowarefoundation/autoware_universe/issues/11193>`_)
+* Contributors: Kotakku, Ryohsuke Mitsudome, Ryuta Kambe
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+
+0.46.0 (2025-06-20)
+-------------------
+
+0.45.0 (2025-05-22)
+-------------------
+
+0.44.2 (2025-06-10)
+-------------------
+
+0.44.1 (2025-05-01)
+-------------------
+
+0.44.0 (2025-04-18)
+-------------------
+
+0.43.0 (2025-03-21)
+-------------------
+* Merge remote-tracking branch 'origin/main' into chore/bump-version-0.43
+* chore: rename from `autoware.universe` to `autoware_universe` (`#10306 <https://github.com/autowarefoundation/autoware_universe/issues/10306>`_)
+* feat(Autoware_planning_factor_interface): replace tier4_msgs with autoware_internal_msgs (`#10204 <https://github.com/autowarefoundation/autoware_universe/issues/10204>`_)
+* Contributors: Hayato Mizushima, Yutaka Kondo, 心刚
+
+0.42.0 (2025-03-03)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(autoware_utils): replace autoware_universe_utils with autoware_utils  (`#10191 <https://github.com/autowarefoundation/autoware_universe/issues/10191>`_)
+* Contributors: Fumiya Watanabe, 心刚
+
+0.41.2 (2025-02-19)
+-------------------
+* chore: bump version to 0.41.1 (`#10088 <https://github.com/autowarefoundation/autoware_universe/issues/10088>`_)
+* Contributors: Ryohsuke Mitsudome
+
+0.41.1 (2025-02-10)
+-------------------
+
+0.41.0 (2025-01-29)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(rviz): add new plugin to visualize planning factor (`#9999 <https://github.com/autowarefoundation/autoware_universe/issues/9999>`_)
+  * feat(rviz): add new plugin to visualize planning factor
+  * feat(rviz): show safety factors
+  * chore: add maintainer
+  * feat: show detail
+  ---------
+* Contributors: Fumiya Watanabe, Satoshi OTA
+
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(rviz): add new plugin to visualize planning factor (`#9999 <https://github.com/autowarefoundation/autoware_universe/issues/9999>`_)
+  * feat(rviz): add new plugin to visualize planning factor
+  * feat(rviz): show safety factors
+  * chore: add maintainer
+  * feat: show detail
+  ---------
+* Contributors: Fumiya Watanabe, Satoshi OTA
+
+0.40.0 (2025-01-06)
+-------------------
+
+0.39.0 (2024-11-25)
+-------------------
+
+0.38.0 (2024-11-11)
+-------------------

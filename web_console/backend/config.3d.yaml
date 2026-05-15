@@ -1,0 +1,27 @@
+ros:
+  map_topic: /map
+  pointcloud_topic: /jt128/front/points
+  pointcloud_fallback_topic: /a2/map/pointcloud_3d
+  localization_pose_topic: /a2/relocalization/pose
+  localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
+  odom_topic: /jt128/dlio/odom
+  map_pointcloud_topic: /a2/map/pointcloud_3d
+  map_representation: pointcloud_map_3d
+  relocalization_status_topic: /a2/relocalization/status
+  pose_goal_status_topic: /a2/nav2/status
+
+navigation:
+  backend: nav2
+  action_name: /navigate_to_pose
+  goal_topic: /a2/nav3/goal_pose
+  goal_frame: map
+  cancel_stop_topic: /cmd_vel
+  require_localization_ready: true
+  require_map_for_goal: true
+
+stack:
+  workspace: /home/unitree/a2_system_ws
+  network_interface: net1
+  map_root: /home/unitree/a2_system_ws/runtime/maps
+  start_script: /home/unitree/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
+  stop_script: /home/unitree/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh

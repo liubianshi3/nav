@@ -1,0 +1,35 @@
+simulator_node:
+  ros__parameters:
+    # PCD map file (ASCII format, same as map_manager produces)
+    pcd_map_path: "${A2_WORKSPACE}/runtime/maps/current/pointcloud_map_3d.pcd"
+
+    # Virtual lidar
+    lidar_range_m: 80.0
+    lidar_points_per_scan: 5000
+    lidar_noise_stddev_m: 0.02
+
+    # Publishing rate
+    lidar_rate_hz: 10.0
+    odom_rate_hz: 200.0
+
+    # Kinematics
+    base_height_m: 0.28
+    initial_x: 0.0
+    initial_y: 0.0
+    initial_yaw: 0.0
+
+    # Odometry covariance (simulated good odometry)
+    odom_pos_variance: 0.01
+    odom_rot_variance: 0.005
+
+    # Frame IDs
+    map_frame: map
+    odom_frame: odom
+    base_frame: base_link
+    lidar_frame: jt128_front_link
+
+    # LiDAR extrinsics (base_link → lidar)
+    base_to_lidar_xyz: [0.33767, 0.0, 0.08134]
+    base_to_lidar_rotation_matrix: [0.0, 0.0, 1.0,
+                                     1.0, 0.0, 0.0,
+                                     0.0, 1.0, 0.0]

@@ -1,0 +1,10 @@
+system:
+  use_mock: false
+  run_all_on_host: true
+  target_robot: unitree_a2
+  target_lidar: unitree_native_fused
+  target_nav_stack: nav2
+  target_slam_stack: external_odom
+  prefer_sdk_bridge: true
+  map_root: ${A2_WORKSPACE}/runtime/maps
+  log_root: ${A2_WORKSPACE}/runtime/logs

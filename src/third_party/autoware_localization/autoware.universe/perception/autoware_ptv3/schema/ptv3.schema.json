@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for ptv3",
+  "type": "object",
+  "definitions": {
+    "filter": {
+      "type": "object",
+      "properties": {
+        "class_probability_threshold": {
+          "type": "number",
+          "description": "If any filter class probability reaches this threshold, the point is excluded from the filtered output cloud.",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "classes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Class names to filter out from the filtered output cloud when their probability exceeds the threshold.",
+          "uniqueItems": true
+        },
+        "output_format": {
+          "type": "string",
+          "description": "Filtered output point format. Empty string preserves the input format.",
+          "enum": ["", "xyzi", "xyzirc", "xyziradrt", "xyzircaedt"]
+        }
+      },
+      "required": ["class_probability_threshold", "classes", "output_format"],
+      "additionalProperties": false
+    },
+    "ptv3": {
+      "type": "object",
+      "properties": {
+        "plugins_path": {
+          "type": "string",
+          "description": "A path to the TensorRT plugins.",
+          "default": "$(find-pkg-share autoware_ptv3)/plugins/libautoware_tensorrt_plugins.so",
+          "pattern": "\\.so$"
+        },
+        "trt_precision": {
+          "type": "string",
+          "description": "A precision of TensorRT engine.",
+          "default": "fp16",
+          "enum": ["fp16", "fp32"]
+        },
+        "cloud_capacity": {
+          "type": "integer",
+          "description": "Capacity of the point cloud buffer (should be set to at least the maximum theoretical number of points).",
+          "default": 2000000,
+          "minimum": 1
+        },
+        "onnx_path": {
+          "type": "string",
+          "description": "A path to ONNX model file.",
+          "default": "$(var model_path)/ptv3.onnx",
+          "pattern": "\\.onnx$"
+        },
+        "engine_path": {
+          "type": "string",
+          "description": "A path to TensorRT engine file.",
+          "default": "$(var model_path)/ptv3.engine",
+          "pattern": "\\.engine$"
+        },
+        "filter": {
+          "$ref": "#/definitions/filter"
+        }
+      },
+      "required": [
+        "plugins_path",
+        "trt_precision",
+        "cloud_capacity",
+        "onnx_path",
+        "engine_path",
+        "filter"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/ptv3"
+        }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}

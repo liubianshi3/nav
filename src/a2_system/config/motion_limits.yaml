@@ -1,0 +1,22 @@
+a2_control_bridge:
+  ros__parameters:
+    use_mock: false
+    auto_detect_interface: true
+    allow_loopback: true
+    network_interface: ""
+    interface_candidates: ["lo"]
+    cmd_topic: /cmd_vel_safe
+    estop_topic: /a2/estop
+    localization_ok_topic: /a2/localization_ok
+    map_ready_topic: /a2/map_ready
+    allow_motion_topic: /a2/allow_motion
+    max_linear_x: 0.4
+    max_linear_y: 0.25
+    max_yaw_rate: 0.5
+    linear_x_sign: 1.0
+    linear_y_sign: 1.0
+    yaw_sign: 1.0
+    cmd_timeout_sec: 0.5
+    control_hz: 20.0
+    allow_motion_without_map: false
+    allow_motion_without_localization: false

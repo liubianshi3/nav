@@ -1,0 +1,23 @@
+string command
+string map_id
+string route_id
+string mode
+string mission_name
+string route_yaml
+string waypoints_file
+bool dry_run
+bool stop_on_failure
+bool save_map_on_finish
+bool save_map_on_failure
+geometry_msgs/PoseStamped pose
+---
+bool success
+string message
+string active_map
+string current_mode
+string route_id
+string route_path
+string mission_state
+string report_path
+string[] items
+string route_yaml

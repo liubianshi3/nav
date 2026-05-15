@@ -1,0 +1,11 @@
+real_lidar:
+  ros__parameters:
+    profile: hesai_jt128_front
+    driver_mode: dedicated_hesai_ros_driver
+    imu_topic: /jt128/front/imu
+    input_topic: /jt128/front/points
+    output_topic: /jt128/front/points
+    output_frame_id: jt128_front_link
+    restamp_on_receive: false
+    stale_timeout_sec: 1.0
+

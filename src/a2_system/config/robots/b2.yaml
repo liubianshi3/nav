@@ -1,0 +1,17 @@
+static_tf_manager:
+  ros__parameters:
+    base_height: 0.33
+
+a2_sdk_bridge:
+  ros__parameters:
+    robot_model: unitree_b2
+    sport_state_topic: rt/lf/sportmodestate
+
+a2_control_bridge:
+  ros__parameters:
+    max_linear_x: 0.60
+    max_linear_y: 0.30
+    max_yaw_rate: 0.50
+    prepare_balance_stand: true
+    prepare_balance_wait_sec: 2.0
+

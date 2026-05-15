@@ -1,0 +1,68 @@
+name: build-and-test-daily
+
+on:
+  schedule:
+    - cron: 0 0 * * * # every day at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  build-and-test-daily:
+    strategy:
+      fail-fast: false
+      matrix:
+        rosdistro: [humble, jazzy]
+        cuda: [false, true]
+        arch: [amd64, arm64]
+
+        exclude:
+          # Humble is being phased out; only run CUDA amd64 as a minimal check
+          - rosdistro: humble
+            arch: arm64
+          - rosdistro: humble
+            cuda: false
+          # Non-CUDA arm64 has no deployment target; keep non-CUDA only on amd64 as a sanity check
+          - cuda: false
+            arch: arm64
+
+        include:
+          # Container per (rosdistro, cuda) combination
+          - rosdistro: humble
+            cuda: true
+            container-base: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-humble
+          - rosdistro: jazzy
+            cuda: true
+            container-base: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-jazzy
+          - rosdistro: jazzy
+            cuda: false
+            container-base: ghcr.io/autowarefoundation/autoware:universe-dependencies-jazzy
+
+          # CUDA variant configurations
+          - cuda: true
+            cache-suffix: cuda
+
+          - cuda: false
+            cache-suffix: nocuda
+
+          # Architecture specific configurations
+          - arch: amd64
+            runner: "['self-hosted', 'Linux', 'X64']"
+            build-pre-command: ""
+
+          - arch: arm64
+            runner: "['ubuntu-22.04-arm']"
+            build-pre-command: taskset --cpu-list 0-6
+
+    uses: ./.github/workflows/build-and-test-reusable.yaml
+    with:
+      rosdistro: ${{ matrix.rosdistro }}
+      container: ${{ matrix.container-base }}
+      runner: ${{ matrix.runner }}
+      build-pre-command: ${{ matrix.build-pre-command }}
+      arch: ${{ matrix.arch }}
+      pull-ccache: true
+      push-ccache: false
+      concurrency-group: build-and-test-daily-${{ matrix.rosdistro }}-${{ matrix.arch }}-${{ matrix.cache-suffix }}-${{ github.ref }}-${{ github.run_id }}
+      upload-coverage: ${{ matrix.rosdistro == 'jazzy' && matrix.arch == 'amd64' && matrix.cuda }}
+      codecov-flag: daily
+    secrets:
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}

@@ -1,0 +1,6 @@
+sync_monitor:
+  ros__parameters:
+    imu_topic: /jt128/front/imu
+    pointcloud_topic: /jt128/front/points
+    max_age_sec: 0.25
+    warn_skew_sec: 0.05

@@ -1,0 +1,26 @@
+mission_name: office_loop
+waypoints:
+  - id: start
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    dwell_sec: 1.0
+    note: starting pose
+  - id: wp_01
+    x: 1.5
+    y: 0.0
+    yaw: 0.0
+    dwell_sec: 1.0
+    note: forward observation point
+  - id: wp_02
+    x: 1.5
+    y: 1.2
+    yaw: 1.57
+    dwell_sec: 1.5
+    note: corner scan point
+  - id: wp_03
+    x: 0.0
+    y: 1.2
+    yaw: 3.14
+    dwell_sec: 1.0
+    note: return corridor point

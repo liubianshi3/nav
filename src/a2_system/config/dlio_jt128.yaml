@@ -1,0 +1,77 @@
+/**:
+  ros__parameters:
+    use_sim_time: false
+    version: 1.1.1
+
+    frames/odom: odom
+    frames/baselink: base_link
+    frames/lidar: jt128_front_link
+    frames/imu: jt128_front_imu_link
+
+    # Keep JT128 mapping keyframes predictable for web-visible map growth.
+    # With adaptive=true, DLIO can raise the distance threshold to several
+    # meters in open space, making /jt128/dlio/map_points appear static.
+    adaptive: false
+    pointcloud/deskew: true
+    pointcloud/voxelize: true
+
+    map/waitUntilMove: true
+    map/dense/filtered: false
+    map/sparse/leafSize: 0.25
+
+    odom/gravity: 9.80665
+    odom/computeTimeOffset: true
+
+    odom/imu/approximateGravity: false
+    odom/imu/calibration/gyro: true
+    odom/imu/calibration/accel: true
+    odom/imu/calibration/time: 3.0
+    odom/imu/bufferSize: 5000
+
+    imu/calibration: true
+    imu/intrinsics/accel/bias: [0.0, 0.0, 0.0]
+    imu/intrinsics/accel/sm: [1.0, 0.0, 0.0,
+                              0.0, 1.0, 0.0,
+                              0.0, 0.0, 1.0]
+    imu/intrinsics/gyro/bias: [0.0, 0.0, 0.0]
+
+    # Unitree A2 JT128 front lidar structural design reference.
+    # Translation is the sensor origin expressed in base_link coordinates.
+    extrinsics/baselink2imu/t: [0.33767, 0.0, 0.08134]
+    # DLIO applies this matrix directly to raw IMU vectors, so it must map
+    # JT128 IMU/lidar-frame vectors into base_link coordinates.
+    # The parameter name is misleading; this is effectively R_lidar_to_base.
+    extrinsics/baselink2imu/R: [0.0, 0.0, 1.0,
+                                1.0, 0.0, 0.0,
+                                0.0, 1.0, 0.0]
+    extrinsics/baselink2lidar/t: [0.33767, 0.0, 0.08134]
+    # DLIO multiplies T_world_base * baselink2lidar_T to place lidar points,
+    # so this matrix must also be the lidar frame expressed in base_link.
+    extrinsics/baselink2lidar/R: [0.0, 0.0, 1.0,
+                                  1.0, 0.0, 0.0,
+                                  0.0, 1.0, 0.0]
+
+    odom/preprocessing/cropBoxFilter/size: 1.0
+    odom/preprocessing/voxelFilter/res: 0.25
+
+    odom/keyframe/threshD: 0.20
+    odom/keyframe/threshR: 30.0
+
+    odom/submap/keyframe/knn: 12
+    odom/submap/keyframe/kcv: 12
+    odom/submap/keyframe/kcc: 12
+    odom/gicp/minNumPoints: 64
+    odom/gicp/kCorrespondences: 16
+    odom/gicp/maxCorrespondenceDistance: 0.6
+    odom/gicp/maxIterations: 32
+    odom/gicp/transformationEpsilon: 0.01
+    odom/gicp/rotationEpsilon: 0.01
+    odom/gicp/initLambdaFactor: 1.0e-9
+
+    odom/geo/Kp: 4.5
+    odom/geo/Kv: 11.25
+    odom/geo/Kq: 4.0
+    odom/geo/Kab: 2.25
+    odom/geo/Kgb: 1.0
+    odom/geo/abias_max: 5.0
+    odom/geo/gbias_max: 0.5

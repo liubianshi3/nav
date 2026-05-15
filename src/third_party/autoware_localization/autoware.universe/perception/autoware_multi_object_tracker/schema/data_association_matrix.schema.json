@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Parameters for Data Association",
+  "type": "object",
+  "definitions": {
+    "data_association_matrix": {
+      "type": "object",
+      "properties": {
+        "association": {
+          "type": "object",
+          "description": "Layered association configuration: association.<config_type>.<measurement_class>.<tracker_type> = value",
+          "properties": {
+            "can_assign": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "max_dist": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            },
+            "max_area": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            },
+            "min_area": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            },
+            "min_iou": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "required": ["can_assign", "max_dist", "max_area", "min_area", "min_iou"]
+        },
+        "unknown_association_giou_threshold": {
+          "type": "number",
+          "description": "GIoU threshold for unknown-unknown association.",
+          "default": -0.8
+        }
+      },
+      "required": ["association"]
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/data_association_matrix"
+        }
+      },
+      "required": ["ros__parameters"]
+    }
+  },
+  "required": ["/**"]
+}

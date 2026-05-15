@@ -1,0 +1,13 @@
+localization_gate:
+  ros__parameters:
+    input_pose_topic: /amcl_pose
+    input_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
+    status_topic: /a2/localization_ok
+    status_report_topic: /a2/localization/status
+    max_pose_age_sec: 1.5
+    latch_valid_pose: true
+    latched_pose_timeout_sec: 30.0
+    pose_transient_local: false
+    allow_zero_stamp_as_now: true
+    max_xy_variance: 0.18
+    max_yaw_variance: 0.12

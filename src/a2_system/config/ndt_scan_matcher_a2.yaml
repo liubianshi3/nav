@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:
+    ndt:
+      max_iterations: 80
+      trans_epsilon: 0.01
+
+    score_estimation:
+      converged_param_type: 1
+      converged_param_transform_probability: 3.0
+      converged_param_nearest_voxel_transformation_likelihood: 2.3

@@ -1,0 +1,129 @@
+// Copyright 2020 Autoware Foundation
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/**
+ * @file nvml_gpu_monitor.cpp
+ * @brief GPU monitor class
+ */
+
+#include "system_monitor/gpu_monitor/gpu_monitor_base.hpp"
+
+#include <unistd.h>
+
+#include <string>
+#include <vector>
+
+GPUMonitorBase::GPUMonitorBase(const std::string & node_name, const rclcpp::NodeOptions & options)
+: Node(node_name, options),
+  updater_(this),
+  hostname_{""},
+  temp_warn_(declare_parameter<float>("temp_warn", 90.0)),
+  temp_error_(declare_parameter<float>("temp_error", 95.0)),
+  gpu_usage_warn_(declare_parameter<float>("gpu_usage_warn", 0.90)),
+  gpu_usage_error_(declare_parameter<float>("gpu_usage_error", 1.00)),
+  memory_usage_warn_(declare_parameter<float>("memory_usage_warn", 0.95)),
+  memory_usage_error_(declare_parameter<float>("memory_usage_error", 0.99))
+{
+  gethostname(hostname_, sizeof(hostname_));
+
+  updater_.setHardwareID(hostname_);
+  updater_.add("GPU Temperature", this, &GPUMonitorBase::checkTemp);
+  updater_.add("GPU Usage", this, &GPUMonitorBase::checkUsage);
+  updater_.add("GPU Memory Usage", this, &GPUMonitorBase::checkMemoryUsage);
+  updater_.add("GPU Thermal Throttling", this, &GPUMonitorBase::checkThrottling);
+  updater_.add("GPU Frequency", this, &GPUMonitorBase::checkFrequency);
+
+  // Publisher
+  rclcpp::QoS durable_qos{1};
+  durable_qos.transient_local();
+  pub_gpu_status_ =
+    this->create_publisher<tier4_external_api_msgs::msg::GpuStatus>("~/gpu_status", durable_qos);
+
+  // Start timer for collecting GPU status
+  using namespace std::literals::chrono_literals;
+  timer_ = rclcpp::create_timer(this, get_clock(), 1s, std::bind(&GPUMonitorBase::onTimer, this));
+}
+
+GPUMonitorBase::~GPUMonitorBase()
+{
+  // Base class destructor can't call virtual functions defined by its derived classes.
+  // The CI workflow "cppcheck_differential" fails without this explicit qualification.
+  GPUMonitorBase::shut_down();
+}
+
+void GPUMonitorBase::update()
+{
+  updater_.force_update();
+}
+
+void GPUMonitorBase::shut_down()
+{ /*NOOP by default.*/
+}
+
+void GPUMonitorBase::checkTemp(diagnostic_updater::DiagnosticStatusWrapper & /* stat */)
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::checkTemp not implemented.");
+}
+
+void GPUMonitorBase::checkUsage(diagnostic_updater::DiagnosticStatusWrapper & /* stat */)
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::checkUsage not implemented.");
+}
+
+void GPUMonitorBase::checkMemoryUsage(diagnostic_updater::DiagnosticStatusWrapper & /* stat */)
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::checkMemoryUsage not implemented.");
+}
+
+void GPUMonitorBase::checkThrottling(diagnostic_updater::DiagnosticStatusWrapper & /* stat */)
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::checkThrottling not implemented.");
+}
+
+void GPUMonitorBase::checkFrequency(diagnostic_updater::DiagnosticStatusWrapper & /* stat */)
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::checkFrequency not implemented.");
+}
+
+std::vector<GPUMonitorBase::GpuStatus> GPUMonitorBase::getGPUStatus() const
+{
+  RCLCPP_INFO_ONCE(get_logger(), "GPUMonitorBase::getGPUStatus not implemented.");
+  return std::vector<GpuStatus>{};
+}
+
+void GPUMonitorBase::onTimer()
+{
+  publishGPUStatus();
+}
+
+void GPUMonitorBase::publishGPUStatus()
+{
+  using tier4_external_api_msgs::msg::GpuUnitStatus;
+  tier4_external_api_msgs::msg::GpuStatus gpu_status;
+  gpu_status.stamp = this->now();
+  gpu_status.hostname = hostname_;
+  auto measured_status_list = getGPUStatus();
+  for (const auto & measured_status : measured_status_list) {
+    tier4_external_api_msgs::msg::GpuUnitStatus gpu_unit;
+    gpu_unit.name = measured_status.name;
+    gpu_unit.usage = measured_status.usage;
+    gpu_unit.clock = static_cast<uint32_t>(measured_status.clock);
+    gpu_unit.temperature = static_cast<uint32_t>(measured_status.temperature);
+    gpu_unit.thermal_throttling = (measured_status.thermal_throttling == DiagStatus::OK)
+                                    ? GpuUnitStatus::THERMAL_THROTTLING_OFF
+                                    : GpuUnitStatus::THERMAL_THROTTLING_ON;
+    gpu_status.gpus.push_back(gpu_unit);
+  }
+  pub_gpu_status_->publish(gpu_status);
+}

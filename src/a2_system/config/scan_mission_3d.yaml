@@ -1,0 +1,16 @@
+auto_scan_mission:
+  ros__parameters:
+    primary_map_representation: pointcloud_map_3d
+    navigation_representation: nav2_3d_projected_2d_costmap
+    pose_topic: /a2/relocalization/pose
+    pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
+    map_topic: /a2/map/pointcloud_3d
+    odom_topic: /odometry/local
+    pointcloud_topic: /jt128/front/points
+    localization_ok_topic: /a2/localization_ok
+    localization_status_topic: /a2/localization/status
+    navigation_backend: nav2
+    pose_goal_topic: /a2/nav3/goal_pose
+    navigate_action_name: /navigate_to_pose
+    goal_frame: map
+    require_map_frame: true

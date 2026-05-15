@@ -1,0 +1,35 @@
+name: build-and-test
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        rosdistro: [humble, jazzy]
+
+        include:
+          # ROS distribution specific configurations
+          - rosdistro: humble
+            container: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-humble
+
+          - rosdistro: jazzy
+            container: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-jazzy
+
+    uses: ./.github/workflows/build-and-test-reusable.yaml
+    with:
+      rosdistro: ${{ matrix.rosdistro }}
+      container: ${{ matrix.container }}
+      runner: "['self-hosted', 'Linux', 'X64']"
+      concurrency-group: build-and-test-${{ matrix.rosdistro }}-${{ github.ref }}
+      cancel-in-progress: false
+      pull-ccache: false
+      push-ccache: true
+      upload-coverage: ${{ matrix.rosdistro == 'jazzy' }}
+      codecov-flag: full-suite
+    secrets:
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}

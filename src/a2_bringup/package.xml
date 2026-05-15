@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>a2_bringup</name>
+  <version>0.1.0</version>
+  <description>Bringup launch package for the Unitree A2 host-side stack.</description>
+
+  <maintainer email="dell@example.com">dell</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>octomap_server</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

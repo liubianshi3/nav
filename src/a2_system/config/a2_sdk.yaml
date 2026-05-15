@@ -1,0 +1,15 @@
+a2_sdk_bridge:
+  ros__parameters:
+    use_mock: false
+    auto_detect_interface: true
+    allow_loopback: true
+    network_interface: ""
+    interface_candidates: ["lo"]
+    state_topic: /a2/raw_state
+    sport_state_topic: rt/lf/sportmodestate
+    mock_cmd_topic: /cmd_vel
+    mock_cmd_timeout_sec: 0.5
+    timer_hz: 50.0
+    stale_timeout_sec: 0.5
+    mock_linear_speed: 0.1
+    mock_yaw_rate: 0.15

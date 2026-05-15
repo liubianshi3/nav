@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>a2_sdk_bridge</name>
+  <version>0.1.0</version>
+  <description>SDK-first A2 sport state bridge for the real robot runtime.</description>
+
+  <maintainer email="dell@example.com">dell</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>a2_interfaces</depend>
+  <depend>a2_system</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

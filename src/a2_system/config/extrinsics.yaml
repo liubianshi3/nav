@@ -1,0 +1,16 @@
+extrinsics:
+  lidar:
+    parent: base_link
+    child: lidar_link
+    xyz: [0.32, 0.0, 0.24]
+    rpy: [0.0, 0.0, 0.0]
+  imu:
+    parent: base_link
+    child: imu_link
+    xyz: [0.0, 0.0, 0.0]
+    rpy: [0.0, 0.0, 0.0]
+  camera:
+    parent: base_link
+    child: camera_link
+    xyz: [0.16, 0.0, 0.18]
+    rpy: [0.0, 0.0, 0.0]

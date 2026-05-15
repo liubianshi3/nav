@@ -1,0 +1,6 @@
+string command
+string map_id
+---
+bool success
+string message
+string[] map_ids

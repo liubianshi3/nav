@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>a2_state_publisher</name>
+  <version>0.1.0</version>
+  <description>Publishes normalized ROS 2 IMU, odometry, TF, and robot state topics for Unitree A2.</description>
+
+  <maintainer email="dell@example.com">dell</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>a2_interfaces</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

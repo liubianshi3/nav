@@ -1,0 +1,17 @@
+[Unit]
+Description=A2 ROS2 Web Console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unitree
+WorkingDirectory=/home/unitree/a2_system_ws/web_console
+Environment=PYTHONUNBUFFERED=1
+Environment=CONFIG_PATH=/home/unitree/a2_system_ws/web_console/backend/config.example.yaml
+ExecStart=/bin/bash -lc '/home/unitree/a2_system_ws/web_console/scripts/run_backend.sh'
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

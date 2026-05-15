@@ -1,0 +1,30 @@
+pose_goal_controller_3d:
+  ros__parameters:
+    goal_topic: /a2/nav3/goal_pose
+    legacy_goal_topic: /goal_pose_
+    pose_topic: /a2/relocalization/pose
+    cmd_topic: /cmd_vel
+    status_topic: /a2/nav3/status
+    localization_ok_topic: /a2/localization_ok
+    map_frame: map
+
+    # Safety default: dry-run until the operator explicitly enables motion in
+    # the launch command after verifying localization and clear surroundings.
+    dry_run: true
+    require_localization_ok: true
+    require_obstacle_cloud: true
+    obstacle_cloud_topic: /jt128/front/points
+    obstacle_cloud_timeout_sec: 1.0
+
+    control_hz: 10.0
+    pose_timeout_sec: 0.5
+    goal_timeout_sec: 60.0
+    max_goal_distance_from_current: 1.5
+
+    goal_tolerance_xy: 0.15
+    goal_tolerance_yaw: 0.18
+    linear_gain: 0.45
+    yaw_gain: 0.9
+    max_linear_x: 0.18
+    max_linear_y: 0.12
+    max_yaw_rate: 0.30

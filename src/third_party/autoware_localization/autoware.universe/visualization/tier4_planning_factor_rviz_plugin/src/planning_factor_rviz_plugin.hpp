@@ -1,0 +1,118 @@
+// Copyright 2024 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef PLANNING_FACTOR_RVIZ_PLUGIN_HPP_
+#define PLANNING_FACTOR_RVIZ_PLUGIN_HPP_
+
+#include <rcl_interfaces/srv/get_parameters.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rviz_common/display.hpp>
+#include <rviz_common/properties/bool_property.hpp>
+#include <rviz_common/properties/float_property.hpp>
+#include <rviz_default_plugins/displays/marker/marker_common.hpp>
+#include <rviz_default_plugins/displays/marker_array/marker_array_display.hpp>
+
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
+
+#include <mutex>
+#include <optional>
+#include <string>
+
+namespace autoware::rviz_plugins
+{
+
+using RosTopicDisplay =
+  rviz_common::RosTopicDisplay<autoware_internal_planning_msgs::msg::PlanningFactorArray>;
+
+class PlanningFactorRvizPlugin
+: public rviz_common::RosTopicDisplay<autoware_internal_planning_msgs::msg::PlanningFactorArray>
+{
+public:
+  PlanningFactorRvizPlugin()
+  : marker_common_{this},
+    show_safety_factors_{"Show Safety Factors", true, "Display safety factor markers", this},
+    topic_name_{"planning_factors"}
+  {
+  }
+
+  void onInitialize() override
+  {
+    RosTopicDisplay::RTDClass::onInitialize();
+    marker_common_.initialize(this->context_, this->scene_node_);
+    QString message_type = QString::fromStdString(
+      rosidl_generator_traits::name<autoware_internal_planning_msgs::msg::PlanningFactorArray>());
+    this->topic_property_->setMessageType(message_type);
+    this->topic_property_->setValue(topic_name_.c_str());
+    this->topic_property_->setDescription("Topic to subscribe to.");
+
+    // Start background vehicle info request (non-blocking)
+    start_vehicle_info_request();
+  }
+
+  void load(const rviz_common::Config & config) override
+  {
+    RosTopicDisplay::Display::load(config);
+    marker_common_.load(config);
+    bool show_safety_factors;
+    if (config.mapGetBool("show_safety_factors", &show_safety_factors)) {
+      show_safety_factors_.setValue(show_safety_factors);
+    }
+  }
+
+  void save(rviz_common::Config config) const override
+  {
+    RosTopicDisplay::Display::save(config);
+    config.mapSetValue("show_safety_factors", show_safety_factors_.getBool());
+  }
+
+  void update(float wall_dt, float ros_dt) override { marker_common_.update(wall_dt, ros_dt); }
+
+  void reset() override
+  {
+    RosTopicDisplay::reset();
+    marker_common_.clearMarkers();
+  }
+
+  void clear_markers() { marker_common_.clearMarkers(); }
+
+  void add_marker(visualization_msgs::msg::Marker::ConstSharedPtr marker_ptr)
+  {
+    marker_common_.addMessage(marker_ptr);
+  }
+
+  void add_marker(visualization_msgs::msg::MarkerArray::ConstSharedPtr markers_ptr)
+  {
+    marker_common_.addMessage(markers_ptr);
+  }
+
+private:
+  void processMessage(
+    const autoware_internal_planning_msgs::msg::PlanningFactorArray::ConstSharedPtr msg) override;
+
+  static void start_vehicle_info_request();
+
+  rviz_default_plugins::displays::MarkerCommon marker_common_;
+
+  rviz_common::properties::BoolProperty show_safety_factors_;
+
+  std::string topic_name_;
+
+  // Static members for cached vehicle info
+  static std::mutex s_mutex_;
+  static std::optional<double> s_baselink2front_;
+  static bool s_request_started_;
+};
+}  // namespace autoware::rviz_plugins
+
+#endif  // PLANNING_FACTOR_RVIZ_PLUGIN_HPP_

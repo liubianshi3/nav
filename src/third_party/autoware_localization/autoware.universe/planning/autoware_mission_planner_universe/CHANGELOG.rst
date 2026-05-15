@@ -1,0 +1,373 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package autoware_mission_planner_universe
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.51.0 (2026-05-01)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* fix(autoware_mission_planner_universe): make library name unique for goal_pose_visualizer (`#12386 <https://github.com/mitsudome-r/autoware_universe/issues/12386>`_)
+* feat(autoware_path_optimizer): reintroducing acados MPT along with changes to linking to acados (`#12300 <https://github.com/mitsudome-r/autoware_universe/issues/12300>`_)
+  * Revert "feat(autoware_path_optimizer): reverts new path optimizer due to failing builds (`#12298 <https://github.com/mitsudome-r/autoware_universe/issues/12298>`_)"
+  This reverts commit 7302e8ce79eef35b51971bbbfff28c1b40cf529e.
+  * fix to CMakeLists to propagate acados links downstream
+  * added words to spell-check
+  * committing generated files
+  * added words to cspell
+  * fix
+  * style(pre-commit): autofix
+  * update to previous placeholder
+  * Change link to public
+  * update to cspell
+  * update to cspell
+  * Revert "committing generated files"
+  This reverts commit 6496b40e552af440e57c17695fd8464155c57200.
+  * Revert "update to previous placeholder"
+  This reverts commit 82615801655f6abe49182a5fc38a0db5ec0d87f1.
+  * final
+  * build to output tree
+  * copyright
+  * fix for copyright
+  ---------
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+* chore(planning): remove unused lanelet2_extension header (`#12294 <https://github.com/mitsudome-r/autoware_universe/issues/12294>`_)
+  * unused lanelet2_extension in planning component
+  * unused lanelet2_extension in planning component (2)
+  * unused lanelet2_extension in planning component (3)
+  ---------
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* feat(autoware_path_optimizer): reverts new path optimizer due to failing builds (`#12298 <https://github.com/mitsudome-r/autoware_universe/issues/12298>`_)
+  Revert "feat(autoware_path_optimizer): new path optimizer (`#11479 <https://github.com/mitsudome-r/autoware_universe/issues/11479>`_)"
+  This reverts commit f775ea6f8e6434531057d5703ef03f391d354d54.
+* feat(autoware_mission_planner_universe): remove glog component (`#12226 <https://github.com/mitsudome-r/autoware_universe/issues/12226>`_)
+  feat: remove glog component
+* feat(autoware_path_optimizer): new path optimizer (`#11479 <https://github.com/mitsudome-r/autoware_universe/issues/11479>`_)
+  * acados MPT
+  * fix
+  * fix
+  * changed name of variable
+  * fix
+  * match build_depends*.repos to autoware*.repos structure
+  * fix
+  * fix
+  * fix
+  * Apply suggestions from code review
+  Co-authored-by: Mete Fatih Cırıt <mfc@autoware.org>
+  * fix
+  * fix
+  * fix
+  * fix
+  * fix
+  * fix
+  * fix
+  * fix
+  * Update planning/autoware_path_optimizer/src/acados_mpc/CMakeLists.txt
+  Co-authored-by: Mete Fatih Cırıt <mfc@autoware.org>
+  * target_link_directories
+  * just link acados public
+  * revert unrelated changes
+  * chore: update CODEOWNERS (`#12216 <https://github.com/mitsudome-r/autoware_universe/issues/12216>`_)
+  Co-authored-by: github-actions <github-actions@github.com>
+  * fix
+  * fixes for ament
+  * changes for CI
+  * fix for clang
+  * spell-check
+  * changed stub
+  * removed guards
+  * fix for build CI
+  * changes for build-test-differential
+  * changes for build-test-differential
+  * fix
+  ---------
+  Co-authored-by: Mete Fatih Cırıt <mfc@autoware.org>
+  Co-authored-by: awf-autoware-bot[bot] <94889083+awf-autoware-bot[bot]@users.noreply.github.com>
+  Co-authored-by: github-actions <github-actions@github.com>
+  Co-authored-by: Taiki Yamada <129915538+TaikiYamada4@users.noreply.github.com>
+* feat(lanelet2_extension): replace ported lanelet2_extension utilities functions (final) (`#12173 <https://github.com/mitsudome-r/autoware_universe/issues/12173>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* refactor(planning): deprecate toLaneletPoint/toGeomPt in costmap_generator, miscs (`#12089 <https://github.com/mitsudome-r/autoware_universe/issues/12089>`_)
+  * refactor(planning): deprecate toLaneletPoint/toGeomPt in costmap_generator, miscs
+  * fix
+  ---------
+* Contributors: Arjun Jagdish Ram, Mamoru Sobue, Ryohsuke Mitsudome, Sarun MUKDAPITAK, Tetsuhiro Kawaguchi, github-actions
+
+0.50.0 (2026-02-14)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* refactor(planning): deprecate getClosestLanelet usage (`#12032 <https://github.com/autowarefoundation/autoware_universe/issues/12032>`_)
+* fix: qos compatibility (`#11878 <https://github.com/autowarefoundation/autoware_universe/issues/11878>`_)
+* fix(mission_planner): blocking manual lane change when reroute is unavailable (`#11794 <https://github.com/autowarefoundation/autoware_universe/issues/11794>`_)
+  * Added abort when reroute not available
+  * blocking manual lane-change when rereoute unavailable
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+  Co-authored-by: Taiki Yamada <129915538+TaikiYamada4@users.noreply.github.com>
+* chore(mission_planner): add maintainer (`#11830 <https://github.com/autowarefoundation/autoware_universe/issues/11830>`_)
+  add taiki yamada as maintainer
+* Contributors: Arjun Jagdish Ram, Mamoru Sobue, Mete Fatih Cırıt, Ryohsuke Mitsudome, Taiki Yamada
+
+0.49.0 (2025-12-30)
+-------------------
+* Merge remote-tracking branch 'origin/main' into prepare-0.49.0-changelog
+* feat(autoware_lanelet2_utils): replace from/toBinMsg (Planning and Control Component) (`#11784 <https://github.com/autowarefoundation/autoware_universe/issues/11784>`_)
+  * planning component toBinMsg replacement
+  * control component fromBinMsg replacement
+  * planning component fromBinMsg replacement
+  ---------
+* feat(autoware_lanelet2_utils): replace the usage of remove_const (`#11727 <https://github.com/autowarefoundation/autoware_universe/issues/11727>`_)
+  replace the usage of remove_const
+  Co-authored-by: Junya Sasaki <junya.sasaki@tier4.jp>
+* Contributors: Ryohsuke Mitsudome, Sarun MUKDAPITAK
+
+0.48.0 (2025-11-18)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* feat(autoware_lanelet2_utils): replace ported functions from autoware_lanelet2_extension (`#11593 <https://github.com/autowarefoundation/autoware_universe/issues/11593>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* feat(manual_lane_change_handler): publishing shift-number (`#11641 <https://github.com/autowarefoundation/autoware_universe/issues/11641>`_)
+  * publishing shift-number
+  * changed warn to info
+  ---------
+  Co-authored-by: Taiki Yamada <129915538+TaikiYamada4@users.noreply.github.com>
+* feat(mission_planner): manual lane selection (`#11169 <https://github.com/autowarefoundation/autoware_universe/issues/11169>`_)
+  * manual lane change
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci-lite[bot] <117423508+pre-commit-ci-lite[bot]@users.noreply.github.com>
+* fix: tf2 uses hpp headers in rolling (and is backported) (`#11620 <https://github.com/autowarefoundation/autoware_universe/issues/11620>`_)
+* feat(autoware_lanelet2_extension): remove redundant autoware_lanelet2_extension depend from packages (`#11492 <https://github.com/autowarefoundation/autoware_universe/issues/11492>`_)
+* feat(autoware_lanelet2_utils): porting functions from lanelet2_extension to autoware_lanelet2_utils package (replacing usage) in planning component (`#11374 <https://github.com/autowarefoundation/autoware_universe/issues/11374>`_)
+  Co-authored-by: Mamoru Sobue <hilo.soblin@gmail.com>
+* fix(mission_planner_universe): fix parameter schema (`#11415 <https://github.com/autowarefoundation/autoware_universe/issues/11415>`_)
+* feat(planning, perception): replace wall_timer with generic timer (`#11005 <https://github.com/autowarefoundation/autoware_universe/issues/11005>`_)
+  * feat(planning, perception): replace wall_timer with generic timer
+  * use rclcpp::create_timer
+  * remove period_ns
+  ---------
+* feat(arrived_goal): improve arrival judgment when ego-vehicle overshoots goal (`#11134 <https://github.com/autowarefoundation/autoware_universe/issues/11134>`_)
+  * improve arrived goal judgement
+  * add a missed variable
+  * style(pre-commit): autofix
+  * update arrival_check pass_goal_distance to arrival_check_overshoot_distance
+  * register arrival_check_overshoot_distance variable to README
+  * rename some variables
+  * style(pre-commit): autofix
+  * add arrival_check_overshoot_distance to mission_planner schema
+  * update lateral ditance judgement
+  * style(pre-commit): autofix
+  * fix bugs, and refactor arrival_check logic
+  * style(pre-commit): autofix
+  * rename longitudinal_distance to longitudinal_undershoot_distance
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Arjun Jagdish Ram, Mamoru Sobue, Ryohsuke Mitsudome, Sarun MUKDAPITAK, Takagi, Isamu, Tim Clephas, Zhanhong Yan
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* fix(autoware_trajectory_follower, autoware_mission_planner_universe, autoware_scenario_selector): use transient_local for operation_mode_state (`#11101 <https://github.com/autowarefoundation/autoware_universe/issues/11101>`_)
+  * subscribe operation-mode with transient_local
+  * fix mistake
+  * fix unit test code
+  * pre-commit
+  ---------
+* feat(mission_planner): print set route api type (`#10884 <https://github.com/autowarefoundation/autoware_universe/issues/10884>`_)
+* Contributors: Kem (TiankuiXian), Kosuke Takeuchi
+
+0.46.0 (2025-06-20)
+-------------------
+* Merge remote-tracking branch 'upstream/main' into tmp/TaikiYamada/bump_version_base
+* feat!: replace tier4_planning_msgs service with autoware_planning_msgs (`#10827 <https://github.com/autowarefoundation/autoware_universe/issues/10827>`_)
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* feat(mission_planner): print route state when set_route fails (`#10697 <https://github.com/autowarefoundation/autoware_universe/issues/10697>`_)
+  * feat(mission_planner): print route state when set_route fails
+  * Update planning/autoware_mission_planner_universe/src/mission_planner/mission_planner.cpp
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+  * snake_case
+  * without macro
+  ---------
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* fix(mission_planner): fix check if goal footprint is inside route (`#10681 <https://github.com/autowarefoundation/autoware_universe/issues/10681>`_)
+  * fix checking if goal footprint is in ego lanes
+  * change goal footprint check method
+  * fix unit test
+  ---------
+* Contributors: Kosuke Takeuchi, Mitsuhiro Sakamoto, Ryohsuke Mitsudome, TaikiYamada4
+
+0.45.0 (2025-05-22)
+-------------------
+
+0.44.2 (2025-06-10)
+-------------------
+
+0.44.1 (2025-05-01)
+-------------------
+
+0.44.0 (2025-04-18)
+-------------------
+
+0.43.0 (2025-03-21)
+-------------------
+* Merge remote-tracking branch 'origin/main' into chore/bump-version-0.43
+* chore: rename from `autoware.universe` to `autoware_universe` (`#10306 <https://github.com/autowarefoundation/autoware_universe/issues/10306>`_)
+* fix(autoware_mission_planner_universe): add explicit test dependency (`#10261 <https://github.com/autowarefoundation/autoware_universe/issues/10261>`_)
+* Contributors: Hayato Mizushima, Mete Fatih Cırıt, Yutaka Kondo
+
+0.42.0 (2025-03-03)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(autoware_utils): replace autoware_universe_utils with autoware_utils  (`#10191 <https://github.com/autowarefoundation/autoware_universe/issues/10191>`_)
+* feat(mission_planner): tolerate goal footprint being inside the previous lanelets of closest lanelet (`#10179 <https://github.com/autowarefoundation/autoware_universe/issues/10179>`_)
+* feat(autoware_vehicle_info_utils): replace autoware_universe_utils with autoware_utils (`#10167 <https://github.com/autowarefoundation/autoware_universe/issues/10167>`_)
+* Contributors: Fumiya Watanabe, Mamoru Sobue, Ryohsuke Mitsudome, 心刚
+
+0.41.2 (2025-02-19)
+-------------------
+* chore: bump version to 0.41.1 (`#10088 <https://github.com/autowarefoundation/autoware_universe/issues/10088>`_)
+* Contributors: Ryohsuke Mitsudome
+
+0.41.1 (2025-02-10)
+-------------------
+
+0.41.0 (2025-01-29)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(autoware_mission_planner)!: feat(autoware_mission_planner_universe)!: add _universe suffix to package name (`#9941 <https://github.com/autowarefoundation/autoware_universe/issues/9941>`_)
+* Contributors: Fumiya Watanabe, Ryohsuke Mitsudome
+
+0.40.0 (2024-12-12)
+-------------------
+* Merge branch 'main' into release-0.40.0
+* Revert "chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)"
+  This reverts commit c9f0f2688c57b0f657f5c1f28f036a970682e7f5.
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* fix: autoware_glog_compontnt (`#9586 <https://github.com/autowarefoundation/autoware_universe/issues/9586>`_)
+  Fixed autoware_glog_compontnt
+* fix(cpplint): include what you use - planning (`#9570 <https://github.com/autowarefoundation/autoware_universe/issues/9570>`_)
+* refactor(glog_component): prefix package and namespace with autoware (`#9302 <https://github.com/autowarefoundation/autoware_universe/issues/9302>`_)
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+* fix(mission_planner): fix initialization after route set (`#9457 <https://github.com/autowarefoundation/autoware_universe/issues/9457>`_)
+* fix(autoware_mission_planner): fix clang-diagnostic-error (`#9432 <https://github.com/autowarefoundation/autoware_universe/issues/9432>`_)
+* feat(mission_planner): add processing time publisher (`#9342 <https://github.com/autowarefoundation/autoware_universe/issues/9342>`_)
+  * feat(mission_planner): add processing time publisher
+  * delete extra line
+  * update: mission_planner, route_selector, service_utils.
+  * Revert "update: mission_planner, route_selector, service_utils."
+  This reverts commit d460a633c04c166385963c5233c3845c661e595e.
+  * Update to show that exceptions are not handled
+  * feat(mission_planner,route_selector): add processing time publisher
+  ---------
+  Co-authored-by: Takagi, Isamu <43976882+isamu-takagi@users.noreply.github.com>
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+* 0.39.0
+* update changelog
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Fumiya Watanabe, Kazunori-Nakajima, M. Fatih Cırıt, Ryohsuke Mitsudome, Ryuta Kambe, SakodaShintaro, Takagi, Isamu, Yutaka Kondo
+
+0.39.0 (2024-11-25)
+-------------------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Yutaka Kondo
+
+0.38.0 (2024-11-08)
+-------------------
+* unify package.xml version to 0.37.0
+* feat(mission_planner): reroute with current route start pose when triggered by modifed goal (`#9136 <https://github.com/autowarefoundation/autoware_universe/issues/9136>`_)
+  * feat(mission_planner): reroute with current route start pose when triggered by modifed goal
+  * check new ego goal is in original preffered lane as much as possible
+  * check goal is in goal_lane
+  ---------
+* fix(mission_planner): return without change_route if new route is empty  (`#9101 <https://github.com/autowarefoundation/autoware_universe/issues/9101>`_)
+  fix(mission_planner): return if new route is empty without change_route
+* chore(mission_planner): fix typo (`#9053 <https://github.com/autowarefoundation/autoware_universe/issues/9053>`_)
+* test(mission_planner): add test of default_planner (`#9050 <https://github.com/autowarefoundation/autoware_universe/issues/9050>`_)
+* test(mission_planner): add unit tests of utility functions (`#9011 <https://github.com/autowarefoundation/autoware_universe/issues/9011>`_)
+* refactor(mission_planner): move anonymous functions to utils and add namespace (`#9012 <https://github.com/autowarefoundation/autoware_universe/issues/9012>`_)
+  feat(mission_planner): move functions to utils and add namespace
+* feat(mission_planner): add option to prevent rerouting in autonomous driving mode (`#8757 <https://github.com/autowarefoundation/autoware_universe/issues/8757>`_)
+* feat(mission_planner): make the "goal inside lanes" function more robuts and add tests (`#8760 <https://github.com/autowarefoundation/autoware_universe/issues/8760>`_)
+* fix(mission_planner): improve condition to check if the goal is within the lane (`#8710 <https://github.com/autowarefoundation/autoware_universe/issues/8710>`_)
+* fix(autoware_mission_planner): fix unusedFunction (`#8642 <https://github.com/autowarefoundation/autoware_universe/issues/8642>`_)
+  fix:unusedFunction
+* fix(autoware_mission_planner): fix noConstructor (`#8505 <https://github.com/autowarefoundation/autoware_universe/issues/8505>`_)
+  fix:noConstructor
+* fix(autoware_mission_planner): fix funcArgNamesDifferent (`#8017 <https://github.com/autowarefoundation/autoware_universe/issues/8017>`_)
+  fix:funcArgNamesDifferent
+* feat(mission_planner): reroute in manual driving (`#7842 <https://github.com/autowarefoundation/autoware_universe/issues/7842>`_)
+  * feat(mission_planner): reroute in manual driving
+  * docs(mission_planner): update document
+  * feat(mission_planner): fix operation mode state receiving check
+  ---------
+* feat: add `autoware\_` prefix to `lanelet2_extension` (`#7640 <https://github.com/autowarefoundation/autoware_universe/issues/7640>`_)
+* refactor(universe_utils/motion_utils)!: add autoware namespace (`#7594 <https://github.com/autowarefoundation/autoware_universe/issues/7594>`_)
+* refactor(motion_utils)!: add autoware prefix and include dir (`#7539 <https://github.com/autowarefoundation/autoware_universe/issues/7539>`_)
+  refactor(motion_utils): add autoware prefix and include dir
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/autowarefoundation/autoware_universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* refactor(route_handler)!: rename to include/autoware/{package_name}  (`#7530 <https://github.com/autowarefoundation/autoware_universe/issues/7530>`_)
+  refactor(route_handler)!: rename to include/autoware/{package_name}
+* feat(mission_planner): rename to include/autoware/{package_name} (`#7513 <https://github.com/autowarefoundation/autoware_universe/issues/7513>`_)
+  * feat(mission_planner): rename to include/autoware/{package_name}
+  * feat(mission_planner): rename to include/autoware/{package_name}
+  * feat(mission_planner): rename to include/autoware/{package_name}
+  ---------
+* feat(mission_planner): use polling subscriber (`#7447 <https://github.com/autowarefoundation/autoware_universe/issues/7447>`_)
+* fix(route_handler): route handler overlap removal is too conservative (`#7156 <https://github.com/autowarefoundation/autoware_universe/issues/7156>`_)
+  * add flag to enable/disable loop check in getLaneletSequence functions
+  * implement function to get closest route lanelet based on previous closest lanelet
+  * refactor DefaultPlanner::plan function
+  * modify loop check logic in getLaneletSequenceUpTo function
+  * improve logic in isEgoOutOfRoute function
+  * fix format
+  * check if prev lanelet is a goal lanelet in getLaneletSequenceUpTo function
+  * separate function to update current route lanelet in planner manager
+  * rename function and add docstring
+  * modify functions extendNextLane and extendPrevLane to account for overlap
+  * refactor function getClosestRouteLaneletFromLanelet
+  * add route handler unit tests for overlapping route case
+  * fix function getClosestRouteLaneletFromLanelet
+  * format fix
+  * move test map to autoware_test_utils
+  ---------
+* refactor(route_handler): route handler add autoware prefix (`#7341 <https://github.com/autowarefoundation/autoware_universe/issues/7341>`_)
+  * rename route handler package
+  * update packages dependencies
+  * update include guards
+  * update includes
+  * put in autoware namespace
+  * fix formats
+  * keep header and source file name as before
+  ---------
+* refactor(mission_planner)!: add autoware prefix and namespace (`#7414 <https://github.com/autowarefoundation/autoware_universe/issues/7414>`_)
+  * refactor(mission_planner)!: add autoware prefix and namespace
+  * fix svg
+  ---------
+* Contributors: Fumiya Watanabe, Kosuke Takeuchi, Maxime CLEMENT, Takayuki Murooka, Yutaka Kondo, kobayu858, mkquda
+
+0.26.0 (2024-04-03)
+-------------------

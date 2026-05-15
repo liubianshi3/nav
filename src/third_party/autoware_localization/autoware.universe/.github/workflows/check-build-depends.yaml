@@ -1,0 +1,15 @@
+name: check-build-depends
+
+on:
+  pull_request:
+    paths:
+      - build_depends*.repos
+
+jobs:
+  check-build-depends:
+    uses: ./.github/workflows/build-and-test-reusable.yaml
+    with:
+      rosdistro: jazzy
+      container: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-jazzy
+      runner: "['self-hosted', 'Linux', 'X64']"
+      pull-ccache: true

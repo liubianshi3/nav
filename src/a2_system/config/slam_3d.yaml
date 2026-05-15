@@ -1,0 +1,15 @@
+slam_manager:
+  ros__parameters:
+    primary_map_representation: pointcloud_map_3d
+    localization_representation: pointcloud_map_3d
+    navigation_representation: nav2_3d_projected_2d_costmap
+    web_map_representation: pointcloud_map_3d
+    mapping_stack_profile: front_lidar_pointcloud_3d
+    pointcloud_projection_enabled: true
+    slam_mode: 3d_dlio
+    pointcloud_topic: /jt128/front/points
+    imu_topic: /jt128/front/imu
+    odom_topic: /jt128/dlio/odom
+    map_frame: map
+    odom_frame: odom
+    base_frame: base_link

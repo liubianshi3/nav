@@ -1,0 +1,16 @@
+a2_state_publisher:
+  ros__parameters:
+    input_topic: /a2/raw_state
+    state_topic: /robot_state
+    imu_topic: /imu/data
+    odom_topic: /odom
+    joint_state_topic: /joint_states
+    odom_frame: odom
+    base_frame: base_link
+    imu_frame: imu_link
+    publish_tf: true
+    publish_joint_states: false
+    flatten_z_in_odom: true
+    planarize_orientation_in_odom: true
+    pose_covariance_diagonal: [0.03, 0.03, 0.05, 0.02, 0.02, 0.04]
+    twist_covariance_diagonal: [0.02, 0.02, 0.05, 0.02, 0.02, 0.04]

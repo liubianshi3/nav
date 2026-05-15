@@ -1,0 +1,22 @@
+pointcloud_accumulator:
+  ros__parameters:
+    pointcloud_topic: /jt128/front/points
+    odom_topic: /odom
+    output_topic: /a2/pointcloud_map_3d
+    status_topic: /a2/pointcloud_map/status
+    output_frame: odom
+    publish_rate_hz: 2.0
+    voxel_size: 0.08
+    max_voxels: 250000
+    max_points_per_scan: 18000
+    min_translation_delta_m: 0.10
+    min_yaw_delta_rad: 0.08
+    min_range_m: 0.25
+    max_range_m: 8.0
+    z_min_m: -1.0
+    z_max_m: 2.2
+    lidar_offset_xyz: [0.32, 0.0, 0.24]
+    lidar_offset_rpy: [0.0, 0.0, 0.0]
+    lidar_offset_yaw: 0.0
+    body_exclusion_x: [-0.45, 0.50]
+    body_exclusion_y: [-0.30, 0.30]

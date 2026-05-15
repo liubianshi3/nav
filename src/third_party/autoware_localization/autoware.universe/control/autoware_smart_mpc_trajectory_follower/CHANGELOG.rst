@@ -1,0 +1,251 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package autoware_smart_mpc_trajectory_follower
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.51.0 (2026-05-01)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat: default artifact paths to ~/autoware_data/ml_models (`#12523 <https://github.com/mitsudome-r/autoware_universe/issues/12523>`_)
+  feat(launches,configs): default artifact paths to ~/autoware_data/ml_models
+  Roll every per-package `data_path` / `model_path` launch-arg default
+  from `$(env HOME)/autoware_data[/...]` to
+  `$(env HOME)/autoware_data/ml_models[/...]` so standalone universe
+  launches resolve artifacts under the new `~/autoware_data/ml_models/`
+  layout (`autowarefoundation/autoware#7068 <https://github.com/autowarefoundation/autoware/issues/7068>`_).
+  When invoked through autoware_launch the parent overrides cascade and
+  already pin the new root (`autowarefoundation/autoware_launch#1835 <https://github.com/autowarefoundation/autoware_launch/issues/1835>`_); this
+  commit closes the gap for users who launch a perception / localization /
+  sensing / planning component directly with `ros2 launch <pkg>`.
+  22 launch files updated (one-line default change each):
+  - e2e/autoware_tensorrt_vad/launch/vad_carla_tiny.launch.xml
+  - localization/yabloc/yabloc_pose_initializer/launch/yabloc_pose_initializer.launch.xml
+  - perception/autoware_bevfusion/launch/bevfusion.launch.xml
+  - perception/autoware_camera_streampetr/launch/streampetr.launch.xml
+  - perception/autoware_image_projection_based_fusion/launch/pointpainting_fusion.launch.xml
+  - perception/autoware_lidar_apollo_instance_segmentation/launch/lidar_apollo_instance_segmentation.launch.xml
+  - perception/autoware_lidar_centerpoint/launch/lidar_centerpoint.launch.xml
+  - perception/autoware_lidar_frnet/launch/lidar_frnet.launch.xml
+  - perception/autoware_lidar_transfusion/launch/lidar_transfusion.launch.xml
+  - perception/autoware_ptv3/launch/ptv3.launch.xml
+  - perception/autoware_shape_estimation/launch/shape_estimation.launch.xml
+  - perception/autoware_simpl_prediction/launch/simpl.launch.xml
+  - perception/autoware_tensorrt_bevdet/launch/tensorrt_bevdet.launch.xml
+  - perception/autoware_tensorrt_bevformer/launch/bevformer.launch.xml
+  - perception/autoware_tensorrt_yolox/launch/{yolox_traffic_light_detector,yolox_tiny,yolox_s_plus_opt}.launch.xml
+  - perception/autoware_traffic_light_classifier/launch/{car,pedestrian}_traffic_light_classifier.launch.xml
+  - perception/autoware_traffic_light_fine_detector/launch/traffic_light_fine_detector.launch.xml
+  - planning/autoware_diffusion_planner/launch/diffusion_planner.launch.xml
+  - sensing/autoware_calibration_status_classifier/launch/calibration_status_classifier.launch.xml
+  Drive-by README and test fixes:
+  - e2e/autoware_tensorrt_vad/{README.md,docs/design.md}: also migrate the
+  `$HOME/autoware_map/Town01` examples to `$HOME/autoware_data/maps/Town01`.
+  - localization/yabloc/{README.md,yabloc_pose_initializer/README.md}: also
+  migrate `$HOME/autoware_map/sample-map-rosbag` to
+  `$HOME/autoware_data/maps/demos/sample-map-rosbag`.
+  - control/autoware_smart_mpc_trajectory_follower/README.md: migrate the
+  `map_path:=$HOME/autoware_map/sample-map-planning` example to
+  `$HOME/autoware_data/maps/demos/sample-map-planning`.
+  - simulator/autoware_carla_interface/README.md: migrate every
+  `$HOME/autoware_map/Town01/...` reference to
+  `$HOME/autoware_data/maps/Town01/...`.
+  - perception/{autoware_bevfusion,autoware_image_projection_based_fusion,autoware_lidar_centerpoint,autoware_tensorrt_bevformer}/README.md: copy-paste examples updated to `~/autoware_data/ml_models/<pkg>`.
+  - perception/autoware_camera_streampetr/config/ml_package_camera_streampetr.param.yaml: header comment updated.
+  - planning/autoware_diffusion_planner/README.md: prerequisites snippet updated.
+  - sensing/autoware_calibration_status_classifier/test/{test_model_inference,test_calibration_status_classifier}.cpp: hardcoded fallback ONNX path updated.
+  Users on the legacy layout can pin the old root with
+  `data_path:=$HOME/autoware_data` (or the per-package equivalent) on the
+  command line.
+  Refs: https://github.com/autowarefoundation/autoware/issues/7068
+* style: update pre-commit (black 26.1.0, pre-commit-hooks-ros 0.10.2) (`#12195 <https://github.com/mitsudome-r/autoware_universe/issues/12195>`_)
+* Contributors: Mete Fatih Cırıt, Taeseung Sohn, github-actions
+
+0.50.0 (2026-02-14)
+-------------------
+* Merge remote-tracking branch 'origin/main' into humble
+* fix(smart_mpc_trajectory_follower): remove cmake pip install command (`#12037 <https://github.com/autowarefoundation/autoware_universe/issues/12037>`_)
+* chore: reflect the move of the description packages (`#11969 <https://github.com/autowarefoundation/autoware_universe/issues/11969>`_)
+* fix(smart_mpc_trajectory_follower): python3-torch into exec_depend with condition (`#11942 <https://github.com/autowarefoundation/autoware_universe/issues/11942>`_)
+* Contributors: Mete Fatih Cırıt, Ryohsuke Mitsudome, Takagi, Isamu
+
+0.49.0 (2025-12-30)
+-------------------
+* Merge remote-tracking branch 'origin/main' into prepare-0.49.0-changelog
+* chore: sync files (`#11500 <https://github.com/autowarefoundation/autoware_universe/issues/11500>`_)
+  * chore: sync files
+  * clang-format fixes
+  * markdownlint fix table
+  ---------
+  Co-authored-by: github-actions <github-actions@github.com>
+  Co-authored-by: Mete Fatih Cırıt <mfc@autoware.org>
+* Contributors: Ryohsuke Mitsudome, awf-autoware-bot[bot]
+
+0.48.0 (2025-11-18)
+-------------------
+
+0.47.1 (2025-08-14)
+-------------------
+
+0.47.0 (2025-08-11)
+-------------------
+* feat: change planning output topic name to /planning/trajectory (`#11135 <https://github.com/autowarefoundation/autoware_universe/issues/11135>`_)
+  * change planning output topic name to /planning/trajectory
+  * style(pre-commit): autofix
+  ---------
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+* Contributors: Yukihiro Saito
+
+0.46.0 (2025-06-20)
+-------------------
+
+0.45.0 (2025-05-22)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/notbot/bump_version_base
+* fix(smart_mpc): imperative mood (`#10658 <https://github.com/autowarefoundation/autoware_universe/issues/10658>`_)
+* Contributors: TaikiYamada4, Yuxuan Liu
+
+0.44.2 (2025-06-10)
+-------------------
+
+0.44.1 (2025-05-01)
+-------------------
+
+0.44.0 (2025-04-18)
+-------------------
+
+0.43.0 (2025-03-21)
+-------------------
+* Merge remote-tracking branch 'origin/main' into chore/bump-version-0.43
+* chore: rename from `autoware.universe` to `autoware_universe` (`#10306 <https://github.com/autowarefoundation/autoware_universe/issues/10306>`_)
+* Contributors: Hayato Mizushima, Yutaka Kondo
+
+0.42.0 (2025-03-03)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat(autoware_utils): replace autoware_universe_utils with autoware_utils  (`#10191 <https://github.com/autowarefoundation/autoware_universe/issues/10191>`_)
+* Contributors: Fumiya Watanabe, 心刚
+
+0.41.2 (2025-02-19)
+-------------------
+* chore: bump version to 0.41.1 (`#10088 <https://github.com/autowarefoundation/autoware_universe/issues/10088>`_)
+* Contributors: Ryohsuke Mitsudome
+
+0.41.1 (2025-02-10)
+-------------------
+
+0.41.0 (2025-01-29)
+-------------------
+* Merge remote-tracking branch 'origin/main' into tmp/bot/bump_version_base
+* feat: tier4_debug_msgs changed to autoware_internal_debug_msgs in fil… (`#9851 <https://github.com/autowarefoundation/autoware_universe/issues/9851>`_)
+* Contributors: Fumiya Watanabe, Vishal Chauhan
+
+0.40.0 (2024-12-12)
+-------------------
+* Merge branch 'main' into release-0.40.0
+* Revert "chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)"
+  This reverts commit c9f0f2688c57b0f657f5c1f28f036a970682e7f5.
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* chore(package.xml): bump version to 0.39.0 (`#9587 <https://github.com/autowarefoundation/autoware_universe/issues/9587>`_)
+  * chore(package.xml): bump version to 0.39.0
+  * fix: fix ticket links in CHANGELOG.rst
+  * fix: remove unnecessary diff
+  ---------
+  Co-authored-by: Yutaka Kondo <yutaka.kondo@youtalk.jp>
+* fix: fix ticket links in CHANGELOG.rst (`#9588 <https://github.com/autowarefoundation/autoware_universe/issues/9588>`_)
+* fix(cpplint): include what you use - control (`#9565 <https://github.com/autowarefoundation/autoware_universe/issues/9565>`_)
+* fix(autoware_smart_mpc_trajectory_follower): fix clang-diagnostic-ignored-optimization-argument (`#9437 <https://github.com/autowarefoundation/autoware_universe/issues/9437>`_)
+* 0.39.0
+* update changelog
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Fumiya Watanabe, M. Fatih Cırıt, Ryohsuke Mitsudome, Ryuta Kambe, Yutaka Kondo
+
+0.39.0 (2024-11-25)
+-------------------
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* fix: fix ticket links to point to https://github.com/autowarefoundation/autoware_universe (`#9304 <https://github.com/autowarefoundation/autoware_universe/issues/9304>`_)
+* chore(package.xml): bump version to 0.38.0 (`#9266 <https://github.com/autowarefoundation/autoware_universe/issues/9266>`_) (`#9284 <https://github.com/autowarefoundation/autoware_universe/issues/9284>`_)
+  * unify package.xml version to 0.37.0
+  * remove system_monitor/CHANGELOG.rst
+  * add changelog
+  * 0.38.0
+  ---------
+* Contributors: Esteve Fernandez, Yutaka Kondo
+
+0.38.0 (2024-11-08)
+-------------------
+* unify package.xml version to 0.37.0
+* fix(autoware_smart_mpc_trajectory_follower): fix unusedFunction (`#8553 <https://github.com/autowarefoundation/autoware_universe/issues/8553>`_)
+  fix:unusedFunction
+* fix(autoware_smart_mpc_trajectory_follower): fix uninitMemberVar (`#8346 <https://github.com/autowarefoundation/autoware_universe/issues/8346>`_)
+  fix: uninitMemberVar
+  Co-authored-by: kobayu858 <129580202+kobayu858@users.noreply.github.com>
+* refactor(smart_mpc_trajectory_folower): modify pacakge structure and install without setup.py (`#8268 <https://github.com/autowarefoundation/autoware_universe/issues/8268>`_)
+  * refactor(smart_mpc_trajectory_follower): modify pacakge structure and install without setup.py
+  * import proxima calc
+  * use ament_get_python_install_dir
+  * add <depend>python3-torch</depend>
+  * remove pip from readme
+  * remove str conversion from open
+  * sort in cmake
+  ---------
+* feat(smart_mpc_trajectory_follower): enhance performance with LSTM and compensation, add compensator outside of MPC (`#7696 <https://github.com/autowarefoundation/autoware_universe/issues/7696>`_)
+  * update smart mpc package
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/data_collection_utils.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/data_collection_utils.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/scripts/proxima_calc.cpp
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/scripts/drive_iLQR.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/pure_pursuit_gain_updater.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/scripts/proxima_calc.cpp
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/pure_pursuit_gain_updater.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * style(pre-commit): autofix
+  * modified commentout
+  * fixed duplicate conditions in run_auto_test.py
+  * doc: add description of kernel density estimation
+  * rename some parameters and remove unnecessary parameters
+  * style(pre-commit): autofix
+  * Fixed links in README.md
+  * add a sample of trained models
+  * style(pre-commit): autofix
+  * doc: remove japanese comment
+  * update README.md
+  * add whitespace
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/python_simulator/pure_pursuit_gain_updater.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * Update control/autoware_smart_mpc_trajectory_follower/autoware_smart_mpc_trajectory_follower/scripts/drive_mppi.py
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  * style(pre-commit): autofix
+  * Some files were refactored
+  * const on member functions that do not change member variables
+  * bug fixed
+  ---------
+  Co-authored-by: Kosuke Takeuchi <kosuke.tnp@gmail.com>
+  Co-authored-by: pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>
+  Co-authored-by: asei-proxima <asei.inoue@proxima-ai-tech.com>
+* fix(smart_mpc_trajectory_folower): fix running by adding control_state and changing msg/package_name (`#7666 <https://github.com/autowarefoundation/autoware_universe/issues/7666>`_)
+* refactor(motion_utils)!: add autoware prefix and include dir (`#7539 <https://github.com/autowarefoundation/autoware_universe/issues/7539>`_)
+  refactor(motion_utils): add autoware prefix and include dir
+* feat(autoware_universe_utils)!: rename from tier4_autoware_utils (`#7538 <https://github.com/autowarefoundation/autoware_universe/issues/7538>`_)
+  Co-authored-by: kosuke55 <kosuke.tnp@gmail.com>
+* ci(pre-commit): autoupdate (`#7499 <https://github.com/autowarefoundation/autoware_universe/issues/7499>`_)
+  Co-authored-by: M. Fatih Cırıt <mfc@leodrive.ai>
+* chore(smart_mpc_trajectory_follower): add prefix autoware\_ to smart_mpc_trajectory_follower (`#7367 <https://github.com/autowarefoundation/autoware_universe/issues/7367>`_)
+  * add prefix
+  * fix pre-commit
+  ---------
+* Contributors: Go Sakayori, Hayate TOBA, Kosuke Takeuchi, Takayuki Murooka, Yutaka Kondo, awf-autoware-bot[bot], kobayu858, masayukiaino
+
+0.26.0 (2024-04-03)
+-------------------

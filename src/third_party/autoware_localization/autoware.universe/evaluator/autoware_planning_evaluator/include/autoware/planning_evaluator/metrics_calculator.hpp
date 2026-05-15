@@ -1,0 +1,112 @@
+// Copyright 2025 Tier IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef AUTOWARE__PLANNING_EVALUATOR__METRICS_CALCULATOR_HPP_
+#define AUTOWARE__PLANNING_EVALUATOR__METRICS_CALCULATOR_HPP_
+#include "autoware/planning_evaluator/metrics/metric.hpp"
+#include "autoware_utils/math/accumulator.hpp"
+
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+
+#include "autoware_planning_msgs/msg/pose_with_uuid_stamped.hpp"
+#include "autoware_planning_msgs/msg/trajectory.hpp"
+#include "autoware_planning_msgs/msg/trajectory_point.hpp"
+#include "geometry_msgs/msg/pose.hpp"
+#include <nav_msgs/msg/odometry.hpp>
+
+#include <optional>
+
+namespace planning_diagnostics
+{
+using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_planning_msgs::msg::PoseWithUuidStamped;
+using autoware_planning_msgs::msg::Trajectory;
+using autoware_planning_msgs::msg::TrajectoryPoint;
+using autoware_utils::Accumulator;
+using geometry_msgs::msg::Point;
+using geometry_msgs::msg::Pose;
+
+class MetricsCalculator
+{
+public:
+  struct Parameters
+  {
+    struct
+    {
+      double min_point_dist_m = 0.1;
+      double evaluation_time_s = 5.0;
+      struct
+      {
+        double max_dist_m = 5.0;
+        double max_time_s = 3.0;
+      } lookahead;
+    } trajectory;
+  } parameters;  // struct Parameters for those metrics calculated by the MetricsCalculator
+
+  MetricsCalculator() = default;
+
+  /**
+   * @brief calculate
+   * @param [in] metric Metric enum value
+   * @param [in] traj input trajectory
+   * @param [in] vehicle_length_m input vehicle length
+   * @return string describing the requested metric
+   */
+  std::optional<Accumulator<double>> calculate(const Metric metric, const Trajectory & traj) const;
+  std::optional<Accumulator<double>> calculate(
+    const Metric metric, const Pose & base_pose, const Pose & target_pose) const;
+
+  /** * @brief set vehicle info
+   * @param [in] vehicle_info input vehicle info
+   */
+  void setVehicleInfo(const VehicleInfo & vehicle_info);
+
+  /**
+   * @brief set the reference trajectory used to calculate the deviation metrics
+   * @param [in] traj input reference trajectory
+   */
+  void setReferenceTrajectory(const Trajectory & traj);
+
+  /**
+   * @brief set the previous trajectory used to calculate the stability metrics
+   * @param [in] traj input previous trajectory
+   */
+  void setPreviousTrajectory(const Trajectory & traj);
+
+  /**
+   * @brief set the ego pose
+   * @param [in] traj input previous trajectory
+   */
+  void setEgoPose(const nav_msgs::msg::Odometry & ego_odometry);
+
+  /**
+   * @brief get the ego pose
+   * @return ego pose
+   */
+  Pose getEgoPose();
+
+private:
+  Trajectory reference_trajectory_;
+  Trajectory reference_trajectory_lookahead_;
+  Trajectory previous_trajectory_;
+  Trajectory previous_trajectory_lookahead_;
+  geometry_msgs::msg::Pose ego_pose_;
+  nav_msgs::msg::Odometry ego_odometry_;
+  PoseWithUuidStamped modified_goal_;
+  VehicleInfo vehicle_info_;
+};  // class MetricsCalculator
+
+}  // namespace planning_diagnostics
+
+#endif  // AUTOWARE__PLANNING_EVALUATOR__METRICS_CALCULATOR_HPP_

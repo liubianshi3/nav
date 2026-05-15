@@ -1,0 +1,8 @@
+slam_orchestrator:
+  ros__parameters:
+    default_mode: mapping
+    stack_profile: external_odom
+    stack_available: false
+    stack_blocked_reason: ""
+    status_timeout_sec: 1.0
+    external_odom_topics: [/odom]

@@ -1,0 +1,31 @@
+services:
+  a2-system-ws:
+    image: ${A2_DOCKER_IMAGE:-a2-system-ws:real}
+    init: true
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      A2_WORKSPACE: /opt/a2_system_ws
+      CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
+      # auto: newest saved 3D map -> navigation dry-run; otherwise mapping.
+      # Use standby/web/none for Web-only, or mapping/navigation explicitly.
+      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}
+      A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
+      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
+      A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
+      A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
+      A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}
+      # Physical motion stays off unless both are explicitly enabled.
+      A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-false}
+      A2_LIVE_MOTION: ${A2_LIVE_MOTION:-false}
+      A2_STACK_REQUIRED: ${A2_STACK_REQUIRED:-false}
+    volumes:
+      - ${A2_HOST_MAP_ROOT:-/home/unitree/a2_system_ws/runtime/maps}:/opt/a2_system_ws/runtime/maps
+      - ${A2_HOST_LOG_ROOT:-/home/unitree/a2_system_ws/runtime/logs}:/opt/a2_system_ws/runtime/logs
+      - ${A2_HOST_ROUTE_ROOT:-/home/unitree/a2_system_ws/runtime/routes}:/opt/a2_system_ws/runtime/routes
+      - ${A2_HOST_REPORT_ROOT:-/home/unitree/a2_system_ws/runtime/reports}:/opt/a2_system_ws/runtime/reports
+      - ${A2_HOST_TEST_RECORD_ROOT:-/home/unitree/a2_system_ws/runtime/test_records}:/opt/a2_system_ws/runtime/test_records

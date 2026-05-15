@@ -1,0 +1,11 @@
+[Unit]
+Description=Build A2 Web Console frontend assets
+
+[Service]
+Type=oneshot
+User=unitree
+WorkingDirectory=%h/a2_system_ws/web_console/frontend
+ExecStart=/bin/bash -lc 'cd %h/a2_system_ws/web_console/frontend && npm install && npm run build'
+
+[Install]
+WantedBy=multi-user.target

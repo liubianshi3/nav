@@ -1,0 +1,15 @@
+exploration_manager:
+  ros__parameters:
+    map_topic: /map
+    localization_ok_topic: /a2/localization_ok
+    goal_topic: /a2/exploration/goal
+    state_topic: /a2/exploration/state
+    coverage_target: 0.82
+    goal_republish_sec: 15.0
+    frontier_min_cluster: 2
+    auto_start: false
+    stuck_timeout_sec: 8.0
+    stuck_distance_m: 0.08
+    command_active_threshold: 0.05
+    odom_topic: /odom
+    command_topic: /a2/command_limited

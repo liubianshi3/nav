@@ -1,0 +1,11 @@
+real_lidar:
+  ros__parameters:
+    profile: unitree_native_fused
+    driver_mode: external_pointcloud
+    imu_topic: /imu/data
+    input_topic: /utlidar/cloud
+    output_topic: /jt128/front/points
+    output_frame_id: lidar_link
+    restamp_on_receive: true
+    stale_timeout_sec: 1.0
+
