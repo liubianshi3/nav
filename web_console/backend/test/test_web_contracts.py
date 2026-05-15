@@ -306,6 +306,14 @@ def test_web_bridge_falls_back_to_dlio_odom_pose_when_relocalization_missing():
     assert "source=self.config.ros.odom_topic" in bridge
 
 
+def test_stack_process_patterns_include_3d_ndt_navigation_nodes():
+    root = Path(__file__).resolve().parents[3]
+    stack_control = (root / "web_console/backend/stack_control.py").read_text(encoding="utf-8")
+
+    assert "autoware_ndt_scan_matcher_node" in stack_control
+    assert "ndt_adapter_node" in stack_control
+
+
 def test_mapping_contract_accepts_slam_toolbox_and_native_fallbacks():
     mapping_patterns = {pattern for _, _, pattern in MAPPING_NODES}
 

@@ -113,6 +113,8 @@ STACK_CLEANUP_PATTERNS = [
     "sync_monitor",
     "pointcloud_guard",
     "pointcloud_map_loader",
+    "autoware_ndt_scan_matcher_node",
+    "ndt_adapter_node",
     "mid360_driver_guard",
     "pointcloud_relay",
     "pointcloud_accumulator",
