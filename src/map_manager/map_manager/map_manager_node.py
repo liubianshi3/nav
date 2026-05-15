@@ -59,13 +59,13 @@ class MapManagerNode(Node):
             self.declare_parameter("octomap_projection_resolution", 0.05).value
         )
         self.octomap_ground_threshold = float(
-            self.declare_parameter("octomap_ground_threshold", 0.12).value
+            self.declare_parameter("octomap_ground_threshold", 0.10).value
         )
         self.octomap_robot_height = float(
-            self.declare_parameter("octomap_robot_height", 1.2).value
+            self.declare_parameter("octomap_robot_height", 1.0).value
         )
         self.octomap_min_obstacle_points = int(
-            self.declare_parameter("octomap_min_obstacle_points", 1).value
+            self.declare_parameter("octomap_min_obstacle_points", 2).value
         )
         self.octomap_border_padding = float(
             self.declare_parameter("octomap_border_padding", 1.0).value

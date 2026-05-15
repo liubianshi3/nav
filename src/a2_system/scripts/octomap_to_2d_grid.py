@@ -50,19 +50,19 @@ def _args() -> argparse.Namespace:
     parser.add_argument(
         "--ground-threshold",
         type=float,
-        default=0.12,
+        default=0.10,
         help="Occupied voxels below this z-height are treated as traversable ground",
     )
     parser.add_argument(
         "--robot-height",
         type=float,
-        default=1.2,
+        default=1.0,
         help="Occupied voxels above this z-height are ignored as overhead structure",
     )
     parser.add_argument(
         "--min-obstacle-points",
         type=int,
-        default=1,
+        default=2,
         help="Minimum occupied voxel count needed to mark a 2D cell occupied",
     )
     parser.add_argument(

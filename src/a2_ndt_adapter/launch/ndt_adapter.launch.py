@@ -4,6 +4,7 @@ from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     a2_system_share = get_package_share_directory('a2_system')
@@ -15,6 +16,9 @@ def generate_launch_description():
     ndt_param_file = LaunchConfiguration('ndt_param_file')
     auto_activate_ndt = LaunchConfiguration('auto_activate_ndt', default='true')
     odom_topic = LaunchConfiguration('odom_topic')
+    align_initial_pose_stamp_to_cloud = LaunchConfiguration('align_initial_pose_stamp_to_cloud')
+    max_map_to_odom_translation_step = LaunchConfiguration('max_map_to_odom_translation_step')
+    max_map_to_odom_rotation_step_deg = LaunchConfiguration('max_map_to_odom_rotation_step_deg')
 
     # NDT Scan Matcher Node
     ndt_node = Node(
@@ -54,6 +58,9 @@ def generate_launch_description():
             'map_service_margin_m': 3.0,
             'map_service_max_points': 60000,
             'ndt_initial_pose_topic': '/a2/ndt/open_loop_pose',
+            'align_initial_pose_stamp_to_cloud': ParameterValue(align_initial_pose_stamp_to_cloud, value_type=bool),
+            'max_map_to_odom_translation_step': ParameterValue(max_map_to_odom_translation_step, value_type=float),
+            'max_map_to_odom_rotation_step_deg': ParameterValue(max_map_to_odom_rotation_step_deg, value_type=float),
         }],
         output='screen'
     )
@@ -76,6 +83,21 @@ def generate_launch_description():
             'odom_topic',
             default_value='/odometry/local',
             description='Continuous local odometry topic used for NDT initial guesses',
+        ),
+        DeclareLaunchArgument(
+            'align_initial_pose_stamp_to_cloud',
+            default_value='true',
+            description='Stamp NDT initial guesses with the latest live cloud stamp to avoid Autoware timestamp mismatch aborts.',
+        ),
+        DeclareLaunchArgument(
+            'max_map_to_odom_translation_step',
+            default_value='1.6',
+            description='Maximum accepted map->odom correction step in meters for real JT128/NDT startup.',
+        ),
+        DeclareLaunchArgument(
+            'max_map_to_odom_rotation_step_deg',
+            default_value='45.0',
+            description='Maximum accepted map->odom yaw correction step in degrees for real JT128/NDT startup.',
         ),
         DeclareLaunchArgument(
             'base_ndt_param_file',

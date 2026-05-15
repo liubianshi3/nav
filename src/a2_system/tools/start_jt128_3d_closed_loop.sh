@@ -21,6 +21,7 @@ WEB_STATE_FILE="${WORKSPACE}/runtime/web_stack_state.yaml"
 WEB_RUN_SCRIPT="${WORKSPACE}/web_console/scripts/run_backend.sh"
 STACK_SCRIPT="${WORKSPACE}/src/a2_system/tools/start_jt128_3d_stack.sh"
 PREFLIGHT_SCRIPT="${WORKSPACE}/src/a2_system/scripts/industrial_3d_nav_preflight.py"
+CORRIDOR_GATE_SCRIPT="${WORKSPACE}/src/a2_system/scripts/nav2_corridor_gate.py"
 RECORD_SCRIPT="${WORKSPACE}/src/a2_system/scripts/append_3d_test_record.py"
 
 usage() {
@@ -224,46 +225,64 @@ kill_own_pattern() {
 
 stop_owned_robot_stack() {
   local pattern
-  for pattern in \
-    "jt128_3d_navigation.launch.py" \
-    "dlio_mapping.launch.py" \
-    "jt128_driver.launch.py" \
-    "hesai_ros_driver_node" \
-    "jt128_hesai_driver" \
-    "dlio_odom_node" \
-    "dlio_map_node" \
-    "jt128_dlio_odom" \
-    "jt128_dlio_map" \
-    "pointcloud_guard" \
-    "pointcloud_map_loader" \
-    "pcd_relocalizer_3d" \
-    "localization_gate" \
-    "goal_bridge" \
-    "pose_goal_controller_3d" \
-    "safety_supervisor" \
-    "real_readiness_monitor" \
-    "a2_sdk_bridge_node" \
-    "a2_state_publisher_node" \
-    "a2_control_bridge_node" \
-    "map_manager_node" \
-    "jt128_dlio_watchdog.py" \
-    "jt128_static_tf_manager"; do
+  local stack_patterns=(
+    "jt128_3d_navigation.launch.py"
+    "dlio_mapping.launch.py"
+    "jt128_driver.launch.py"
+    "hesai_ros_driver_node"
+    "jt128_hesai_driver"
+    "dlio_odom_node"
+    "dlio_map_node"
+    "jt128_dlio_odom"
+    "jt128_dlio_map"
+    "jt128_dlio_odom_tf_broadcaster"
+    "jt128_dlio_watchdog.py"
+    "jt128_static_tf_manager"
+    "jt128_navigation_static_tf_manager"
+    "octomap_mapping_node.py"
+    "octomap_server_node"
+    "octomap_saver_node"
+    "pointcloud_guard"
+    "pointcloud_map_loader"
+    "pcd_relocalizer_3d"
+    "ndt_scan_matcher"
+    "autoware_ndt_scan_matcher_node"
+    "ndt_adapter"
+    "ndt_health_monitor"
+    "sensor_covariance_injector.py"
+    "body_imu_covariance_injector"
+    "ekf_node"
+    "localization_gate"
+    "goal_bridge"
+    "pose_goal_controller_3d"
+    "ground_segmentation_cpp_node"
+    "traversability_to_obstacle_cloud.py"
+    "collision_monitor"
+    "controller_server"
+    "planner_server"
+    "bt_navigator"
+    "smoother_server"
+    "behavior_server"
+    "waypoint_follower"
+    "velocity_smoother"
+    "lifecycle_manager"
+    "local_costmap"
+    "global_costmap"
+    "map_server"
+    "auto_scan_mission.py"
+    "task_manager.py"
+    "safety_supervisor"
+    "real_readiness_monitor"
+    "a2_sdk_bridge_node"
+    "a2_state_publisher_node"
+    "a2_control_bridge_node"
+    "map_manager_node"
+  )
+  for pattern in "${stack_patterns[@]}"; do
     kill_own_pattern TERM "$pattern"
   done
   sleep 1
-  for pattern in \
-    "jt128_3d_navigation.launch.py" \
-    "dlio_mapping.launch.py" \
-    "jt128_driver.launch.py" \
-    "hesai_ros_driver_node" \
-    "dlio_odom_node" \
-    "dlio_map_node" \
-    "pointcloud_map_loader" \
-    "pcd_relocalizer_3d" \
-    "goal_bridge" \
-    "pose_goal_controller_3d" \
-    "a2_control_bridge_node" \
-    "map_manager_node"; do
+  for pattern in "${stack_patterns[@]}"; do
     kill_own_pattern KILL "$pattern"
   done
 }
@@ -328,7 +347,10 @@ run_navigation_preflight_and_record() {
   local effective_run_id="${RUN_ID:-auto_$(date +%Y%m%d_%H%M%S)}"
   local preflight_json="${RECORD_DIR}/${effective_run_id}_preflight.json"
   local preflight_log="${LOG_DIR}/${effective_run_id}_preflight.log"
+  local corridor_json="${RECORD_DIR}/${effective_run_id}_corridor_gate.json"
+  local corridor_log="${LOG_DIR}/${effective_run_id}_corridor_gate.log"
   local result="PASS"
+  local notes
 
   log "Waiting briefly before preflight"
   sleep 8
@@ -342,6 +364,21 @@ run_navigation_preflight_and_record() {
     warn "Preflight failed; see ${preflight_log}"
   fi
 
+  if [[ -f "$CORRIDOR_GATE_SCRIPT" ]]; then
+    log "Running 0.5m Nav2 corridor gate; output=${corridor_json}"
+    if ! bash -lc "
+      source /opt/ros/humble/setup.bash
+      source '${WORKSPACE}/install/setup.bash'
+      python3 '${CORRIDOR_GATE_SCRIPT}' --distance 0.5 --scan-directions --output-json '${corridor_json}' --timeout-sec 8
+    " >"$corridor_log" 2>&1; then
+      result="FAIL"
+      warn "Corridor gate failed; see ${corridor_log}"
+    fi
+  else
+    warn "corridor gate script not found: $CORRIDOR_GATE_SCRIPT"
+  fi
+
+  notes="auto launcher preflight result=${result}; preflight_log=${preflight_log}; preflight_json=${preflight_json}; corridor_log=${corridor_log}; corridor_json=${corridor_json}"
   python3 "$RECORD_SCRIPT" \
     --run-id "$effective_run_id" \
     --run-type real_robot \
@@ -356,8 +393,13 @@ run_navigation_preflight_and_record() {
     --collision-count 0 \
     --near-collision-count 0 \
     --estop-count 0 \
-    --notes "auto launcher preflight result=${result}; log=${preflight_log}; json=${preflight_json}" \
-    --next-action "review preflight before enabling live motion"
+    --notes "$notes" \
+    --next-action "review preflight and corridor gate before enabling live motion"
+
+  if [[ "$LIVE_MOTION" == "true" && "$result" != "PASS" ]]; then
+    stop_owned_robot_stack
+    die "Live motion requested but preflight/corridor gate failed; robot stack stopped. Review ${preflight_log} and ${corridor_log}."
+  fi
 }
 
 cd "$WORKSPACE"
