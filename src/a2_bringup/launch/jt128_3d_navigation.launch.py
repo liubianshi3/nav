@@ -94,6 +94,8 @@ def _resolve_nav2_map_arguments(context, *args, **kwargs):
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     unitree_ddsc_env = _unitree_ddsc_env()
+    is_ndt_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'ndt'"])
+    is_odom_only_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'odom_only'"])
     return LaunchDescription(
         [
             DeclareLaunchArgument("map_id", default_value=""),
@@ -104,6 +106,11 @@ def generate_launch_description():
             DeclareLaunchArgument("start_task_manager", default_value="true"),
             DeclareLaunchArgument("start_scan_mission", default_value="true"),
             DeclareLaunchArgument("start_ekf_local", default_value="true"),
+            DeclareLaunchArgument(
+                "localization_mode",
+                default_value="ndt",
+                description="Localization mode for navigation: ndt for map localization, odom_only for short-range control-chain validation.",
+            ),
 
             DeclareLaunchArgument("start_safety", default_value="true"),
             DeclareLaunchArgument("enable_motion", default_value="false"),
@@ -118,9 +125,16 @@ def generate_launch_description():
             OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
-                    "Starting JT128 3D navigation: loading PCD, running the first-pass "
-                    "3D ICP relocalizer, localization gate, and pose-topic goal bridge."
+                    "Starting JT128 3D navigation: loading map assets, odometry, safety gates, "
+                    "and Nav2/control-chain components."
                 )
+            ),
+            LogInfo(
+                msg=(
+                    "localization_mode=odom_only is for short-range dry-run/live-motion "
+                    "validation only; it is not a formal inspection localization mode."
+                ),
+                condition=IfCondition(is_odom_only_localization),
             ),
             Node(
                 package="a2_sdk_bridge",
@@ -195,6 +209,14 @@ def generate_launch_description():
                     "output_topic": "/odometry/local",
                 }.items(),
             ),
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="odom_only_map_to_odom_static_tf",
+                condition=IfCondition(is_odom_only_localization),
+                arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+                output="screen",
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(
@@ -206,6 +228,7 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                 }.items(),
+                condition=IfCondition(is_ndt_localization),
             ),
             _pointcloud_guard_action(),
             # ── Ground segmentation → /a2/obstacle/points + /a2/traversability ──
@@ -282,6 +305,7 @@ def generate_launch_description():
                 package="localization_manager",
                 executable="localization_gate",
                 name="localization_gate",
+                condition=IfCondition(is_ndt_localization),
                 parameters=[
                     f"{a2_system_share}/config/localization_3d.yaml",
                     {
@@ -294,12 +318,13 @@ def generate_launch_description():
                 package="localization_manager",
                 executable="ndt_health_monitor",
                 name="ndt_health_monitor",
+                condition=IfCondition(is_ndt_localization),
                 parameters=[
                     {
                         "ndt_status_topic": "/a2/relocalization/status",
                         "health_pub_topic": "/a2/ndt/healthy",
                         "health_status_topic": "/a2/ndt/health_status",
-                        "min_score": 2.3,
+                        "min_score": 3.0,
                         "consecutive_failures_threshold": 5,
                         "eval_frequency": 5.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -317,10 +342,11 @@ def generate_launch_description():
                         "runtime_mode": "",
                         "lidar_topic": "/jt128/front/points",
                         "map_representation": "pointcloud_map_3d",
-                        "require_map": False,
-                        "require_localization": True,
+                        "localization_mode": LaunchConfiguration("localization_mode"),
+                        "require_map": ParameterValue(is_ndt_localization, value_type=bool),
+                        "require_localization": ParameterValue(is_ndt_localization, value_type=bool),
                         "ndt_health_topic": "/a2/ndt/healthy",
-                        "require_ndt_health": True,
+                        "require_ndt_health": ParameterValue(is_ndt_localization, value_type=bool),
                         "lidar_timeout_sec": 1.5,
                         "state_timeout_sec": 1.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -386,6 +412,10 @@ def generate_launch_description():
                             "'.lower() in ('1', 'true', 't', 'yes', 'y', 'on') else 'real'",
                         ]),
                         "network_interface": LaunchConfiguration("control_interface"),
+                        "allow_motion_without_localization": ParameterValue(
+                            is_odom_only_localization,
+                            value_type=bool,
+                        ),
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
                         "linear_y_sign": float(os.environ.get("A2_CONTROL_LINEAR_Y_SIGN", "1.0")),
                         "yaw_sign": float(os.environ.get("A2_CONTROL_YAW_SIGN", "1.0")),

@@ -6,9 +6,13 @@ safety_supervisor:
     map_representation: pointcloud_map_3d
     require_map: false
     localization_status_topic: /a2/localization_ok
+    localization_mode: ndt
     require_ndt_health: false
     allow_motion_topic: /a2/allow_motion
     map_ready_topic: /a2/map_ready
+    lidar_ready_topic: /a2/lidar_ready
+    map_asset_ready_topic: /a2/map_asset_ready
+    localization_ready_topic: /a2/safety/localization_ok
     estop_topic: /a2/estop
     lidar_timeout_sec: 0.5
     state_timeout_sec: 0.5

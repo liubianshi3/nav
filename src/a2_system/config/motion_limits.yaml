@@ -1,10 +1,10 @@
 a2_control_bridge:
   ros__parameters:
-    use_mock: false
+    use_mock: true
     auto_detect_interface: true
-    allow_loopback: true
+    allow_loopback: false
     network_interface: ""
-    interface_candidates: ["lo"]
+    interface_candidates: []
     cmd_topic: /cmd_vel_safe
     estop_topic: /a2/estop
     localization_ok_topic: /a2/localization_ok
