@@ -87,8 +87,14 @@ class NdtAdapterDryRunCheck(Node):
         if self.args.skip_tf:
             return True, "skipped"
         try:
-            self.tf_buffer.lookup_transform("map", "odom", Time(), timeout=Duration(seconds=0.2))
-            return True, "available"
+            transform = self.tf_buffer.lookup_transform("map", "odom", Time(), timeout=Duration(seconds=0.2))
+            stamp = Time.from_msg(transform.header.stamp)
+            age = (self.get_clock().now() - stamp).nanoseconds * 1e-9
+            if age < -0.1:
+                return False, f"future transform age={age:.3f}s"
+            if age > self.args.tf_timeout_sec:
+                return False, f"stale transform age={age:.3f}s limit={self.args.tf_timeout_sec:.3f}s"
+            return True, f"available age={age:.3f}s"
         except TransformException as exc:
             return False, str(exc)
 
@@ -148,6 +154,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Dry-run validation for A2 Autoware NDT adapter readiness.")
     parser.add_argument("--timeout-sec", type=float, default=15.0)
     parser.add_argument("--topic-timeout-sec", type=float, default=2.0)
+    parser.add_argument("--tf-timeout-sec", type=float, default=1.0)
     parser.add_argument("--report-dir", default="runtime/reports")
     parser.add_argument("--live-cloud-topic", default="/jt128/front/points")
     parser.add_argument("--odom-topic", default="/jt128/dlio/odom")
