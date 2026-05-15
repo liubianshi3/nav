@@ -27,6 +27,7 @@ from backend.stack_control import (
     NAVIGATION_NODES,
     NAVIGATION_NODES_3D,
     STACK_CLEANUP_PATTERNS,
+    StackController,
 )
 
 
@@ -89,6 +90,14 @@ def test_zbe_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
     assert config.manual_control.enabled is True
     assert config.manual_control.cmd_topic == "/cmd_vel_safe"
+
+
+def test_zbe_jt128_navigation_starts_live_motion_not_dry_run():
+    config = load_config(Path(__file__).resolve().parents[1] / "config.docker.zbe.yaml")
+    command = StackController(config)._start_script_command("navigation", "zbe_map")
+
+    assert "--enable-motion" in command
+    assert "--live-motion" in command
 
 
 def test_sim_config_uses_direct_cmd_vel_navigation_for_sim():

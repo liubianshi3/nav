@@ -237,7 +237,7 @@ class StackController:
             if mode == "navigation":
                 if not map_id:
                     raise StackControlError("3D 导航模式缺少地图 ID")
-                command.extend(["--map-id", map_id, "--enable-motion"])
+                command.extend(["--map-id", map_id, "--enable-motion", "--live-motion"])
             return command
         if self.start_script.name == "start_jt128_dlio_mapping.sh":
             if mode != "mapping":
@@ -252,6 +252,7 @@ class StackController:
                         "--lidar-iface",
                         self.config.stack.network_interface,
                         "--enable-motion",
+                        "--live-motion",
                         "--no-web",
                     ]
                     return command
