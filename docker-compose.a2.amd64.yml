@@ -32,6 +32,12 @@ services:
       A2_CONTROL_YAW_SIGN: "1.0"
       # Keep the platform gRPC API usable in standby mode without auto-starting
       # the full mapping/navigation stack.
+      A2_SDK_BRIDGE_AUTOSTART: "true"
+      A2_SDK_BRIDGE_LD_PRELOAD: /opt/unitree_robotics/lib/x86_64/libddsc.so.0
+      A2_SDK_STATE_TOPIC: /a2/raw_state
+      A2_SDK_SPORT_STATE_TOPIC: rt/lf/sportmodestate
+      A2_SDK_TIMER_HZ: "50.0"
+      A2_SDK_STALE_TIMEOUT_SEC: "0.5"
       A2_CONTROL_BRIDGE_AUTOSTART: "true"
       A2_CONTROL_BRIDGE_LD_PRELOAD: /opt/unitree_robotics/lib/x86_64/libddsc.so.0
       A2_CONTROL_CMD_TOPIC: /cmd_vel_safe

@@ -77,6 +77,46 @@ start_standby_control_bridge() {
   log "standby control bridge log=${log_file}"
 }
 
+start_standby_sdk_bridge() {
+  local enabled="${A2_SDK_BRIDGE_AUTOSTART:-${A2_CONTROL_BRIDGE_AUTOSTART:-false}}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+
+  local mode="${A2_DOCKER_START_MODE:-auto}"
+  if [[ "$mode" != "web" && "$mode" != "standby" && "$mode" != "none" ]]; then
+    log "sdk bridge autostart skipped mode=${mode}; stack startup owns it"
+    return 0
+  fi
+
+  local sdk_iface="${A2_SDK_INTERFACE:-${A2_NETWORK_INTERFACE:-eth0}}"
+  local state_topic="${A2_SDK_STATE_TOPIC:-/a2/raw_state}"
+  local sport_state_topic="${A2_SDK_SPORT_STATE_TOPIC:-rt/lf/sportmodestate}"
+  local timer_hz="${A2_SDK_TIMER_HZ:-50.0}"
+  local stale_timeout_sec="${A2_SDK_STALE_TIMEOUT_SEC:-0.5}"
+  local log_file="${A2_WORKSPACE}/runtime/logs/a2_sdk_bridge_standby.log"
+  local ld_preload="${A2_SDK_BRIDGE_LD_PRELOAD:-${A2_CONTROL_BRIDGE_LD_PRELOAD:-}}"
+  local env_args=()
+
+  if [[ -n "$ld_preload" ]]; then
+    env_args+=("LD_PRELOAD=${ld_preload}")
+  fi
+
+  log "autostarting standby sdk bridge iface=${sdk_iface} state_topic=${state_topic}"
+  nohup env "${env_args[@]}" ros2 run a2_sdk_bridge a2_sdk_bridge_node \
+    --ros-args \
+    -p use_mock:=false \
+    -p auto_detect_interface:=false \
+    -p allow_loopback:=false \
+    -p network_interface:="$sdk_iface" \
+    -p state_topic:="$state_topic" \
+    -p sport_state_topic:="$sport_state_topic" \
+    -p timer_hz:="$timer_hz" \
+    -p stale_timeout_sec:="$stale_timeout_sec" \
+    > "$log_file" 2>&1 &
+  log "standby sdk bridge log=${log_file}"
+}
+
 find_latest_3d_map() {
   python3 - "${A2_WORKSPACE}" "${A2_REQUIRE_NAV2_MAP:-true}" <<'PY'
 from pathlib import Path
@@ -190,6 +230,7 @@ start_a2_stack() {
   return 0
 }
 
+start_standby_sdk_bridge
 start_standby_control_bridge
 start_a2_stack
 
