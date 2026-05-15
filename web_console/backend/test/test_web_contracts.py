@@ -271,6 +271,16 @@ def test_jt128_startup_does_not_treat_socket_open_success_as_failure():
     assert "bind failed|open udp source failed|\\\\[FATAL\\\\]" in script
 
 
+def test_octomap_mapping_node_publishes_dlio_tf_chain():
+    root = Path(__file__).resolve().parents[3]
+    node = (root / "src/a2_system/scripts/octomap_mapping_node.py").read_text(encoding="utf-8")
+
+    assert "TransformBroadcaster" in node
+    assert "odom_to_base" in node
+    assert "base_to_lidar" in node
+    assert "jt128_front_link" in node
+
+
 def test_mapping_contract_accepts_slam_toolbox_and_native_fallbacks():
     mapping_patterns = {pattern for _, _, pattern in MAPPING_NODES}
 

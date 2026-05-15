@@ -22,10 +22,12 @@ from typing import Deque
 
 import rclpy
 from builtin_interfaces.msg import Time
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import PointCloud2
+from tf2_ros import TransformBroadcaster
 
 
 def _stamp_to_sec(stamp: Time) -> float:
@@ -60,6 +62,41 @@ def _bool_value(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
     return bool(value)
+
+
+def _quaternion_from_rotation_matrix(m: list[float]) -> tuple[float, float, float, float]:
+    trace = m[0] + m[4] + m[8]
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        return (
+            (m[7] - m[5]) / scale,
+            (m[2] - m[6]) / scale,
+            (m[3] - m[1]) / scale,
+            0.25 * scale,
+        )
+    if m[0] > m[4] and m[0] > m[8]:
+        scale = math.sqrt(1.0 + m[0] - m[4] - m[8]) * 2.0
+        return (
+            0.25 * scale,
+            (m[1] + m[3]) / scale,
+            (m[2] + m[6]) / scale,
+            (m[7] - m[5]) / scale,
+        )
+    if m[4] > m[8]:
+        scale = math.sqrt(1.0 + m[4] - m[0] - m[8]) * 2.0
+        return (
+            (m[1] + m[3]) / scale,
+            0.25 * scale,
+            (m[5] + m[7]) / scale,
+            (m[2] - m[6]) / scale,
+        )
+    scale = math.sqrt(1.0 + m[8] - m[0] - m[4]) * 2.0
+    return (
+        (m[2] + m[6]) / scale,
+        (m[5] + m[7]) / scale,
+        0.25 * scale,
+        (m[3] - m[1]) / scale,
+    )
 
 
 def _field_offset(msg: PointCloud2, name: str) -> int:
@@ -234,6 +271,13 @@ class OctomapMappingNode(Node):
         self.self_filter_max_z = float(self.declare_parameter("self_filter_max_z", 0.80).value)
         self.min_range_m = float(self.declare_parameter("min_range_m", 0.20).value)
         self.max_range_m = float(self.declare_parameter("max_range_m", 12.0).value)
+        self.publish_tf = _bool_value(self.declare_parameter("publish_tf", True).value)
+        self.base_frame = str(self.declare_parameter("base_frame", "base_link").value)
+        self.lidar_frame = str(self.declare_parameter("lidar_frame", "jt128_front_link").value)
+        self.lidar_to_base_quaternion = _quaternion_from_rotation_matrix(
+            self.lidar_to_base_rotation
+        )
+        self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
 
         qos = QoSProfile(
             depth=20,
@@ -261,7 +305,7 @@ class OctomapMappingNode(Node):
         self.create_timer(5.0, self._status_timer)
         self.get_logger().info(
             "OctoMap cloud gate: cloud=%s odom=%s out=%s max_delta=%.3fs "
-            "save=%s self_filter=%s box=[%.2f,%.2f]x[%.2f,%.2f]x[%.2f,%.2f]"
+            "save=%s self_filter=%s tf=%s box=[%.2f,%.2f]x[%.2f,%.2f]x[%.2f,%.2f]"
             % (
                 self.cloud_topic,
                 self.odom_topic,
@@ -269,6 +313,7 @@ class OctomapMappingNode(Node):
                 self.max_stamp_delta_sec,
                 self.save_path or "disabled",
                 self.self_filter_enabled,
+                self.publish_tf,
                 self.self_filter_min_x,
                 self.self_filter_max_x,
                 self.self_filter_min_y,
@@ -284,6 +329,40 @@ class OctomapMappingNode(Node):
         cutoff = stamp - self.odom_cache_sec
         while self.odom_stamps and self.odom_stamps[0] < cutoff:
             self.odom_stamps.popleft()
+        self._publish_tf(msg)
+
+    def _publish_tf(self, msg: Odometry) -> None:
+        if self.tf_broadcaster is None:
+            return
+        odom_frame = msg.header.frame_id or "odom"
+        base_frame = msg.child_frame_id or self.base_frame
+        if not base_frame or not self.lidar_frame:
+            return
+
+        odom_to_base = TransformStamped()
+        odom_to_base.header.stamp = msg.header.stamp
+        odom_to_base.header.frame_id = odom_frame
+        odom_to_base.child_frame_id = base_frame
+        odom_to_base.transform.translation.x = msg.pose.pose.position.x
+        odom_to_base.transform.translation.y = msg.pose.pose.position.y
+        odom_to_base.transform.translation.z = msg.pose.pose.position.z
+        odom_to_base.transform.rotation = msg.pose.pose.orientation
+
+        base_to_lidar = TransformStamped()
+        base_to_lidar.header.stamp = msg.header.stamp
+        base_to_lidar.header.frame_id = base_frame
+        base_to_lidar.child_frame_id = self.lidar_frame
+        base_to_lidar.transform.translation.x = self.lidar_to_base_translation[0]
+        base_to_lidar.transform.translation.y = self.lidar_to_base_translation[1]
+        base_to_lidar.transform.translation.z = self.lidar_to_base_translation[2]
+        (
+            base_to_lidar.transform.rotation.x,
+            base_to_lidar.transform.rotation.y,
+            base_to_lidar.transform.rotation.z,
+            base_to_lidar.transform.rotation.w,
+        ) = self.lidar_to_base_quaternion
+
+        self.tf_broadcaster.sendTransform([odom_to_base, base_to_lidar])
 
     def _nearest_odom_delta(self, stamp: float) -> float | None:
         if not self.odom_stamps:
