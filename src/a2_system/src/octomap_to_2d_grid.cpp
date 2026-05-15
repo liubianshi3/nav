@@ -20,9 +20,9 @@ struct Options {
   std::string output_dir;
   std::string pcd_output_path;
   double resolution = 0.05;
-  double ground_threshold = 0.12;
-  double robot_height = 1.2;
-  int min_obstacle_points = 1;
+  double ground_threshold = 0.10;
+  double robot_height = 1.0;
+  int min_obstacle_points = 2;
   double border_padding = 1.0;
 };
 
@@ -31,9 +31,9 @@ void usage(const char *argv0) {
       << "Usage: " << argv0 << " <map.bt|map.ot> --output <dir> [options]\n"
       << "Options:\n"
       << "  --resolution <m>              Output grid resolution (default: 0.05)\n"
-      << "  --ground-threshold <m>        Occupied voxels below this z are free ground (default: 0.12)\n"
-      << "  --robot-height <m>            Occupied voxels above this z are ignored (default: 1.2)\n"
-      << "  --min-obstacle-points <n>     Occupied voxel count needed per 2D cell (default: 1)\n"
+      << "  --ground-threshold <m>        Occupied voxels below this z are free ground (default: 0.10)\n"
+      << "  --robot-height <m>            Occupied voxels above this z are ignored (default: 1.0)\n"
+      << "  --min-obstacle-points <n>     Occupied voxel count needed per 2D cell (default: 2)\n"
       << "  --pcd-output <path>           Optional PCD export of occupied voxels\n"
       << "  --border-padding <m>          Padding around octree bounds (default: 1.0)\n";
 }

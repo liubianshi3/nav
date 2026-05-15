@@ -2,7 +2,10 @@
 
 import math
 import os
+import shutil
 import struct
+import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +14,7 @@ import rclpy
 import yaml
 from a2_interfaces.srv import ManageMap, SetMode
 from nav_msgs.msg import OccupancyGrid
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import PointCloud2
@@ -41,6 +45,36 @@ class MapManagerNode(Node):
         )
         self.pointcloud_max_points = int(
             self.declare_parameter("pointcloud_max_points", 200000).value
+        )
+        raw_octomap_binary_path = self.declare_parameter("octomap_binary_path", "").value
+        self.octomap_binary_path = Path(
+            os.path.expandvars(os.path.expanduser(str(raw_octomap_binary_path or "").strip()))
+        )
+        if not str(self.octomap_binary_path):
+            self.octomap_binary_path = self.map_root / "octomap_live.bt"
+        self.prefer_octomap_artifacts = bool(
+            self.declare_parameter("prefer_octomap_artifacts", True).value
+        )
+        self.octomap_projection_resolution = float(
+            self.declare_parameter("octomap_projection_resolution", 0.05).value
+        )
+        self.octomap_ground_threshold = float(
+            self.declare_parameter("octomap_ground_threshold", 0.10).value
+        )
+        self.octomap_robot_height = float(
+            self.declare_parameter("octomap_robot_height", 1.0).value
+        )
+        self.octomap_min_obstacle_points = int(
+            self.declare_parameter("octomap_min_obstacle_points", 2).value
+        )
+        self.octomap_border_padding = float(
+            self.declare_parameter("octomap_border_padding", 1.0).value
+        )
+        self.octomap_projection_timeout_sec = float(
+            self.declare_parameter("octomap_projection_timeout_sec", 30.0).value
+        )
+        self.octomap_binary_stale_sec = float(
+            self.declare_parameter("octomap_binary_stale_sec", 90.0).value
         )
         self.active_map_topic = self.declare_parameter(
             "active_map_topic", "/a2/map_manager/active_map"
@@ -171,6 +205,7 @@ class MapManagerNode(Node):
                 self.publish_status("error", "no_map_or_pointcloud")
                 return response
             try:
+                self.publish_status("saving", f"map_id={request.map_id or 'auto'}")
                 map_id = self.save_map_bundle(request.map_id)
             except Exception as exc:
                 response.success = False
@@ -226,33 +261,45 @@ class MapManagerNode(Node):
         map_dir.mkdir(parents=True, exist_ok=True)
 
         artifacts = []
+        metadata_override = {}
         selected_pointcloud, selected_topic = self.selected_pointcloud()
-        if self.latest_map is not None:
-            self.write_nav2_map(self.latest_map, map_dir)
-            artifacts.append(
-                {
-                    "kind": "occupancy_grid_2d",
-                    "topic": self.occupancy_topic,
-                    "path": "map.yaml",
-                    "resolution": float(self.latest_map.info.resolution),
-                }
-            )
-        if self.pointcloud_snapshot_enabled and selected_pointcloud is not None:
-            artifacts.append(
-                self.write_pointcloud_snapshot(selected_pointcloud, map_dir, selected_topic)
-            )
+        if self._should_use_octomap_artifacts():
+            artifacts, metadata_override = self.write_octomap_bundle(map_dir)
+        else:
+            if self.latest_map is not None:
+                self.write_nav2_map(self.latest_map, map_dir)
+                artifacts.append(
+                    {
+                        "kind": "occupancy_grid_2d",
+                        "topic": self.occupancy_topic,
+                        "path": "map.yaml",
+                        "resolution": float(self.latest_map.info.resolution),
+                    }
+                )
+            if self.pointcloud_snapshot_enabled and selected_pointcloud is not None:
+                artifacts.append(
+                    self.write_pointcloud_snapshot(selected_pointcloud, map_dir, selected_topic)
+                )
 
         metadata = {
             "created_at": datetime.now().isoformat(),
             "mode": self.current_mode,
             "representation": self.map_representation,
-            "source_topic": self.occupancy_topic if self.latest_map is not None else None,
-            "width": self.latest_map.info.width if self.latest_map is not None else None,
-            "height": self.latest_map.info.height if self.latest_map is not None else None,
-            "resolution": self.latest_map.info.resolution
-            if self.latest_map is not None
-            else None,
-            "pointcloud_topic_3d": selected_topic,
+            "source_topic": metadata_override.get(
+                "source_topic",
+                self.occupancy_topic if self.latest_map is not None else None,
+            ),
+            "width": metadata_override.get(
+                "width", self.latest_map.info.width if self.latest_map is not None else None
+            ),
+            "height": metadata_override.get(
+                "height", self.latest_map.info.height if self.latest_map is not None else None
+            ),
+            "resolution": metadata_override.get(
+                "resolution",
+                self.latest_map.info.resolution if self.latest_map is not None else None,
+            ),
+            "pointcloud_topic_3d": metadata_override.get("pointcloud_topic_3d", selected_topic),
             "artifacts": artifacts,
         }
         with (map_dir / "metadata.yaml").open("w", encoding="utf-8") as handle:
@@ -264,7 +311,8 @@ class MapManagerNode(Node):
                         {
                             "path": artifact["path"],
                             "kind": "pointcloud"
-                            if artifact["kind"] in {"pointcloud_snapshot_3d", "native_pointcloud_map_3d"}
+                            if artifact["kind"]
+                            in {"pointcloud_snapshot_3d", "native_pointcloud_map_3d", "pointcloud_map_3d"}
                             else "occupancy"
                             if artifact["kind"] == "occupancy_grid_2d"
                             else "other",
@@ -277,6 +325,120 @@ class MapManagerNode(Node):
                 sort_keys=False,
             )
         return map_id
+
+    def _should_use_octomap_artifacts(self) -> bool:
+        if not self.octomap_binary_path.exists():
+            return False
+        age_sec = time.time() - self.octomap_binary_path.stat().st_mtime
+        return (
+            self.prefer_octomap_artifacts
+            and self.map_representation == "pointcloud_map_3d"
+            and age_sec <= self.octomap_binary_stale_sec
+        )
+
+    def _find_octomap_projection_script(self) -> str:
+        candidates = []
+        env_override = os.environ.get("A2_OCTOMAP_TO_2D_SCRIPT", "").strip()
+        if env_override:
+            candidates.append(env_override)
+        candidates.append("/opt/a2_system_ws/install/a2_system/lib/a2_system/octomap_to_2d_grid.py")
+        workspace = os.environ.get("A2_WORKSPACE", "").strip()
+        if workspace:
+            candidates.append(str(Path(workspace) / "src" / "a2_system" / "scripts" / "octomap_to_2d_grid.py"))
+        for candidate in candidates:
+            if candidate and Path(candidate).is_file():
+                return candidate
+        raise RuntimeError("octomap_to_2d_grid.py not found")
+
+    def _read_pgm_size(self, pgm_path: Path) -> tuple[int | None, int | None]:
+        if not pgm_path.exists():
+            return None, None
+        with pgm_path.open("rb") as handle:
+            magic = handle.readline().strip()
+            if magic != b"P5":
+                return None, None
+            line = handle.readline().strip()
+            while line.startswith(b"#"):
+                line = handle.readline().strip()
+            parts = line.split()
+            if len(parts) != 2:
+                return None, None
+            return int(parts[0]), int(parts[1])
+
+    def write_octomap_bundle(self, map_dir: Path) -> tuple[list[dict], dict]:
+        octomap_src = self.octomap_binary_path
+        if not octomap_src.exists():
+            raise RuntimeError(f"octomap binary not found: {octomap_src}")
+
+        octomap_dst = map_dir / octomap_src.name
+        shutil.copy2(octomap_src, octomap_dst)
+
+        projection_script = self._find_octomap_projection_script()
+        pcd_output = map_dir / "pointcloud_map_3d.pcd"
+        cmd = [
+            sys.executable,
+            projection_script,
+            str(octomap_dst),
+            "--output",
+            str(map_dir),
+            "--resolution",
+            str(self.octomap_projection_resolution),
+            "--ground-threshold",
+            str(self.octomap_ground_threshold),
+            "--robot-height",
+            str(self.octomap_robot_height),
+            "--min-obstacle-points",
+            str(self.octomap_min_obstacle_points),
+            "--border-padding",
+            str(self.octomap_border_padding),
+            "--pcd-output",
+            str(pcd_output),
+        ]
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=self.octomap_projection_timeout_sec,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"octomap projection failed rc={result.returncode}: {result.stdout.strip()}"
+            )
+
+        map_yaml_path = map_dir / "map.yaml"
+        if not map_yaml_path.exists() or not pcd_output.exists():
+            raise RuntimeError("octomap projection did not produce map.yaml and pointcloud_map_3d.pcd")
+
+        map_yaml = yaml.safe_load(map_yaml_path.read_text(encoding="utf-8")) or {}
+        width, height = self._read_pgm_size(map_dir / "map.pgm")
+        artifacts = [
+            {
+                "kind": "occupancy_grid_2d",
+                "topic": "/projected_map",
+                "path": "map.yaml",
+                "resolution": float(map_yaml.get("resolution", self.octomap_projection_resolution)),
+            },
+            {
+                "kind": "pointcloud_snapshot_3d",
+                "topic": "/octomap_binary",
+                "path": pcd_output.name,
+            },
+            {
+                "kind": "octomap_binary",
+                "topic": "/octomap_binary",
+                "path": octomap_dst.name,
+                "resolution": self.octomap_projection_resolution,
+            },
+        ]
+        metadata_override = {
+            "source_topic": "/projected_map",
+            "width": width,
+            "height": height,
+            "resolution": float(map_yaml.get("resolution", self.octomap_projection_resolution)),
+            "pointcloud_topic_3d": "/octomap_binary",
+        }
+        return artifacts, metadata_override
 
     def publish_status(self, state, reason):
         mode = self.runtime_mode
@@ -397,9 +559,14 @@ class MapManagerNode(Node):
 def main():
     rclpy.init()
     node = MapManagerNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
+    try:
+        executor.spin()
+    finally:
+        executor.shutdown()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

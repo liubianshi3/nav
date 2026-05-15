@@ -8,6 +8,15 @@ map_manager:
     pointcloud_primary_stale_sec: 2.0
     pointcloud_snapshot_enabled: true
     pointcloud_max_points: 200000
+    prefer_octomap_artifacts: true
+    octomap_binary_path: ${A2_WORKSPACE}/runtime/maps/octomap_live.bt
+    octomap_binary_stale_sec: 90.0
+    octomap_projection_resolution: 0.05
+    octomap_ground_threshold: 0.10
+    octomap_robot_height: 1.0
+    octomap_min_obstacle_points: 2
+    octomap_border_padding: 1.0
+    octomap_projection_timeout_sec: 30.0
     active_map_topic: /a2/map_manager/active_map
     mode_topic: /a2/system_mode
     default_mode: mapping
