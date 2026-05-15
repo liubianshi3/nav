@@ -23,6 +23,7 @@ from .models import (
     MapSnapshot,
     NodeCheck,
     SavedMapInfo,
+    StartNavigationRequest,
     StackStatus,
     VirtualObstacleListing,
     VirtualObstacleUpsertRequest,
@@ -89,6 +90,10 @@ NAVIGATION_NODES_3D: list[tuple[str, str, PatternSpec]] = [
     ("goal_controller", "3D pose goal controller", "pose_goal_controller_3d"),
     ("map_manager", "3D map manager", "map_manager_node"),
 ]
+
+NAVIGATION_LOCALIZATION_MODES = {"ndt", "odom_only"}
+NAVIGATION_MOTION_MODES = {"planning_only", "dry_run", "live_motion"}
+NAVIGATION_COLLISION_MONITOR_PROFILES = {"strict", "live-validation"}
 
 STACK_CLEANUP_PATTERNS = [
     "bringup.launch.py",
@@ -210,7 +215,16 @@ class StackController:
         except Exception:
             return {}
 
-    def _start_script_command(self, mode: str, map_id: str | None = None) -> list[str]:
+    def _start_script_command(
+        self,
+        mode: str,
+        map_id: str | None = None,
+        *,
+        localization_mode: str = "ndt",
+        motion_mode: str = "dry_run",
+        enable_nav2_3d: bool = True,
+        collision_monitor_profile: str = "strict",
+    ) -> list[str]:
         if self.start_script.name == "start_jt128_3d_stack.sh":
             command = [
                 str(self.start_script),
@@ -223,7 +237,19 @@ class StackController:
             if mode == "navigation":
                 if not map_id:
                     raise StackControlError("3D 导航模式缺少地图 ID")
-                command.extend(["--map-id", map_id, "--enable-motion"])
+                command.extend([
+                    "--map-id",
+                    map_id,
+                    "--localization-mode",
+                    localization_mode,
+                    "--collision-profile",
+                    collision_monitor_profile,
+                ])
+                command.append("--enable-nav2-3d" if enable_nav2_3d else "--no-nav2-3d")
+                if motion_mode in {"dry_run", "live_motion"}:
+                    command.append("--enable-motion")
+                if motion_mode == "live_motion":
+                    command.append("--live-motion")
             return command
         if self.start_script.name == "start_jt128_dlio_mapping.sh":
             if mode != "mapping":
@@ -237,9 +263,18 @@ class StackController:
                         map_id or "",
                         "--lidar-iface",
                         self.config.stack.network_interface,
-                        "--enable-motion",
+                        "--localization-mode",
+                        localization_mode,
+                        "--collision-profile",
+                        collision_monitor_profile,
                         "--no-web",
                     ]
+                    if motion_mode in {"dry_run", "live_motion"}:
+                        command.append("--enable-motion")
+                    if motion_mode == "live_motion":
+                        command.append("--live-motion")
+                    if not enable_nav2_3d:
+                        command.append("--no-nav2-3d")
                     return command
                 raise StackControlError("当前启动脚本只支持建图，不能启动 3D 导航")
             return [str(self.start_script), "--iface", self.config.stack.network_interface, "--no-web"]
@@ -310,9 +345,21 @@ class StackController:
         )
         return {"message": (result.stdout or "建图模式已启动").strip()}
 
-    def start_navigation(self, map_id: str) -> dict[str, str]:
+    def start_navigation(
+        self,
+        map_id: str,
+        *,
+        localization_mode: str = "ndt",
+        motion_mode: str = "dry_run",
+        enable_nav2_3d: bool = True,
+        collision_monitor_profile: str = "strict",
+    ) -> dict[str, str]:
         if not self.start_script.exists():
             raise StackControlError(f"启动脚本不存在: {self.start_script}")
+
+        localization_mode = self._normalize_localization_mode(localization_mode)
+        motion_mode = self._normalize_motion_mode(motion_mode)
+        collision_monitor_profile = self._normalize_collision_monitor_profile(collision_monitor_profile)
 
         map_info = self.get_map(map_id, include_incompatible=True)
         if map_info is None:
@@ -328,13 +375,27 @@ class StackController:
             target_mode="navigation",
             selected_map_id=map_info.map_id,
             selected_map_yaml=map_info.map_yaml,
+            localization_mode=localization_mode,
+            motion_mode=motion_mode,
+            enable_motion=motion_mode in {"dry_run", "live_motion"},
+            live_motion=motion_mode == "live_motion",
+            dry_run=motion_mode != "live_motion",
+            enable_nav2_3d=enable_nav2_3d,
+            collision_monitor_profile=collision_monitor_profile,
             message=f"导航模式启动中: {map_info.map_id}",
         )
 
         use_3d_navigation = self._is_3d_navigation_map(map_info)
         try:
             result = self._run(
-                self._start_script_command("navigation" if use_3d_navigation else "mapping", map_info.map_id),
+                self._start_script_command(
+                    "navigation" if use_3d_navigation else "mapping",
+                    map_info.map_id,
+                    localization_mode=localization_mode,
+                    motion_mode=motion_mode,
+                    enable_nav2_3d=enable_nav2_3d,
+                    collision_monitor_profile=collision_monitor_profile,
+                ),
                 env={
                     "A2_ENABLE_NAV2": "false" if use_3d_navigation else "true",
                     "A2_REAL_LOCALIZATION_MODE": "uslam_odom" if use_3d_navigation else "amcl",
@@ -360,9 +421,43 @@ class StackController:
             target_mode=None,
             selected_map_id=map_info.map_id,
             selected_map_yaml=map_info.map_yaml,
+            localization_mode=localization_mode,
+            motion_mode=motion_mode,
+            enable_motion=motion_mode in {"dry_run", "live_motion"},
+            live_motion=motion_mode == "live_motion",
+            dry_run=motion_mode != "live_motion",
+            enable_nav2_3d=enable_nav2_3d,
+            collision_monitor_profile=collision_monitor_profile,
             message=None,
         )
         return {"message": (result.stdout or f"导航模式已启动: {map_id}").strip()}
+
+    def start_navigation_from_request(self, request: StartNavigationRequest) -> dict[str, str]:
+        return self.start_navigation(
+            request.map_id,
+            localization_mode=request.localization_mode,
+            motion_mode=request.motion_mode,
+            enable_nav2_3d=bool(request.enable_nav2_3d),
+            collision_monitor_profile=request.collision_monitor_profile,
+        )
+
+    def _normalize_localization_mode(self, value: str) -> str:
+        mode = (value or "ndt").strip()
+        if mode not in NAVIGATION_LOCALIZATION_MODES:
+            raise StackControlError(f"不支持的定位模式: {value}")
+        return mode
+
+    def _normalize_motion_mode(self, value: str) -> str:
+        mode = (value or "dry_run").strip()
+        if mode not in NAVIGATION_MOTION_MODES:
+            raise StackControlError(f"不支持的运动模式: {value}")
+        return mode
+
+    def _normalize_collision_monitor_profile(self, value: str) -> str:
+        profile = (value or "strict").strip()
+        if profile not in NAVIGATION_COLLISION_MONITOR_PROFILES:
+            raise StackControlError(f"不支持的 collision monitor 配置: {value}")
+        return profile
 
     def stop_if_running(self) -> None:
         if self._runtime_processes() or self._read_runtime_state().get("mode") not in (None, "stopped"):
@@ -1087,6 +1182,14 @@ class StackController:
             log_file=self._latest_log_file(),
             selected_map_id=runtime_state.get("selected_map_id"),
             selected_map_yaml=runtime_state.get("selected_map_yaml"),
+            localization_mode=runtime_state.get("localization_mode"),
+            motion_mode=runtime_state.get("motion_mode"),
+            enable_motion=runtime_state.get("enable_motion"),
+            live_motion=runtime_state.get("live_motion"),
+            dry_run=runtime_state.get("dry_run"),
+            enable_nav2_3d=runtime_state.get("enable_nav2_3d"),
+            collision_monitor_profile=runtime_state.get("collision_monitor_profile"),
+            collision_monitor_config=runtime_state.get("collision_monitor_config"),
             nodes=nodes,
             maps=self.list_maps(),
             message=runtime_state.get("message"),

@@ -66,7 +66,10 @@ class SafetySupervisor(Node):
 
         self.create_subscription(PointCloud2, lidar_topic, self.on_lidar, 10)
         self.create_subscription(RobotState, robot_state_topic, self.on_state, 20)
-        self.create_subscription(OccupancyGrid, map_topic, self.on_map, map_qos)
+        if self.map_representation == "pointcloud_map_3d":
+            self.create_subscription(PointCloud2, map_topic, self.on_map, 10)
+        else:
+            self.create_subscription(OccupancyGrid, map_topic, self.on_map, map_qos)
         self.create_subscription(Bool, localization_status_topic, self.on_localization, 10)
         if ndt_health_topic:
             self.create_subscription(Bool, ndt_health_topic, self.on_ndt_health, 10)

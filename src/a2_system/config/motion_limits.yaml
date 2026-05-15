@@ -1,10 +1,12 @@
 a2_control_bridge:
   ros__parameters:
     use_mock: true
-    auto_detect_interface: true
+    auto_detect_interface: false
     allow_loopback: false
     network_interface: ""
-    interface_candidates: []
+    # Keep this typed as a string array; ROS 2 rejects [] for vector parameters
+    # when loading YAML overrides in rclcpp.
+    interface_candidates: [""]
     cmd_topic: /cmd_vel_safe
     estop_topic: /a2/estop
     localization_ok_topic: /a2/localization_ok

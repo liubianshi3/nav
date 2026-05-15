@@ -51,7 +51,7 @@ def _install_stub_modules() -> None:
     _register_message_module("nav_msgs.msg", ["OccupancyGrid", "Odometry"])
     _register_message_module("std_msgs.msg", ["Bool", "String"])
     _register_message_module("tf2_msgs.msg", ["TFMessage"])
-    _register_message_module("sensor_msgs.msg", ["CompressedImage", "Image", "PointCloud2"])
+    _register_message_module("sensor_msgs.msg", ["BatteryState", "CompressedImage", "Image", "PointCloud2"])
 
 
 _install_stub_modules()

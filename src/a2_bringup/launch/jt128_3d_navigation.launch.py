@@ -3,7 +3,15 @@ from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription, OpaqueFunction, SetLaunchConfiguration
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
+    SetLaunchConfiguration,
+    TimerAction,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -122,6 +130,14 @@ def generate_launch_description():
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
                                   description="Path to 2D projected map YAML for Nav2 3D mode"),
+            DeclareLaunchArgument(
+                "collision_monitor_config",
+                default_value=f"{a2_system_share}/config/collision_monitor.yaml",
+                description=(
+                    "Collision monitor YAML. Use collision_monitor_live_validation.yaml "
+                    "only for supervised open-space live-motion validation."
+                ),
+            ),
             OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
@@ -248,10 +264,31 @@ def generate_launch_description():
                 executable="collision_monitor",
                 name="collision_monitor",
                 parameters=[
-                    f"{a2_system_share}/config/collision_monitor.yaml",
+                    LaunchConfiguration("collision_monitor_config"),
                     {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 ],
                 output="screen",
+            ),
+            TimerAction(
+                period=18.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "bash",
+                            "-lc",
+                            (
+                                "for i in $(seq 1 20); do "
+                                "ros2 lifecycle get /collision_monitor 2>/dev/null | grep -q '^active' && exit 0; "
+                                "ros2 lifecycle set /collision_monitor configure || true; "
+                                "ros2 lifecycle set /collision_monitor activate || true; "
+                                "sleep 1; "
+                                "done; "
+                                "ros2 lifecycle get /collision_monitor || true"
+                            ),
+                        ],
+                        output="screen",
+                    )
+                ],
             ),
             # ── Battery publisher → /a2/battery ──
             Node(
@@ -341,6 +378,7 @@ def generate_launch_description():
                     {
                         "runtime_mode": "",
                         "lidar_topic": "/jt128/front/points",
+                        "map_topic": "/a2/map/pointcloud_3d",
                         "map_representation": "pointcloud_map_3d",
                         "localization_mode": LaunchConfiguration("localization_mode"),
                         "require_map": ParameterValue(is_ndt_localization, value_type=bool),

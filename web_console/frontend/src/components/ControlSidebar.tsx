@@ -25,9 +25,17 @@ export interface ControlSidebarProps {
   projectPcdReason: string | null;
   sendGoalReason: string | null;
   setInitialPoseReason: string | null;
+  localizationMode: string;
+  motionMode: string;
+  enableNav2_3d: boolean;
+  collisionMonitorProfile: string;
   stackBusy: boolean;
   onSelectedMapChange: (mapId: string) => void;
   onSaveMapIdChange: (mapId: string) => void;
+  onLocalizationModeChange: (mode: string) => void;
+  onMotionModeChange: (mode: string) => void;
+  onEnableNav2_3dChange: (enabled: boolean) => void;
+  onCollisionMonitorProfileChange: (profile: string) => void;
   onStartMapping: () => void;
   onStartNavigation: () => void;
   onStopStack: () => void;
@@ -59,8 +67,16 @@ export function ControlSidebar(props: ControlSidebarProps) {
         startNavigationReason={props.startNavigationReason}
         saveMapReason={props.saveMapReason}
         projectPcdReason={props.projectPcdReason}
+        localizationMode={props.localizationMode}
+        motionMode={props.motionMode}
+        enableNav2_3d={props.enableNav2_3d}
+        collisionMonitorProfile={props.collisionMonitorProfile}
         onSelectedMapChange={props.onSelectedMapChange}
         onSaveMapIdChange={props.onSaveMapIdChange}
+        onLocalizationModeChange={props.onLocalizationModeChange}
+        onMotionModeChange={props.onMotionModeChange}
+        onEnableNav2_3dChange={props.onEnableNav2_3dChange}
+        onCollisionMonitorProfileChange={props.onCollisionMonitorProfileChange}
         onStartNavigation={props.onStartNavigation}
         onSaveMap={props.onSaveMap}
         onProjectPcd={props.onProjectPcd}
@@ -120,8 +136,16 @@ export function MapManagementSection({
   startNavigationReason,
   saveMapReason,
   projectPcdReason,
+  localizationMode,
+  motionMode,
+  enableNav2_3d,
+  collisionMonitorProfile,
   onSelectedMapChange,
   onSaveMapIdChange,
+  onLocalizationModeChange,
+  onMotionModeChange,
+  onEnableNav2_3dChange,
+  onCollisionMonitorProfileChange,
   onStartNavigation,
   onSaveMap,
   onProjectPcd,
@@ -135,8 +159,16 @@ export function MapManagementSection({
   | "startNavigationReason"
   | "saveMapReason"
   | "projectPcdReason"
+  | "localizationMode"
+  | "motionMode"
+  | "enableNav2_3d"
+  | "collisionMonitorProfile"
   | "onSelectedMapChange"
   | "onSaveMapIdChange"
+  | "onLocalizationModeChange"
+  | "onMotionModeChange"
+  | "onEnableNav2_3dChange"
+  | "onCollisionMonitorProfileChange"
   | "onStartNavigation"
   | "onSaveMap"
   | "onProjectPcd"
@@ -201,6 +233,68 @@ export function MapManagementSection({
           />
         </div>
       ) : null}
+      <div className="closed-loop-options">
+        <div>
+          <label className="form-label" htmlFor="localization-mode">
+            定位模式
+          </label>
+          <select
+            id="localization-mode"
+            className="select-input"
+            value={localizationMode}
+            onChange={(event) => onLocalizationModeChange(event.target.value)}
+          >
+            <option value="ndt">NDT 重定位</option>
+            <option value="odom_only">Odom-only 小步验证</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label" htmlFor="motion-mode">
+            运动闭环
+          </label>
+          <select
+            id="motion-mode"
+            className="select-input"
+            value={motionMode}
+            onChange={(event) => onMotionModeChange(event.target.value)}
+          >
+            <option value="planning_only">只跑规划/定位</option>
+            <option value="dry_run">Dry-run 控制桥</option>
+            <option value="live_motion">Live-motion 真机</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label" htmlFor="collision-monitor-profile">
+            防撞配置
+          </label>
+          <select
+            id="collision-monitor-profile"
+            className="select-input"
+            value={collisionMonitorProfile}
+            onChange={(event) => onCollisionMonitorProfileChange(event.target.value)}
+          >
+            <option value="strict">Strict 工业默认</option>
+            <option value="live-validation">Live-validation 空场验证</option>
+          </select>
+        </div>
+      </div>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={enableNav2_3d}
+          onChange={(event) => onEnableNav2_3dChange(event.target.checked)}
+        />
+        <span>启用 Nav2 3D 导航链</span>
+      </label>
+      <div className={`motion-warning ${motionMode === "live_motion" ? "motion-warning-live" : ""}`}>
+        {motionMode === "live_motion"
+          ? collisionMonitorProfile === "live-validation"
+            ? "Live-validation 会放宽近场点数门，仅限空阔现场人工看护验证。"
+            : "Live-motion 会允许真实控制链输出，启动前必须确认现场安全。"
+          : motionMode === "dry_run"
+            ? "Dry-run 会启动控制桥但保持 mock，用于 Web 闭环验证。"
+            : "只跑定位、地图和规划组件，不启动真实运动链。"}
+      </div>
       <label className="form-label" htmlFor="save-map-id">
         新地图名
       </label>
