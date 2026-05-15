@@ -107,6 +107,8 @@ function createEmptySnapshot(): DashboardSnapshot {
       lidar_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       camera_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       localization_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
+      relocalization_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
+      safety_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       map_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       task_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       sdk_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
@@ -250,6 +252,10 @@ export default function App() {
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const [activeDrawer, setActiveDrawer] = useState<DrawerKey>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("auto");
+  const [localizationMode, setLocalizationMode] = useState("ndt");
+  const [motionMode, setMotionMode] = useState("dry_run");
+  const [enableNav2_3d, setEnableNav2_3d] = useState(true);
+  const [collisionMonitorProfile, setCollisionMonitorProfile] = useState("strict");
   const [showMediaDock, setShowMediaDock] = useState(true);
   const [selectedPointcloudPath, setSelectedPointcloudPath] = useState<string | null>(null);
   const [routes, setRoutes] = useState<TaskRouteSummary[]>([]);
@@ -628,10 +634,29 @@ export default function App() {
       setLastError("请先选择地图");
       return;
     }
-    if (!window.confirm(`启动导航模式会停止当前栈并加载地图 ${selectedMapId}。确认继续？`)) {
+    const motionText =
+      motionMode === "live_motion"
+        ? "LIVE-MOTION 真机运动"
+        : motionMode === "dry_run"
+          ? "dry-run 控制桥验证"
+          : "只跑规划/定位";
+    if (
+      !window.confirm(
+        `启动导航模式会停止当前栈并加载地图 ${selectedMapId}，模式=${localizationMode}/${motionText}，collision=${collisionMonitorProfile}。确认继续？`,
+      )
+    ) {
       return;
     }
-    void runStackAction(() => startNavigationStack(selectedMapId), "导航模式已启动");
+    void runStackAction(
+      () =>
+        startNavigationStack(selectedMapId, {
+          localization_mode: localizationMode,
+          motion_mode: motionMode,
+          enable_nav2_3d: enableNav2_3d,
+          collision_monitor_profile: collisionMonitorProfile,
+        }),
+      "导航模式已启动",
+    );
   };
 
   const handleStopStack = () => {
@@ -1051,8 +1076,16 @@ export default function App() {
               startNavigationReason={startNavigationReason}
               saveMapReason={saveMapReason}
               projectPcdReason={projectPcdReason}
+              localizationMode={localizationMode}
+              motionMode={motionMode}
+              enableNav2_3d={enableNav2_3d}
+              collisionMonitorProfile={collisionMonitorProfile}
               onSelectedMapChange={setSelectedMapId}
               onSaveMapIdChange={setSaveMapId}
+              onLocalizationModeChange={setLocalizationMode}
+              onMotionModeChange={setMotionMode}
+              onEnableNav2_3dChange={setEnableNav2_3d}
+              onCollisionMonitorProfileChange={setCollisionMonitorProfile}
               onStartNavigation={handleStartNavigation}
               onSaveMap={handleSaveMap}
               onProjectPcd={handleProjectPcd}
@@ -1091,7 +1124,7 @@ export default function App() {
             <NodeStatusSection stack={stack} />
             <BatterySection battery={snapshot.battery} />
             <RecoverySection recovery={snapshot.recovery} />
-            <RuntimeInfoSection status={snapshot.status} />
+            <RuntimeInfoSection status={snapshot.status} stack={stack} />
             <HealthSection health={snapshot.health} />
           </DrawerPanel>
 

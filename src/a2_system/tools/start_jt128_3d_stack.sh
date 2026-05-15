@@ -11,7 +11,10 @@ START_WEB=1
 ENABLE_MOTION=false
 DRY_RUN=true
 ENABLE_NAV2_3D=true
+LOCALIZATION_MODE=ndt
 NAV2_3D_MAP=""
+COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
+COLLISION_MONITOR_CONFIG=""
 START_ROBOT_STATE=true
 START_SAFETY=true
 LOG_DIR="${WORKSPACE}/runtime/logs"
@@ -27,7 +30,7 @@ usage() {
   cat <<EOF
 Usage:
   $(basename "$0") --mode mapping [--lidar-iface net1] [--no-web]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--enable-motion] [--live-motion]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-motion] [--live-motion]
 
 Starts the 3D-first JT128 stack:
   mapping:
@@ -46,6 +49,8 @@ Starts the 3D-first JT128 stack:
 Safety defaults:
   - --enable-motion starts a2_control_bridge.
   - without --enable-motion, navigation remains a dry-run/control-disabled stack.
+  - --collision-profile live-validation is only for supervised open-space
+    tests while near-field self filtering is being calibrated.
 EOF
 }
 
@@ -101,12 +106,24 @@ while [[ $# -gt 0 ]]; do
       ENABLE_NAV2_3D=true
       shift
       ;;
+    --localization-mode)
+      LOCALIZATION_MODE="$2"
+      shift 2
+      ;;
     --no-nav2-3d)
       ENABLE_NAV2_3D=false
       shift
       ;;
     --nav2-map)
       NAV2_3D_MAP="$2"
+      shift 2
+      ;;
+    --collision-profile)
+      COLLISION_MONITOR_PROFILE="$2"
+      shift 2
+      ;;
+    --collision-monitor-config)
+      COLLISION_MONITOR_CONFIG="$2"
       shift 2
       ;;
     --no-robot-state)
@@ -128,6 +145,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be mapping or navigation"
+[[ "$LOCALIZATION_MODE" == "ndt" || "$LOCALIZATION_MODE" == "odom_only" ]] || die "localization mode must be ndt or odom_only"
+[[ "$COLLISION_MONITOR_PROFILE" == "strict" || "$COLLISION_MONITOR_PROFILE" == "live-validation" ]] || die "collision profile must be strict or live-validation"
 if [[ "$MODE" == "navigation" && -z "$MAP_ID" ]]; then
   die "--map-id is required for navigation mode"
 fi
@@ -141,6 +160,22 @@ if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP
   else
     die "Nav2 3D requires a projected map YAML. Missing: ${candidate_map}. Use --nav2-map or --no-nav2-3d."
   fi
+fi
+if [[ "$MODE" == "navigation" && -z "$COLLISION_MONITOR_CONFIG" ]]; then
+  collision_config_name="collision_monitor.yaml"
+  if [[ "$COLLISION_MONITOR_PROFILE" == "live-validation" ]]; then
+    collision_config_name="collision_monitor_live_validation.yaml"
+    warn "Using validation collision monitor profile. Only use this in supervised open space."
+  fi
+  for candidate in \
+    "${WORKSPACE}/install/a2_system/share/a2_system/config/${collision_config_name}" \
+    "${WORKSPACE}/src/a2_system/config/${collision_config_name}"; do
+    if [[ -f "$candidate" ]]; then
+      COLLISION_MONITOR_CONFIG="$candidate"
+      break
+    fi
+  done
+  [[ -n "$COLLISION_MONITOR_CONFIG" ]] || die "collision monitor config not found: ${collision_config_name}"
 fi
 
 mkdir -p "$LOG_DIR"
@@ -273,7 +308,7 @@ fi
 
 stop_navigation_components
 NAV_LOG="${LOG_DIR}/jt128_3d_navigation_$(date +%Y%m%d_%H%M%S).log"
-log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} enable_nav2_3d=${ENABLE_NAV2_3D}"
+log "Starting JT128 3D navigation components map_id=${MAP_ID} localization_mode=${LOCALIZATION_MODE} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} enable_nav2_3d=${ENABLE_NAV2_3D} collision_profile=${COLLISION_MONITOR_PROFILE}"
 setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
@@ -284,8 +319,10 @@ setsid bash -lc "
     start_static_tf:=true \
     start_robot_state:=${START_ROBOT_STATE} \
     start_safety:=${START_SAFETY} \
+    localization_mode:='${LOCALIZATION_MODE}' \
     enable_nav2_3d:=${ENABLE_NAV2_3D} \
     nav2_3d_map:='${NAV2_3D_MAP}' \
+    collision_monitor_config:='${COLLISION_MONITOR_CONFIG}' \
     enable_motion:=${ENABLE_MOTION} \
     dry_run:=${DRY_RUN} \
     sdk_interface:='${SDK_IFACE}' \
@@ -303,8 +340,11 @@ sdk_interface: ${SDK_IFACE}
 control_interface: ${CONTROL_IFACE}
 enable_motion: ${ENABLE_MOTION}
 dry_run: ${DRY_RUN}
+localization_mode: ${LOCALIZATION_MODE}
 enable_nav2_3d: ${ENABLE_NAV2_3D}
 nav2_3d_map: ${NAV2_3D_MAP}
+collision_monitor_profile: ${COLLISION_MONITOR_PROFILE}
+collision_monitor_config: ${COLLISION_MONITOR_CONFIG}
 started_at: $(date --iso-8601=seconds)
 EOF
 

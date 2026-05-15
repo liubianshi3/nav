@@ -80,6 +80,8 @@ class RobotStatus(BaseModel):
     lidar_status: TextStatus = Field(default_factory=TextStatus)
     camera_status: TextStatus = Field(default_factory=TextStatus)
     localization_status: TextStatus = Field(default_factory=TextStatus)
+    relocalization_status: TextStatus = Field(default_factory=TextStatus)
+    safety_status: TextStatus = Field(default_factory=TextStatus)
     map_manager_status: TextStatus = Field(default_factory=TextStatus)
     task_manager_status: TextStatus = Field(default_factory=TextStatus)
     sdk_status: TextStatus = Field(default_factory=TextStatus)
@@ -113,6 +115,10 @@ class InitialPoseRequest(BaseModel):
 
 class StartNavigationRequest(BaseModel):
     map_id: str
+    localization_mode: str = "ndt"
+    motion_mode: str = "dry_run"
+    enable_nav2_3d: bool = True
+    collision_monitor_profile: str = "strict"
 
 
 class SaveMapRequest(BaseModel):
@@ -284,6 +290,14 @@ class StackStatus(BaseModel):
     log_file: str | None = None
     selected_map_id: str | None = None
     selected_map_yaml: str | None = None
+    localization_mode: str | None = None
+    motion_mode: str | None = None
+    enable_motion: bool | None = None
+    live_motion: bool | None = None
+    dry_run: bool | None = None
+    enable_nav2_3d: bool | None = None
+    collision_monitor_profile: str | None = None
+    collision_monitor_config: str | None = None
     nodes: list[NodeCheck] = Field(default_factory=list)
     maps: list[SavedMapInfo] = Field(default_factory=list)
     message: str | None = None

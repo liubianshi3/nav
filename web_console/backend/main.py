@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import subprocess
 import time
 from datetime import datetime
@@ -264,7 +265,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
     @app.post("/api/stack/start-navigation")
     async def start_navigation_stack(request: StartNavigationRequest):
         try:
-            result = await asyncio.to_thread(stack_controller.start_navigation, request.map_id)
+            result = await asyncio.to_thread(stack_controller.start_navigation_from_request, request)
         except StackControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}

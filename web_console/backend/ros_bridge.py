@@ -320,6 +320,7 @@ class RosBridgeNode(Node):
         self.create_subscription(Bool, ros.localization_ok_topic, self._on_localization_ok, 10)
         self.create_subscription(String, ros.localization_status_topic, self._on_localization_status, 10)
         self.create_subscription(String, ros.relocalization_status_topic, self._on_relocalization_status, 10)
+        self.create_subscription(String, ros.safety_status_topic, self._on_safety_status, 10)
         self.create_subscription(String, ros.map_manager_status_topic, self._on_map_manager_status, 10)
         self.create_subscription(String, ros.map_manager_active_map_topic, self._on_active_map, 10)
         self.create_subscription(String, ros.task_manager_status_topic, self._on_task_manager_status, 10)
@@ -811,8 +812,14 @@ class RosBridgeNode(Node):
         ready_str = _fields.get("ready", "false")
         healthy_val = ready_str.lower() == "true"
         with self._lock:
+            self.status.relocalization_status = self._status_from_string(msg.data)
             self.status.ndt_score = score_val
             self.status.ndt_healthy = healthy_val
+        self._publish("status", dump_model(self.status))
+
+    def _on_safety_status(self, msg: String) -> None:
+        with self._lock:
+            self.status.safety_status = self._status_from_string(msg.data)
         self._publish("status", dump_model(self.status))
 
     def _on_map_manager_status(self, msg: String) -> None:
@@ -1242,7 +1249,11 @@ class RosBridgeNode(Node):
             goal = NavigateToPose.Goal()
             goal.pose = PoseStamped()
             goal.pose.header.frame_id = snapped_goal.frame_id
-            goal.pose.header.stamp = self.get_clock().now().to_msg()
+            # A zero stamp asks Nav2 to use the latest transform. Reusing a
+            # wall-clock stamp from the web process can trigger past
+            # extrapolation when map->odom is freshly published.
+            goal.pose.header.stamp.sec = 0
+            goal.pose.header.stamp.nanosec = 0
             goal.pose.pose.position.x = snapped_goal.x
             goal.pose.pose.position.y = snapped_goal.y
             goal.pose.pose.orientation.z = math.sin(snapped_goal.yaw / 2.0)

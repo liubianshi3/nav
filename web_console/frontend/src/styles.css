@@ -42,6 +42,10 @@ select {
   font: inherit;
 }
 
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
 button {
   appearance: none;
   border: 0;
@@ -530,6 +534,40 @@ button:disabled {
   border-radius: 14px;
   border: 1px solid rgba(37, 99, 235, 0.18);
   background: rgba(239, 246, 255, 0.78);
+}
+
+.closed-loop-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.motion-warning {
+  border-radius: 12px;
+  border: 1px solid rgba(180, 83, 9, 0.18);
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  padding: 10px 12px;
+  margin: 8px 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.motion-warning-live {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
 }
 
 .route-summary-box {

@@ -37,6 +37,7 @@ class RosTopicConfig:
     localization_ok_topic: str = "/a2/localization_ok"
     localization_status_topic: str = "/a2/localization/status"
     relocalization_status_topic: str = "/a2/relocalization/status"
+    safety_status_topic: str = "/a2/safety/status"
     map_manager_status_topic: str = "/a2/map_manager/status"
     map_manager_active_map_topic: str = "/a2/map_manager/active_map"
     task_manager_status_topic: str = "/a2/task_manager/status"

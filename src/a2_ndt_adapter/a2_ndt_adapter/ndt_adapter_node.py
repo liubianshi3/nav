@@ -148,7 +148,7 @@ class A2NdtAdapter(Node):
         self.declare_parameter('score_min_is_good', True)
         self.declare_parameter('odom_timeout_sec', 1.0)
         self.declare_parameter('score_timeout_sec', 3.0)
-        self.declare_parameter('max_score_pose_delta_sec', 0.3)
+        self.declare_parameter('max_score_pose_delta_sec', 1.0)
         self.declare_parameter('max_map_to_odom_translation_step', 1.0)
         self.declare_parameter('max_map_to_odom_rotation_step_deg', 20.0)
         self.declare_parameter('first_fix_max_translation_m', 3.0)
@@ -236,7 +236,7 @@ class A2NdtAdapter(Node):
                 f"Received first odom msg from {self.get_parameter('odom_topic').value}"
             )
         self.publish_map_to_odom_tf()
-        if self.has_seed and self.awaiting_first_ndt_fix:
+        if self.has_seed:
             self.publish_ndt_initial_guess_from_odom(msg)
 
     def on_ndt_pose(self, msg: PoseWithCovarianceStamped):
