@@ -163,6 +163,7 @@ def main() -> int:
     parser.add_argument("--status-topic", default="/a2/relocalization/status")
     parser.add_argument("--localization-ok-topic", default="/a2/localization_ok")
     parser.add_argument("--skip-tf", action="store_true")
+    parser.add_argument("--tf-timeout-sec", type=float, default=1.0)
     parser.add_argument("--allow-localization-not-ok", action="store_false", dest="require_localization_ok")
     parser.set_defaults(require_localization_ok=True)
     args, ros_args = parser.parse_known_args()
