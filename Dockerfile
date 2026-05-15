@@ -128,6 +128,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/a2-web-entrypoint \
     && find /opt/a2_system_ws/web_console/scripts /opt/a2_system_ws/src/a2_system/tools -type f -name "*.sh" -print0 | xargs -0 sed -i 's/\r$//' \
     && chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
+    && chmod +x src/a2_system/scripts/*.py \
     && mkdir -p runtime/maps runtime/logs
 
 EXPOSE 8080

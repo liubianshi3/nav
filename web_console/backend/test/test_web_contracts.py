@@ -281,6 +281,13 @@ def test_octomap_mapping_node_publishes_dlio_tf_chain():
     assert "jt128_front_link" in node
 
 
+def test_docker_image_makes_a2_system_python_scripts_executable():
+    root = Path(__file__).resolve().parents[3]
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "chmod +x src/a2_system/scripts/*.py" in dockerfile
+
+
 def test_mapping_contract_accepts_slam_toolbox_and_native_fallbacks():
     mapping_patterns = {pattern for _, _, pattern in MAPPING_NODES}
 
