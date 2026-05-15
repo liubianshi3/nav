@@ -7,7 +7,7 @@
 #   - Local costmap uses PointCloud2 observations (obstacle + traversability)
 #   - DWB has vy_samples=5 for lateral movement (A2 can strafe)
 #   - Reverse motion is disabled for industrial acceptance probes.
-#   - velocity_smoother uses /odometry/local for CLOSED_LOOP feedback
+#   - velocity_smoother starts in OPEN_LOOP for first-pass real-robot speed A/B tests
 #   - collision_monitor is lifecycle-managed
 # =============================================================================
 
@@ -22,10 +22,11 @@ planner_server:
     use_sim_time: false
     planner_plugins: ["GridBased"]
     GridBased:
-      plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.20
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.15
       allow_unknown: true
-      use_astar: true
+      downsample_costmap: false
+      cache_obstacle_heuristic: true
 
 smoother_server:
   ros__parameters:
@@ -54,25 +55,25 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.06
-      yaw_goal_tolerance: 0.08
+      xy_goal_tolerance: 0.12
+      yaw_goal_tolerance: 0.15
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: -0.12
-      max_vel_x: 0.22
-      max_vel_y: 0.12
-      max_vel_theta: 0.45
+      max_vel_x: 0.30
+      max_vel_y: 0.15
+      max_vel_theta: 0.60
       min_speed_xy: 0.0
-      max_speed_xy: 0.22
+      max_speed_xy: 0.30
       min_speed_theta: 0.0
-      acc_lim_x: 0.6
-      acc_lim_y: 0.4
-      acc_lim_theta: 1.0
-      decel_lim_x: -0.8
-      decel_lim_y: -0.4
-      decel_lim_theta: -1.4
+      acc_lim_x: 0.8
+      acc_lim_y: 0.5
+      acc_lim_theta: 1.2
+      decel_lim_x: -1.0
+      decel_lim_y: -0.6
+      decel_lim_theta: -1.6
       vx_samples: 24
       vy_samples: 5
       vtheta_samples: 28
@@ -80,7 +81,7 @@ controller_server:
       linear_granularity: 0.025
       angular_granularity: 0.015
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.06
+      xy_goal_tolerance: 0.12
       trans_stopped_velocity: 0.02
       short_circuit_trajectory_evaluation: true
       stateful: true
@@ -223,11 +224,11 @@ velocity_smoother:
     use_sim_time: false
     smoothing_frequency: 20.0
     scale_velocities: false
-    feedback: "CLOSED_LOOP"
-    max_velocity: [0.22, 0.12, 0.45]
-    min_velocity: [0.0, -0.12, -0.45]
-    max_accel: [0.6, 0.4, 1.0]
-    max_decel: [-0.8, -0.4, -1.4]
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.30, 0.15, 0.60]
+    min_velocity: [0.0, -0.15, -0.60]
+    max_accel: [0.8, 0.5, 1.2]
+    max_decel: [-1.0, -0.6, -1.6]
     odom_topic: /odometry/local
     odom_duration: 0.2
     deadband_velocity: [0.01, 0.01, 0.02]
@@ -249,35 +250,10 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: "obstacle_cloud_global traversability_cloud_global"
-        obstacle_cloud_global:
-          topic: /a2/obstacle/points
-          sensor_frame: map
-          data_type: "PointCloud2"
-          max_obstacle_height: 2.0
-          min_obstacle_height: 0.05
-          marking: true
-          clearing: true
-          obstacle_max_range: 8.0
-          raytrace_max_range: 10.0
-          raytrace_min_range: 0.0
-          obstacle_min_range: 0.0
-        traversability_cloud_global:
-          topic: /a2/traversability/obstacle_points
-          sensor_frame: map
-          data_type: "PointCloud2"
-          max_obstacle_height: 0.5
-          min_obstacle_height: 0.0
-          marking: true
-          clearing: false
-          obstacle_max_range: 6.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.40
+        inflation_radius: 0.45
       always_send_full_costmap: true
 
 local_costmap:
@@ -301,7 +277,6 @@ local_costmap:
         observation_sources: "obstacle_cloud traversability_cloud"
         obstacle_cloud:
           topic: /a2/obstacle/points
-          sensor_frame: map
           data_type: "PointCloud2"
           max_obstacle_height: 2.0
           min_obstacle_height: 0.05
@@ -313,7 +288,6 @@ local_costmap:
           obstacle_min_range: 0.85
         traversability_cloud:
           topic: /a2/traversability/obstacle_points
-          sensor_frame: map
           data_type: "PointCloud2"
           max_obstacle_height: 0.5
           min_obstacle_height: 0.0
@@ -324,5 +298,5 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.40
+        inflation_radius: 0.45
       always_send_full_costmap: true
