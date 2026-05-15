@@ -1,10 +1,32 @@
+import os
+from pathlib import Path
+
+from ament_index_python.packages import get_package_prefix
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _resolve_a2_system_script(script_name: str) -> str:
+    package_prefix = Path(get_package_prefix("a2_system"))
+    install_path = package_prefix / "lib" / "a2_system" / script_name
+    if install_path.is_file() and os.access(install_path, os.X_OK):
+        return str(install_path)
+
+    workspace = package_prefix.parent.parent
+    source_path = workspace / "src" / "a2_system" / "scripts" / script_name
+    if source_path.is_file() and os.access(source_path, os.X_OK):
+        return str(source_path)
+
+    raise FileNotFoundError(
+        f"unable to resolve executable for a2_system script '{script_name}' "
+        f"(checked {install_path} and {source_path})"
+    )
+
+
 def generate_launch_description():
+    octomap_mapping_node = _resolve_a2_system_script("octomap_mapping_node.py")
     return LaunchDescription(
         [
             DeclareLaunchArgument("use_sim_time", default_value="false"),
@@ -43,8 +65,7 @@ def generate_launch_description():
                 ),
             ),
             Node(
-                package="a2_system",
-                executable="octomap_mapping_node.py",
+                executable=octomap_mapping_node,
                 name="octomap_mapping_node",
                 output="screen",
                 parameters=[

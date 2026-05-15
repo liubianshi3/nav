@@ -1,6 +1,7 @@
 import os
+from pathlib import Path
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -8,8 +9,26 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _resolve_a2_system_script(script_name: str) -> str:
+    package_prefix = Path(get_package_prefix("a2_system"))
+    install_path = package_prefix / "lib" / "a2_system" / script_name
+    if install_path.is_file() and os.access(install_path, os.X_OK):
+        return str(install_path)
+
+    workspace = package_prefix.parent.parent
+    source_path = workspace / "src" / "a2_system" / "scripts" / script_name
+    if source_path.is_file() and os.access(source_path, os.X_OK):
+        return str(source_path)
+
+    raise FileNotFoundError(
+        f"unable to resolve executable for a2_system script '{script_name}' "
+        f"(checked {install_path} and {source_path})"
+    )
+
+
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
+    traversability_bridge = _resolve_a2_system_script("traversability_to_obstacle_cloud.py")
     use_sim_time = LaunchConfiguration("use_sim_time")
     map_yaml = LaunchConfiguration("map")
 
@@ -61,8 +80,7 @@ def generate_launch_description():
 
         # Traversability grid → obstacle pointcloud bridge
         Node(
-            package="a2_system",
-            executable="traversability_to_obstacle_cloud.py",
+            executable=traversability_bridge,
             name="traversability_to_obstacle_cloud",
             parameters=[{
                 "traversability_obstacle_threshold": 90,

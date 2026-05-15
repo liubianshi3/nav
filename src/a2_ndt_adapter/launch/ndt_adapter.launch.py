@@ -51,7 +51,7 @@ def generate_launch_description():
             'pose_topic': '/a2/relocalization/pose',
             'status_topic': '/a2/relocalization/status',
             'score_topic': 'transform_probability',
-            'score_threshold': 2.3,
+            'score_threshold': 3.0,
             'score_min_is_good': True,
             'score_timeout_sec': 12.0,
             'map_service_max_radius': 25.0,
