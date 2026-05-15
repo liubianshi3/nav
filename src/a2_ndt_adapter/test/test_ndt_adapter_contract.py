@@ -3,13 +3,13 @@ import math
 import numpy as np
 
 from a2_ndt_adapter.ndt_adapter_node import (
-    choose_ndt_initial_stamp,
     clamp_map_radius,
     make_map_cell_id,
     matrix_to_quaternion,
     quaternion_to_matrix,
     score_is_acceptable,
     select_points_for_area,
+    should_publish_periodic_guess,
 )
 
 
@@ -65,10 +65,9 @@ def test_map_cell_id_is_stable_and_safe_for_cached_ids():
     assert cell_id == "a2_map_cell_m1p2_3p5_r40p0"
 
 
-def test_ndt_initial_stamp_prefers_latest_cloud_when_enabled():
-    candidate_stamp = object()
-    cloud_stamp = object()
-
-    assert choose_ndt_initial_stamp(candidate_stamp, cloud_stamp, True) is cloud_stamp
-    assert choose_ndt_initial_stamp(candidate_stamp, cloud_stamp, False) is candidate_stamp
-    assert choose_ndt_initial_stamp(candidate_stamp, None, True) is candidate_stamp
+def test_periodic_initial_guess_publish_gate():
+    assert should_publish_periodic_guess(None, 0.1)
+    assert should_publish_periodic_guess(0.05, 0.1, force=True)
+    assert should_publish_periodic_guess(0.11, 0.1)
+    assert not should_publish_periodic_guess(0.05, 0.1)
+    assert should_publish_periodic_guess(0.0, 0.0)

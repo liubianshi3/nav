@@ -87,8 +87,14 @@ class NdtAdapterDryRunCheck(Node):
         if self.args.skip_tf:
             return True, "skipped"
         try:
-            self.tf_buffer.lookup_transform("map", "odom", Time(), timeout=Duration(seconds=0.2))
-            return True, "available"
+            transform = self.tf_buffer.lookup_transform("map", "odom", Time(), timeout=Duration(seconds=0.2))
+            stamp = Time.from_msg(transform.header.stamp)
+            age = (self.get_clock().now() - stamp).nanoseconds * 1e-9
+            if age < -0.1:
+                return False, f"future transform age={age:.3f}s"
+            if age > self.args.tf_timeout_sec:
+                return False, f"stale transform age={age:.3f}s limit={self.args.tf_timeout_sec:.3f}s"
+            return True, f"available age={age:.3f}s"
         except TransformException as exc:
             return False, str(exc)
 
@@ -156,6 +162,7 @@ def main() -> int:
     parser.add_argument("--status-topic", default="/a2/relocalization/status")
     parser.add_argument("--localization-ok-topic", default="/a2/localization_ok")
     parser.add_argument("--skip-tf", action="store_true")
+    parser.add_argument("--tf-timeout-sec", type=float, default=1.0)
     parser.add_argument("--allow-localization-not-ok", action="store_false", dest="require_localization_ok")
     parser.set_defaults(require_localization_ok=True)
     args, ros_args = parser.parse_known_args()

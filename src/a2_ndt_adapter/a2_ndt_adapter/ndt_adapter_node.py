@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.time import Time
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2, PointField
@@ -114,6 +115,13 @@ def choose_ndt_initial_stamp(candidate_stamp, latest_cloud_stamp, align_to_cloud
         return latest_cloud_stamp
     return candidate_stamp
 
+def should_publish_periodic_guess(elapsed_sec: float | None, period_sec: float, force: bool = False) -> bool:
+    if force or elapsed_sec is None:
+        return True
+    if not math.isfinite(period_sec) or period_sec <= 0.0:
+        return True
+    return elapsed_sec >= period_sec
+
 class A2NdtAdapter(Node):
     def __init__(self):
         super().__init__('a2_ndt_adapter')
@@ -148,6 +156,11 @@ class A2NdtAdapter(Node):
         self.declare_parameter('map_service_max_points', 60000)
         self.declare_parameter('map_cell_id_prefix', 'a2_map_cell')
         self.declare_parameter('align_initial_pose_stamp_to_cloud', True)
+        self.declare_parameter('cache_static_map_once', True)
+        self.declare_parameter('ndt_initial_guess_publish_period_sec', 0.10)
+        self.declare_parameter('auto_activate_ndt', True)
+        self.declare_parameter('ndt_trigger_service', '/trigger_node_srv')
+        self.declare_parameter('ndt_trigger_retry_sec', 1.0)
         
         # State
         self.last_odom_to_base = None
@@ -162,17 +175,25 @@ class A2NdtAdapter(Node):
         self.cached_map = None
         self.cached_map_frame = self.get_parameter('map_frame').value
         self.cached_map_points = np.empty((0, 3), dtype=np.float32)
+        self.cached_map_signature = None
         self.map_parse_error = ''
         self.last_map_request = 'none'
         self.last_map_cell_id = 'none'
         self.last_map_returned_points = 0
         self.last_cloud_stamp = None
+        self.last_initial_guess_publish_time = None
+        self.initial_guess_publish_count = 0
+        self.last_initial_guess_reason = 'none'
+        self.ndt_trigger_future = None
+        self.ndt_activation_confirmed = False
+        self.last_ndt_trigger_attempt_time = None
         
         # Publishers
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('pose_topic').value, 10)
         self.status_pub = self.create_publisher(String, self.get_parameter('status_topic').value, 10)
         self.ndt_initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('ndt_initial_pose_topic').value, 10)
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.ndt_trigger_client = self.create_client(SetBool, self.get_parameter('ndt_trigger_service').value)
         
         # Subscriptions
         self.create_subscription(Odometry, self.get_parameter('odom_topic').value, self.on_odom, 20)
@@ -189,6 +210,7 @@ class A2NdtAdapter(Node):
         # Timer for status
         self.create_timer(1.0, self.publish_periodic_status)
         self.create_timer(0.05, self.publish_periodic_tf)
+        self.create_timer(0.2, self.ensure_ndt_activated)
 
         self.get_logger().info(
             "A2 NDT Adapter initialized. "
@@ -198,34 +220,15 @@ class A2NdtAdapter(Node):
 
     def on_odom(self, msg: Odometry):
         self.last_odom_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
-        self.last_odom_stamp = self.get_clock().now()
+        self.last_odom_stamp = Time.from_msg(msg.header.stamp)
         if not self._received_first_odom:
             self._received_first_odom = True
             self.get_logger().info(
                 f"Received first odom msg from {self.get_parameter('odom_topic').value}"
             )
         self.publish_map_to_odom_tf()
-
-        # If we have a seed, provide the initial guess to NDT
-        if self.has_seed:
-            map_to_base = self.map_to_odom @ self.last_odom_to_base
-
-            guess = PoseWithCovarianceStamped()
-            guess.header = msg.header
-            guess.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
-            guess.header.frame_id = self.get_parameter('map_frame').value
-            guess.pose.pose.position.x = float(map_to_base[0, 3])
-            guess.pose.pose.position.y = float(map_to_base[1, 3])
-            guess.pose.pose.position.z = float(map_to_base[2, 3])
-            qx, qy, qz, qw = matrix_to_quaternion(map_to_base[:3, :3])
-            guess.pose.pose.orientation.x = qx
-            guess.pose.pose.orientation.y = qy
-            guess.pose.pose.orientation.z = qz
-            guess.pose.pose.orientation.w = qw
-            # Copy covariance or use fixed
-            guess.pose.covariance = msg.pose.covariance
-
-            self.ndt_initial_pose_pub.publish(guess)
+        if self.has_seed and self.awaiting_first_ndt_fix:
+            self.publish_ndt_initial_guess_from_odom(msg)
 
     def on_ndt_pose(self, msg: PoseWithCovarianceStamped):
         if self.last_odom_to_base is None:
@@ -299,6 +302,9 @@ class A2NdtAdapter(Node):
         ndt_seed = copy.deepcopy(msg)
         ndt_seed.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
         self.ndt_initial_pose_pub.publish(ndt_seed)
+        self.last_initial_guess_publish_time = None
+        self.initial_guess_publish_count += 1
+        self.last_initial_guess_reason = 'initialpose'
         self.publish_status(True, "seeded", "initialpose_received")
 
     def on_live_cloud(self, msg: PointCloud2):
@@ -332,8 +338,93 @@ class A2NdtAdapter(Node):
         tf_msg.transform.rotation.w = qw
         self.tf_broadcaster.sendTransform(tf_msg)
 
+    def publish_ndt_initial_guess_from_odom(self, msg: Odometry, force: bool = False):
+        now = self.get_clock().now()
+        elapsed = None
+        if self.last_initial_guess_publish_time is not None:
+            elapsed = (now - self.last_initial_guess_publish_time).nanoseconds * 1e-9
+        period = float(self.get_parameter('ndt_initial_guess_publish_period_sec').value)
+        if not should_publish_periodic_guess(elapsed, period, force):
+            return
+
+        map_to_base = self.map_to_odom @ self.last_odom_to_base
+        guess = PoseWithCovarianceStamped()
+        guess.header.frame_id = self.get_parameter('map_frame').value
+        guess.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
+        guess.pose.pose.position.x = float(map_to_base[0, 3])
+        guess.pose.pose.position.y = float(map_to_base[1, 3])
+        guess.pose.pose.position.z = float(map_to_base[2, 3])
+        qx, qy, qz, qw = matrix_to_quaternion(map_to_base[:3, :3])
+        guess.pose.pose.orientation.x = qx
+        guess.pose.pose.orientation.y = qy
+        guess.pose.pose.orientation.z = qz
+        guess.pose.pose.orientation.w = qw
+        guess.pose.covariance = msg.pose.covariance
+
+        self.ndt_initial_pose_pub.publish(guess)
+        self.last_initial_guess_publish_time = now
+        self.initial_guess_publish_count += 1
+        self.last_initial_guess_reason = 'periodic_odom'
+
+    def ensure_ndt_activated(self):
+        if not bool(self.get_parameter('auto_activate_ndt').value):
+            return
+        if self.ndt_activation_confirmed or self.last_score_stamp is not None:
+            self.ndt_activation_confirmed = True
+            return
+        now = self.get_clock().now()
+        if self.ndt_trigger_future is not None:
+            if not self.ndt_trigger_future.done():
+                return
+            try:
+                response = self.ndt_trigger_future.result()
+                if response and response.success:
+                    self.ndt_activation_confirmed = True
+                    self.get_logger().info("NDT scan matcher activation confirmed.")
+                else:
+                    message = response.message if response else "no response"
+                    self.get_logger().warn(f"NDT activation request was not accepted: {message}", throttle_duration_sec=2.0)
+            except Exception as exc:  # pragma: no cover - service failures are integration-level.
+                self.get_logger().warn(f"NDT activation request failed: {exc}", throttle_duration_sec=2.0)
+            self.ndt_trigger_future = None
+            return
+
+        if self.last_ndt_trigger_attempt_time is not None:
+            elapsed = (now - self.last_ndt_trigger_attempt_time).nanoseconds * 1e-9
+            if elapsed < float(self.get_parameter('ndt_trigger_retry_sec').value):
+                return
+        if not self.ndt_trigger_client.service_is_ready():
+            self.get_logger().info(
+                f"Waiting for NDT trigger service {self.get_parameter('ndt_trigger_service').value}",
+                throttle_duration_sec=5.0,
+            )
+            self.last_ndt_trigger_attempt_time = now
+            return
+
+        request = SetBool.Request()
+        request.data = True
+        self.ndt_trigger_future = self.ndt_trigger_client.call_async(request)
+        self.last_ndt_trigger_attempt_time = now
+        self.get_logger().info("Requested NDT scan matcher activation.", throttle_duration_sec=5.0)
+
     def on_map(self, msg: PointCloud2):
+        signature = (
+            msg.header.frame_id,
+            int(msg.width),
+            int(msg.height),
+            int(msg.point_step),
+            int(msg.row_step),
+            len(msg.data),
+        )
+        if (
+            bool(self.get_parameter('cache_static_map_once').value)
+            and self.cached_map is not None
+            and self.cached_map_points.size > 0
+            and self.cached_map_signature == signature
+        ):
+            return
         self.cached_map = msg
+        self.cached_map_signature = signature
         self.cached_map_frame = msg.header.frame_id or self.get_parameter('map_frame').value
         try:
             points = [
@@ -495,6 +586,9 @@ class A2NdtAdapter(Node):
             f"last_map_request={self.last_map_request}",
             f"last_map_cell_id={self.last_map_cell_id}",
             f"last_map_returned_points={self.last_map_returned_points}",
+            f"initial_guess_count={self.initial_guess_publish_count}",
+            f"last_initial_guess_reason={self.last_initial_guess_reason}",
+            f"ndt_activation_confirmed={str(bool(self.ndt_activation_confirmed)).lower()}",
             f"live_cloud_topic={self.get_parameter('live_cloud_topic').value}",
             f"odom_topic={self.get_parameter('odom_topic').value}",
         ]

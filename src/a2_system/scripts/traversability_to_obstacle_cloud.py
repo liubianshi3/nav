@@ -87,11 +87,9 @@ class TraversabilityToObstacleCloud(Node):
 
         self.get_logger().info(
             "TraversabilityToObstacleCloud started: "
-            f"threshold={self._obstacle_threshold} "
-            f"z={self._obstacle_z:.2f} "
-            f"hz={self._publish_hz:.1f} "
-            f"input={self._traversability_topic} "
-            f"output={self._output_topic}"
+            "threshold=%d z=%.2f hz=%.1f input=%s output=%s",
+            self._obstacle_threshold, self._obstacle_z, self._publish_hz,
+            self._traversability_topic, self._output_topic,
         )
 
     def _on_grid(self, msg: OccupancyGrid) -> None:
