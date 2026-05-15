@@ -5,8 +5,6 @@
       trans_epsilon: 0.01
 
     score_estimation:
-      # Keep Autoware NDT's convergence gate aligned with a2_ndt_adapter.
-      # 0=TRANSFORM_PROBABILITY, 1=NEAREST_VOXEL_TRANSFORMATION_LIKELIHOOD
       converged_param_type: 0
       converged_param_transform_probability: 3.0
       converged_param_nearest_voxel_transformation_likelihood: 2.3
