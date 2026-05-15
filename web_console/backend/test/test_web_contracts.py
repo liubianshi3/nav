@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import math
 from pathlib import Path
 
 import yaml
@@ -9,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.config import load_config
 from backend.direct_navigation import compute_direct_velocity_command
+from backend.utils import extrapolate_pose2d_from_odom
 from backend.models import (
     CameraFrame,
     DashboardSnapshot,
@@ -224,6 +226,18 @@ def test_direct_navigation_command_turns_then_drives_to_goal():
     assert command.angular_z == 0.0
 
 
+def test_pose_fallback_extrapolates_map_pose_from_local_odom_delta():
+    x, y, yaw = extrapolate_pose2d_from_odom(
+        anchor_pose=(10.0, 5.0, 1.0),
+        anchor_odom=(1.0, 2.0, 0.25),
+        current_odom=(2.0, 2.0, 0.35),
+    )
+
+    assert math.isclose(x, 10.7316888689, rel_tol=1e-6)
+    assert math.isclose(y, 5.6816387600, rel_tol=1e-6)
+    assert math.isclose(yaw, 1.1, rel_tol=1e-6)
+
+
 def test_navigation_contract_uses_nav2_by_default():
     labels = {label for _, label, _ in NAVIGATION_NODES}
     patterns = {pattern for _, _, pattern in NAVIGATION_NODES}
@@ -333,6 +347,7 @@ def test_initial_pose_readiness_waits_for_localization_pose_not_odom_fallback():
     assert "_last_localization_pose_stamp" in bridge
     assert "_localization_pose_update_seen" in bridge
     assert "_initial_pose_ready(previous_localization_pose_stamp" in bridge
+    assert "_pose_from_anchored_odom" in bridge
 
 
 def test_jt128_navigation_uses_relaxed_ndt_correction_limits_for_real_maps():

@@ -107,7 +107,15 @@ from .models import (
     TaskRouteStatus,
     TextStatus,
 )
-from .utils import deep_copy_model, dump_model, now_iso, parse_optional_bool, parse_status_string, quaternion_to_yaw
+from .utils import (
+    deep_copy_model,
+    dump_model,
+    extrapolate_pose2d_from_odom,
+    now_iso,
+    parse_optional_bool,
+    parse_status_string,
+    quaternion_to_yaw,
+)
 from .ws import WebSocketManager
 
 
@@ -249,6 +257,9 @@ class RosBridgeNode(Node):
         self._last_fallback_pointcloud_monotonic = 0.0
         self._last_pose_monotonic = 0.0
         self._last_localization_pose_stamp: str | None = None
+        self._last_odom_pose: RobotPose | None = None
+        self._localization_anchor_pose: RobotPose | None = None
+        self._localization_anchor_odom_pose: RobotPose | None = None
         self._active_pose_goal: NavigationGoal | None = None
         self._active_pose_goal_started_at: float | None = None
         self._direct_nav_cancel = threading.Event()
@@ -848,6 +859,8 @@ class RosBridgeNode(Node):
             self.health.last_pose_update = robot_pose.stamp
             self._last_pose_monotonic = time.monotonic()
             self._last_localization_pose_stamp = robot_pose.stamp
+            self._localization_anchor_pose = robot_pose
+            self._localization_anchor_odom_pose = self._last_odom_pose
         self._publish("pose", dump_model(robot_pose))
         self._publish("health", self.get_health_dict())
 
@@ -859,6 +872,8 @@ class RosBridgeNode(Node):
             self.health.last_pose_update = robot_pose.stamp
             self._last_pose_monotonic = time.monotonic()
             self._last_localization_pose_stamp = robot_pose.stamp
+            self._localization_anchor_pose = robot_pose
+            self._localization_anchor_odom_pose = self._last_odom_pose
         self._publish("pose", dump_model(robot_pose))
         self._publish("health", self.get_health_dict())
 
@@ -882,20 +897,59 @@ class RosBridgeNode(Node):
 
     def _should_use_odom_pose_fallback(self, now: float | None = None) -> bool:
         current = time.monotonic() if now is None else now
-        if self.pose.source == self.config.ros.odom_topic:
+        if self.pose.source in {self.config.ros.odom_topic, self._anchored_odom_source()}:
             return True
         if self._last_pose_monotonic <= 0.0:
             return True
         return current - self._last_pose_monotonic > self.config.health.pose_stale_sec
 
+    def _anchored_odom_source(self) -> str:
+        return f"{self.config.ros.localization_pose_topic}+{self.config.ros.odom_topic}"
+
+    def _pose_from_anchored_odom(self, odom_pose: RobotPose) -> RobotPose | None:
+        anchor_pose = self._localization_anchor_pose
+        anchor_odom = self._localization_anchor_odom_pose
+        if anchor_pose is None or anchor_odom is None:
+            return None
+        if (
+            anchor_pose.x is None
+            or anchor_pose.y is None
+            or anchor_pose.yaw is None
+            or anchor_odom.x is None
+            or anchor_odom.y is None
+            or anchor_odom.yaw is None
+            or odom_pose.x is None
+            or odom_pose.y is None
+            or odom_pose.yaw is None
+        ):
+            return None
+        x, y, yaw = extrapolate_pose2d_from_odom(
+            anchor_pose=(float(anchor_pose.x), float(anchor_pose.y), float(anchor_pose.yaw)),
+            anchor_odom=(float(anchor_odom.x), float(anchor_odom.y), float(anchor_odom.yaw)),
+            current_odom=(float(odom_pose.x), float(odom_pose.y), float(odom_pose.yaw)),
+        )
+        return odom_pose.model_copy(
+            update={
+                "source": self._anchored_odom_source(),
+                "frame_id": anchor_pose.frame_id,
+                "x": x,
+                "y": y,
+                "yaw": yaw,
+            }
+        )
+
     def _on_odom(self, msg: Odometry) -> None:
         now = time.monotonic()
+        odom_pose = self._pose_from_odom(msg, source=self.config.ros.odom_topic)
         fallback_pose: RobotPose | None = None
         with self._lock:
+            self._last_odom_pose = odom_pose
+            if self._localization_anchor_pose is not None and self._localization_anchor_odom_pose is None:
+                self._localization_anchor_odom_pose = odom_pose
             self.status.velocity_linear_x = msg.twist.twist.linear.x
             self.status.velocity_angular_z = msg.twist.twist.angular.z
             if self._should_use_odom_pose_fallback(now):
-                fallback_pose = self._pose_from_odom(msg, source=self.config.ros.odom_topic)
+                fallback_pose = self._pose_from_anchored_odom(odom_pose) or odom_pose
                 self.pose = fallback_pose
                 self.health.pose_received = True
                 self.health.last_pose_update = fallback_pose.stamp
