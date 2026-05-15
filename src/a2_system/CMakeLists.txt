@@ -23,6 +23,7 @@ install(PROGRAMS
   scripts/industrial_3d_closed_loop_check.py
   scripts/industrial_3d_nav_preflight.py
   scripts/jt128_dlio_watchdog.py
+  scripts/nav2_corridor_gate.py
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py
   scripts/odometry_tf_broadcaster.py
@@ -58,6 +59,7 @@ install(PROGRAMS
   scripts/industrial_3d_closed_loop_check.py
   scripts/industrial_3d_nav_preflight.py
   scripts/jt128_dlio_watchdog.py
+  scripts/nav2_corridor_gate.py
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py
   scripts/odometry_tf_broadcaster.py

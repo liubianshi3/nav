@@ -1,4 +1,5 @@
 import math
+import copy
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -108,6 +109,11 @@ def select_points_for_area(
 def make_map_cell_id(prefix: str, center_x: float, center_y: float, radius: float) -> str:
     return f"{prefix}_{center_x:.1f}_{center_y:.1f}_r{radius:.1f}".replace("-", "m").replace(".", "p")
 
+def choose_ndt_initial_stamp(candidate_stamp, latest_cloud_stamp, align_to_cloud: bool):
+    if align_to_cloud and latest_cloud_stamp is not None:
+        return latest_cloud_stamp
+    return candidate_stamp
+
 class A2NdtAdapter(Node):
     def __init__(self):
         super().__init__('a2_ndt_adapter')
@@ -141,6 +147,7 @@ class A2NdtAdapter(Node):
         self.declare_parameter('map_service_margin_m', 3.0)
         self.declare_parameter('map_service_max_points', 60000)
         self.declare_parameter('map_cell_id_prefix', 'a2_map_cell')
+        self.declare_parameter('align_initial_pose_stamp_to_cloud', True)
         
         # State
         self.last_odom_to_base = None
@@ -159,6 +166,7 @@ class A2NdtAdapter(Node):
         self.last_map_request = 'none'
         self.last_map_cell_id = 'none'
         self.last_map_returned_points = 0
+        self.last_cloud_stamp = None
         
         # Publishers
         self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('pose_topic').value, 10)
@@ -168,6 +176,7 @@ class A2NdtAdapter(Node):
         
         # Subscriptions
         self.create_subscription(Odometry, self.get_parameter('odom_topic').value, self.on_odom, 20)
+        self.create_subscription(PointCloud2, self.get_parameter('live_cloud_topic').value, self.on_live_cloud, 10)
         self.create_subscription(PoseWithCovarianceStamped, self.get_parameter('ndt_pose_topic').value, self.on_ndt_pose, 10)
         self.create_subscription(PoseWithCovarianceStamped, self.get_parameter('initial_pose_topic').value, self.on_initial_pose, 10)
         self.create_subscription(PointCloud2, self.get_parameter('map_topic').value, self.on_map, 10)
@@ -203,6 +212,7 @@ class A2NdtAdapter(Node):
 
             guess = PoseWithCovarianceStamped()
             guess.header = msg.header
+            guess.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
             guess.header.frame_id = self.get_parameter('map_frame').value
             guess.pose.pose.position.x = float(map_to_base[0, 3])
             guess.pose.pose.position.y = float(map_to_base[1, 3])
@@ -286,8 +296,20 @@ class A2NdtAdapter(Node):
         self.publish_map_to_odom_tf()
 
         # Also relay to NDT's initial pose topic
-        self.ndt_initial_pose_pub.publish(msg)
+        ndt_seed = copy.deepcopy(msg)
+        ndt_seed.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
+        self.ndt_initial_pose_pub.publish(ndt_seed)
         self.publish_status(True, "seeded", "initialpose_received")
+
+    def on_live_cloud(self, msg: PointCloud2):
+        self.last_cloud_stamp = msg.header.stamp
+
+    def ndt_initial_stamp(self, candidate_stamp):
+        return choose_ndt_initial_stamp(
+            candidate_stamp,
+            self.last_cloud_stamp,
+            bool(self.get_parameter('align_initial_pose_stamp_to_cloud').value),
+        )
 
     def publish_periodic_tf(self):
         self.publish_map_to_odom_tf()

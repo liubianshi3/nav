@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from a2_ndt_adapter.ndt_adapter_node import (
+    choose_ndt_initial_stamp,
     clamp_map_radius,
     make_map_cell_id,
     matrix_to_quaternion,
@@ -62,3 +63,12 @@ def test_select_points_for_area_filters_and_downsamples():
 def test_map_cell_id_is_stable_and_safe_for_cached_ids():
     cell_id = make_map_cell_id("a2_map_cell", -1.25, 3.5, 40.0)
     assert cell_id == "a2_map_cell_m1p2_3p5_r40p0"
+
+
+def test_ndt_initial_stamp_prefers_latest_cloud_when_enabled():
+    candidate_stamp = object()
+    cloud_stamp = object()
+
+    assert choose_ndt_initial_stamp(candidate_stamp, cloud_stamp, True) is cloud_stamp
+    assert choose_ndt_initial_stamp(candidate_stamp, cloud_stamp, False) is candidate_stamp
+    assert choose_ndt_initial_stamp(candidate_stamp, None, True) is candidate_stamp
