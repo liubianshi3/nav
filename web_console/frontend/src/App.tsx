@@ -270,6 +270,9 @@ export default function App() {
   const [lastManualControlMessage, setLastManualControlMessage] = useState<string | null>(null);
   const [gaitControlBusy, setGaitControlBusy] = useState(false);
   const [lastGaitControlMessage, setLastGaitControlMessage] = useState<string | null>(null);
+  const [initialPoseBusy, setInitialPoseBusy] = useState(false);
+  const [lastInitialPoseMessage, setLastInitialPoseMessage] = useState<string | null>(null);
+  const [lastInitialPoseError, setLastInitialPoseError] = useState<string | null>(null);
   const [obstacles, setObstacles] = useState<VirtualObstacleZone[]>([]);
   const [obstacleBusy, setObstacleBusy] = useState(false);
   const [obstacleLabel, setObstacleLabel] = useState("");
@@ -704,17 +707,32 @@ export default function App() {
 
   const handleSetInitialPose = async () => {
     if (!selectedGoal) {
-      setLastError("请先在地图上点击选点");
+      const message = "请先在地图上点击选点";
+      setLastInitialPoseMessage(null);
+      setLastInitialPoseError(message);
+      setLastError(message);
       return;
     }
+    setInitialPoseBusy(true);
+    setLastInitialPoseMessage("正在设置初始位姿，等待定位确认...");
+    setLastInitialPoseError(null);
+    setLastSuccess(null);
+    setLastError(null);
     try {
       const result = await sendInitialPose({ pose: selectedGoal, map_id: selectedMapId || null });
       setSelectedGoal(result.pose);
+      setLastInitialPoseMessage(result.message);
+      setLastInitialPoseError(null);
       setLastSuccess(result.message);
       setLastError(null);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "设置初始位姿失败";
+      setLastInitialPoseMessage(null);
+      setLastInitialPoseError(message);
       setLastSuccess(null);
-      setLastError(error instanceof Error ? error.message : "设置初始位姿失败");
+      setLastError(message);
+    } finally {
+      setInitialPoseBusy(false);
     }
   };
 
@@ -1136,6 +1154,9 @@ export default function App() {
               selectedGoal={selectedGoal}
               canSendGoal={canSendGoal}
               canSetInitialPose={canSetInitialPose}
+              initialPoseBusy={initialPoseBusy}
+              initialPoseMessage={lastInitialPoseMessage}
+              initialPoseError={lastInitialPoseError}
               sendGoalReason={sendGoalReason}
               setInitialPoseReason={setInitialPoseReason}
               onSetInitialPose={handleSetInitialPose}

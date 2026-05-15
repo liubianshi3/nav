@@ -21,6 +21,9 @@ export interface ControlSidebarProps {
   selectedGoal: NavigationGoal | null;
   canSendGoal: boolean;
   canSetInitialPose: boolean;
+  initialPoseBusy: boolean;
+  initialPoseMessage: string | null;
+  initialPoseError: string | null;
   startMappingReason: string | null;
   startNavigationReason: string | null;
   saveMapReason: string | null;
@@ -72,6 +75,9 @@ export function ControlSidebar(props: ControlSidebarProps) {
         selectedGoal={props.selectedGoal}
         canSendGoal={props.canSendGoal}
         canSetInitialPose={props.canSetInitialPose}
+        initialPoseBusy={props.initialPoseBusy}
+        initialPoseMessage={props.initialPoseMessage}
+        initialPoseError={props.initialPoseError}
         sendGoalReason={props.sendGoalReason}
         setInitialPoseReason={props.setInitialPoseReason}
         onSetInitialPose={props.onSetInitialPose}
@@ -377,6 +383,9 @@ export function SelectedGoalSection({
   selectedGoal,
   canSendGoal,
   canSetInitialPose,
+  initialPoseBusy,
+  initialPoseMessage,
+  initialPoseError,
   sendGoalReason,
   setInitialPoseReason,
   onSetInitialPose,
@@ -387,12 +396,22 @@ export function SelectedGoalSection({
   | "selectedGoal"
   | "canSendGoal"
   | "canSetInitialPose"
+  | "initialPoseBusy"
+  | "initialPoseMessage"
+  | "initialPoseError"
   | "sendGoalReason"
   | "setInitialPoseReason"
   | "onSetInitialPose"
   | "onSendGoal"
   | "onCancelGoal"
 >) {
+  const initialPoseFeedback = initialPoseError ?? initialPoseMessage ?? setInitialPoseReason;
+  const initialPoseFeedbackClass = initialPoseError
+    ? "notice notice-error initial-pose-feedback"
+    : initialPoseMessage
+      ? `notice ${initialPoseBusy ? "" : "notice-success"} initial-pose-feedback`
+      : "panel-message initial-pose-feedback";
+
   return (
     <section className="panel">
       <h2>当前选点</h2>
@@ -400,8 +419,8 @@ export function SelectedGoalSection({
       <StatusMini label="y" value={formatNumber(selectedGoal?.y, 2)} />
       <StatusMini label="yaw" value={formatNumber(selectedGoal?.yaw, 2)} />
       <div className="button-group">
-        <button className="secondary-button" disabled={!selectedGoal || !canSetInitialPose} onClick={onSetInitialPose}>
-          设置初始位姿
+        <button className="secondary-button" disabled={initialPoseBusy || !selectedGoal || !canSetInitialPose} onClick={onSetInitialPose}>
+          {initialPoseBusy ? "设置中..." : "设置初始位姿"}
         </button>
         <button className="primary-button" disabled={!selectedGoal || !canSendGoal} onClick={onSendGoal}>
           发送导航
@@ -410,7 +429,7 @@ export function SelectedGoalSection({
           停止导航
         </button>
       </div>
-      <p className="panel-message">{formatNullable(setInitialPoseReason, "当前模式允许设置初始位姿")}</p>
+      <p className={initialPoseFeedbackClass}>{formatNullable(initialPoseFeedback, "当前模式允许设置初始位姿")}</p>
       <p className="panel-message">{formatNullable(sendGoalReason, "当前模式允许发送导航目标")}</p>
     </section>
   );

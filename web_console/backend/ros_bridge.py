@@ -150,6 +150,10 @@ def _grid_value(map_snapshot: MapSnapshot, grid_x: int, grid_y: int) -> int:
     return int(map_snapshot.data[index])
 
 
+def _localization_pose_update_seen(current_stamp: str | None, previous_stamp: str | None) -> bool:
+    return current_stamp is not None and current_stamp != previous_stamp
+
+
 def _cell_has_clearance(
     map_snapshot: MapSnapshot,
     grid_x: int,
@@ -244,6 +248,7 @@ class RosBridgeNode(Node):
         self._last_primary_pointcloud_monotonic = 0.0
         self._last_fallback_pointcloud_monotonic = 0.0
         self._last_pose_monotonic = 0.0
+        self._last_localization_pose_stamp: str | None = None
         self._active_pose_goal: NavigationGoal | None = None
         self._active_pose_goal_started_at: float | None = None
         self._direct_nav_cancel = threading.Event()
@@ -842,6 +847,7 @@ class RosBridgeNode(Node):
             self.health.pose_received = True
             self.health.last_pose_update = robot_pose.stamp
             self._last_pose_monotonic = time.monotonic()
+            self._last_localization_pose_stamp = robot_pose.stamp
         self._publish("pose", dump_model(robot_pose))
         self._publish("health", self.get_health_dict())
 
@@ -852,6 +858,7 @@ class RosBridgeNode(Node):
             self.health.pose_received = True
             self.health.last_pose_update = robot_pose.stamp
             self._last_pose_monotonic = time.monotonic()
+            self._last_localization_pose_stamp = robot_pose.stamp
         self._publish("pose", dump_model(robot_pose))
         self._publish("health", self.get_health_dict())
 
@@ -1729,7 +1736,7 @@ class RosBridgeNode(Node):
             covariance[7] = float(self.config.navigation.initial_pose_covariance_xy)
             covariance[35] = float(self.config.navigation.initial_pose_covariance_yaw)
 
-            previous_pose_stamp = self.pose.stamp
+            previous_localization_pose_stamp = self._last_localization_pose_stamp
             deadline = time.monotonic() + self.config.navigation.initial_pose_wait_timeout_sec
             publish_interval = max(0.1, self.config.navigation.initial_pose_publish_interval_sec)
             attempts = 0
@@ -1747,7 +1754,7 @@ class RosBridgeNode(Node):
                     self.initial_pose_publisher.publish(msg)
                     attempts += 1
 
-                ready, localization_status = self._initial_pose_ready(previous_pose_stamp)
+                ready, localization_status = self._initial_pose_ready(previous_localization_pose_stamp)
                 if ready:
                     break
                 if time.monotonic() >= deadline:
@@ -1795,13 +1802,13 @@ class RosBridgeNode(Node):
         msg.stamp = self.get_clock().now().to_msg()
         self.light_command_publisher.publish(msg)
 
-    def _initial_pose_ready(self, previous_pose_stamp: str | None) -> tuple[bool, TextStatus]:
+    def _initial_pose_ready(self, previous_localization_pose_stamp: str | None) -> tuple[bool, TextStatus]:
         with self._lock:
-            pose = deep_copy_model(self.pose)
+            localization_pose_stamp = self._last_localization_pose_stamp
             localization_status = deep_copy_model(self.status.localization_status)
             localization_ok = bool(self.status.localization_ok)
 
-        pose_updated = pose.available and pose.stamp is not None and pose.stamp != previous_pose_stamp
+        pose_updated = _localization_pose_update_seen(localization_pose_stamp, previous_localization_pose_stamp)
         ready = (localization_ok or localization_status.ready is True) and pose_updated
         return ready, localization_status
 

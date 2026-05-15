@@ -82,7 +82,7 @@ def test_zbe_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
     assert config.ros.pointcloud_topic == "/jt128/front/points"
     assert config.ros.pointcloud_fallback_topic == "/a2/map/pointcloud_3d"
-    assert config.ros.odom_topic == "/jt128/dlio/odom"
+    assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
     assert config.manual_control.enabled is True
@@ -143,6 +143,26 @@ def test_gait_control_contract_publishes_unitree_sport_requests():
     assert "sendGaitControlCommand" in api_source
     assert "GaitControlSection" in controls_source
     assert "onGaitControlCommand" in app_source
+
+
+def test_initial_pose_button_renders_inline_feedback_in_navigation_drawer():
+    root = Path(__file__).resolve().parents[2]
+    app_source = (root / "frontend/src/App.tsx").read_text()
+    controls_source = (root / "frontend/src/components/ControlSidebar.tsx").read_text()
+
+    assert "initialPoseBusy" in app_source
+    assert "lastInitialPoseMessage" in app_source
+    assert "lastInitialPoseError" in app_source
+    assert "正在设置初始位姿" in app_source
+    assert "initialPoseBusy={initialPoseBusy}" in app_source
+    assert "initialPoseMessage={lastInitialPoseMessage}" in app_source
+    assert "initialPoseError={lastInitialPoseError}" in app_source
+
+    assert "initialPoseBusy" in controls_source
+    assert "initialPoseMessage" in controls_source
+    assert "initialPoseError" in controls_source
+    assert "initial-pose-feedback" in controls_source
+    assert "disabled={initialPoseBusy || !selectedGoal || !canSetInitialPose}" in controls_source
 
 
 def test_direct_navigation_command_turns_then_drives_to_goal():
@@ -297,13 +317,32 @@ def test_dlio_mapping_launch_uses_si_imu_converter():
     assert "start_imu_si_converter" in launch
 
 
-def test_web_bridge_falls_back_to_dlio_odom_pose_when_relocalization_missing():
+def test_web_bridge_falls_back_to_local_odom_pose_when_relocalization_missing():
     root = Path(__file__).resolve().parents[3]
     bridge = (root / "web_console/backend/ros_bridge.py").read_text(encoding="utf-8")
 
     assert "def _should_use_odom_pose_fallback" in bridge
     assert "def _pose_from_odom" in bridge
     assert "source=self.config.ros.odom_topic" in bridge
+
+
+def test_initial_pose_readiness_waits_for_localization_pose_not_odom_fallback():
+    root = Path(__file__).resolve().parents[3]
+    bridge = (root / "web_console/backend/ros_bridge.py").read_text(encoding="utf-8")
+
+    assert "_last_localization_pose_stamp" in bridge
+    assert "_localization_pose_update_seen" in bridge
+    assert "_initial_pose_ready(previous_localization_pose_stamp" in bridge
+
+
+def test_jt128_navigation_uses_relaxed_ndt_correction_limits_for_real_maps():
+    root = Path(__file__).resolve().parents[3]
+    launch = (root / "src/a2_bringup/launch/jt128_3d_navigation.launch.py").read_text(encoding="utf-8")
+
+    assert "ndt_max_map_to_odom_translation_step" in launch
+    assert "default_value=\"5.0\"" in launch
+    assert "max_map_to_odom_translation_step" in launch
+    assert "max_map_to_odom_rotation_step_deg" in launch
 
 
 def test_stack_process_patterns_include_3d_ndt_navigation_nodes():

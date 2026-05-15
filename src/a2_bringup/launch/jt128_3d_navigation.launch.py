@@ -115,6 +115,10 @@ def generate_launch_description():
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
                                   description="Path to 2D projected map YAML for Nav2 3D mode"),
+            DeclareLaunchArgument("ndt_max_map_to_odom_translation_step", default_value="5.0",
+                                  description="Maximum accepted NDT map->odom correction step in meters for real A2 startup and map alignment"),
+            DeclareLaunchArgument("ndt_max_map_to_odom_rotation_step_deg", default_value="90.0",
+                                  description="Maximum accepted NDT map->odom correction step in degrees for real A2 startup and map alignment"),
             OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
@@ -205,6 +209,8 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    "max_map_to_odom_translation_step": LaunchConfiguration("ndt_max_map_to_odom_translation_step"),
+                    "max_map_to_odom_rotation_step_deg": LaunchConfiguration("ndt_max_map_to_odom_rotation_step_deg"),
                 }.items(),
             ),
             _pointcloud_guard_action(),
