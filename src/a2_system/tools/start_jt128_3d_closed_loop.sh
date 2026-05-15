@@ -10,6 +10,8 @@ SDK_IFACE="${A2_SDK_INTERFACE:-eth0}"
 CONTROL_IFACE="${A2_CONTROL_INTERFACE:-$SDK_IFACE}"
 ENABLE_MOTION=false
 LIVE_MOTION=false
+LOCALIZATION_MODE=ndt
+COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
 STOP_EXISTING=1
 RUN_PREFLIGHT=1
 RUN_ID=""
@@ -30,7 +32,7 @@ Usage:
   $(basename "$0") [--mode standby] [--lidar-iface net1]
   $(basename "$0") --mode auto [--lidar-iface net1] [--sdk-iface eth0]
   $(basename "$0") --mode mapping [--lidar-iface net1]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--enable-motion] [--live-motion]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-motion] [--live-motion]
 
 Default behavior:
   Starts the Web backend directly and leaves Web stack state as "stopped".
@@ -45,6 +47,7 @@ Auto behavior:
 Safety:
   --mode navigation defaults to dry-run.
   Physical /cmd_vel output requires both --enable-motion and --live-motion.
+  live-validation collision profile is only for supervised open-space tests.
 EOF
 }
 
@@ -89,6 +92,14 @@ while [[ $# -gt 0 ]]; do
       ENABLE_MOTION=true
       shift
       ;;
+    --localization-mode)
+      LOCALIZATION_MODE="$2"
+      shift 2
+      ;;
+    --collision-profile)
+      COLLISION_MONITOR_PROFILE="$2"
+      shift 2
+      ;;
     --live-motion)
       LIVE_MOTION=true
       ENABLE_MOTION=true
@@ -117,6 +128,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$MODE" == "standby" || "$MODE" == "auto" || "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be standby, auto, mapping, or navigation"
+[[ "$LOCALIZATION_MODE" == "ndt" || "$LOCALIZATION_MODE" == "odom_only" ]] || die "localization mode must be ndt or odom_only"
+[[ "$COLLISION_MONITOR_PROFILE" == "strict" || "$COLLISION_MONITOR_PROFILE" == "live-validation" ]] || die "collision profile must be strict or live-validation"
 if [[ "$MODE" == "navigation" && -z "$MAP_ID" ]]; then
   die "--map-id is required for navigation mode"
 fi
@@ -318,7 +331,13 @@ start_stack_mode() {
   [[ -x "$STACK_SCRIPT" ]] || die "missing stack script: $STACK_SCRIPT"
 
   if [[ "$MODE" == "navigation" ]]; then
-    args+=("--map-id" "$MAP_ID" "--sdk-iface" "$SDK_IFACE" "--control-iface" "$CONTROL_IFACE")
+    args+=(
+      "--map-id" "$MAP_ID"
+      "--sdk-iface" "$SDK_IFACE"
+      "--control-iface" "$CONTROL_IFACE"
+      "--localization-mode" "$LOCALIZATION_MODE"
+      "--collision-profile" "$COLLISION_MONITOR_PROFILE"
+    )
     if [[ "$ENABLE_MOTION" == "true" ]]; then
       args+=("--enable-motion")
     fi

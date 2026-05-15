@@ -64,7 +64,7 @@ controller_server:
       min_vel_y: -0.12
       max_vel_x: 0.30
       max_vel_y: 0.15
-      max_vel_theta: 0.60
+      max_vel_theta: 0.50
       min_speed_xy: 0.0
       max_speed_xy: 0.30
       min_speed_theta: 0.0
@@ -114,7 +114,7 @@ behavior_server:
     robot_base_frame: base_link
     transform_tolerance: 0.5
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.55
+    max_rotational_vel: 0.50
     min_rotational_vel: 0.10
     rotational_acc_lim: 1.2
 
@@ -128,7 +128,8 @@ bt_navigator:
     default_nav_to_pose_bt_xml: "/tmp/a2_navigate_3d.xml"
     default_nav_through_poses_bt_xml: "/tmp/a2_navigate_through_poses_3d.xml"
     bt_loop_duration: 10
-    default_server_timeout: 20
+    # Nav2 interprets this value in milliseconds; 20ms can abort before action servers answer.
+    default_server_timeout: 5000
     wait_for_service_timeout: 1000
     plugin_lib_names:
       - nav2_compute_path_to_pose_action_bt_node
@@ -225,8 +226,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.30, 0.15, 0.60]
-    min_velocity: [0.0, -0.15, -0.60]
+    max_velocity: [0.30, 0.15, 0.50]
+    min_velocity: [0.0, -0.15, -0.50]
     max_accel: [0.8, 0.5, 1.2]
     max_decel: [-1.0, -0.6, -1.6]
     odom_topic: /odometry/local
@@ -285,6 +286,8 @@ local_costmap:
           obstacle_max_range: 8.0
           raytrace_max_range: 10.0
           raytrace_min_range: 0.0
+          # TODO(nav-hardening): reduce toward 0.25-0.35m after a body/leg self-filter
+          # is active; keeping 0.85m for this P0/P1 patch avoids reintroducing self hits.
           obstacle_min_range: 0.85
         traversability_cloud:
           topic: /a2/traversability/obstacle_points
@@ -294,6 +297,8 @@ local_costmap:
           marking: true
           clearing: false
           obstacle_max_range: 6.0
+          # TODO(nav-hardening): reduce toward 0.25-0.35m after a body/leg self-filter
+          # is active; keeping 0.85m for this P0/P1 patch avoids reintroducing self hits.
           obstacle_min_range: 0.85
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
