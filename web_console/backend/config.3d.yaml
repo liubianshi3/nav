@@ -1,7 +1,3 @@
-grpc:
-  enabled: true
-  host: 0.0.0.0
-  port: 50051
 
 ros:
   map_topic: /map
@@ -24,14 +20,9 @@ navigation:
   require_localization_ready: true
   require_map_for_goal: true
 
-health:
-  pose_stale_sec: 2.0
-  battery_stale_sec: 5.0
-  health_broadcast_hz: 1.0
-
 stack:
-  workspace: /home/unitree/a2_system_ws
+  workspace: /opt/a2_system_ws
   network_interface: net1
-  map_root: /home/unitree/a2_system_ws/runtime/maps
-  start_script: /home/unitree/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
-  stop_script: /home/unitree/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh
+  map_root: /opt/a2_system_ws/runtime/maps
+  start_script: /opt/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
+  stop_script: /opt/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh

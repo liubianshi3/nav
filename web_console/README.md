@@ -34,8 +34,8 @@ web_console/
 
 ## 功能范围
 
-- 显示 `/map` 对应的 2D OccupancyGrid
-- 显示 `/amcl_pose` 机器人位置和朝向
+- 显示 `/map` 对应的投影 2D OccupancyGrid (projected from 3D PCD)
+- 显示 `/a2/relocalization/pose` 机器人位置和朝向 (3D NDT relocalization)
 - 在地图上点击设置目标点，调用 `/navigate_to_pose`
 - 一键取消当前导航任务
 - 显示 `/a2/real/report`、`/a2/lidar/status`、`/a2/localization_ok`、`/a2/sdk/status`、`/odom` 等状态
@@ -57,8 +57,8 @@ web_console/
 后端直接订阅这些接口：
 
 - `/map`
-- `/mid360/points`
-- `/amcl_pose`
+- `/jt128/front/points`
+- `/a2/relocalization/pose`
 - `/odom`
 - `/tf`
 - `/a2/real/report`
@@ -252,7 +252,7 @@ http://<机器人IP>:8080
 ### 2. 页面显示定位丢失，不能发导航
 
 - 检查 `/a2/localization_ok`
-- 检查 `/amcl_pose`
+- 检查 `/a2/relocalization/pose` (3D NDT)
 - 检查 `/a2/localization/status`
 
 ### 3. 点击发送导航报“导航服务不可用”

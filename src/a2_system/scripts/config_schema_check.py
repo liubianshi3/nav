@@ -149,7 +149,7 @@ def audit_localization(result: AuditResult, config_dir: Path) -> None:
             "pose_transient_local",
         ],
     )
-    result.require(params.get("input_pose_topic") == "/amcl_pose", "localization_gate input must be /amcl_pose in Nav2 AMCL mode")
+    result.require(params.get("input_pose_topic") == "/a2/relocalization/pose", "localization_gate input must be /a2/relocalization/pose (3D NDT)")
     result.require(
         params.get("input_pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
         "localization_gate input_pose_msg_type must be geometry_msgs/msg/PoseWithCovarianceStamped",
@@ -199,9 +199,11 @@ def audit_real_mapping_stack(result: AuditResult, config_dir: Path) -> None:
         mapping_profile in {"front_lidar_pointcloud_3d", "slam_toolbox", "native_global_map", "projected_occupancy"},
         "slam.yaml mapping_stack_profile must be a known 3D-first or legacy fallback profile",
     )
+    # 3D-first: mapping_stack_profile defaults to front_lidar_pointcloud_3d.
+    # Legacy "slam_toolbox" is still accepted as fallback but no longer the primary default.
     result.require(
-        mapping_profile == "slam_toolbox",
-        "slam.yaml must default mapping_stack_profile to slam_toolbox for Nav2-first navigation",
+        mapping_profile == "front_lidar_pointcloud_3d",
+        "slam.yaml must default mapping_stack_profile to front_lidar_pointcloud_3d for 3D-first navigation",
     )
 
     toolbox_cfg = load_yaml_unique(config_dir / "slam_toolbox_mapping.yaml")
@@ -222,6 +224,7 @@ def audit_real_mapping_stack(result: AuditResult, config_dir: Path) -> None:
             "do_loop_closing",
         ],
     )
+    # Legacy slam_toolbox parameter checks — kept for config integrity when 2D fallback is used
     result.require(params.get("scan_topic") == "/scan", "slam_toolbox_mapping scan_topic must be /scan")
     result.require(params.get("map_frame") == "map", "slam_toolbox_mapping map_frame must be map")
     result.require(params.get("odom_frame") == "odom", "slam_toolbox_mapping odom_frame must be odom")

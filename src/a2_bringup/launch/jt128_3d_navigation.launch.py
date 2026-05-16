@@ -126,6 +126,11 @@ def generate_launch_description():
             DeclareLaunchArgument("sdk_interface", default_value="eth0"),
             DeclareLaunchArgument("control_interface", default_value="eth0"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
+            DeclareLaunchArgument(
+                "ndt_odom_topic",
+                default_value="/jt128/dlio/odom",
+                description="Odometry topic used by ndt_adapter for NDT initial guesses.",
+            ),
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
@@ -243,6 +248,7 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    "odom_topic": LaunchConfiguration("ndt_odom_topic"),
                 }.items(),
                 condition=IfCondition(is_ndt_localization),
             ),

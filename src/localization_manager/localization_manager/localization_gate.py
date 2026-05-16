@@ -48,7 +48,7 @@ class LocalizationGate(Node):
     def __init__(self):
         super().__init__("localization_gate")
         self.runtime_mode = self.declare_parameter("runtime_mode", "real").value
-        pose_topic = self.declare_parameter("input_pose_topic", "/amcl_pose").value
+        pose_topic = self.declare_parameter("input_pose_topic", "/a2/relocalization/pose").value  # legacy /amcl_pose → 3D NDT
         self.input_pose_msg_type = self.declare_parameter(
             "input_pose_msg_type", "geometry_msgs/msg/PoseWithCovarianceStamped"
         ).value

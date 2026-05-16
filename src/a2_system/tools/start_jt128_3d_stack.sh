@@ -11,10 +11,7 @@ START_WEB=1
 ENABLE_MOTION=false
 DRY_RUN=true
 ENABLE_NAV2_3D=true
-LOCALIZATION_MODE=ndt
 NAV2_3D_MAP=""
-COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
-COLLISION_MONITOR_CONFIG=""
 START_ROBOT_STATE=true
 START_SAFETY=true
 LOG_DIR="${WORKSPACE}/runtime/logs"
@@ -24,6 +21,7 @@ WEB_URL="${A2_WEB_URL:-http://127.0.0.1:8080}"
 WEB_BACKEND_PYTHON="${WORKSPACE}/web_console/.venv/bin/python"
 WEB_BACKEND_CONFIG="${WORKSPACE}/web_console/backend/config.3d.yaml"
 WEB_FALLBACK_LOG="${LOG_DIR}/web_console_fallback.log"
+FAST_DDS_TRANSPORTS="${A2_FASTDDS_BUILTIN_TRANSPORTS:-${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}}"
 
 usage() {
   cat <<EOF
@@ -48,8 +46,7 @@ Starts the 3D-first JT128 stack:
 Safety defaults:
   - --enable-motion starts a2_control_bridge.
   - without --enable-motion, navigation remains a dry-run/control-disabled stack.
-  - --collision-profile live-validation is only for supervised open-space
-    tests while near-field self filtering is being calibrated.
+
 EOF
 }
 
@@ -105,10 +102,7 @@ while [[ $# -gt 0 ]]; do
       ENABLE_NAV2_3D=true
       shift
       ;;
-    --localization-mode)
-      LOCALIZATION_MODE="$2"
-      shift 2
-      ;;
+
     --no-nav2-3d)
       ENABLE_NAV2_3D=false
       shift
@@ -117,14 +111,7 @@ while [[ $# -gt 0 ]]; do
       NAV2_3D_MAP="$2"
       shift 2
       ;;
-    --collision-profile)
-      COLLISION_MONITOR_PROFILE="$2"
-      shift 2
-      ;;
-    --collision-monitor-config)
-      COLLISION_MONITOR_CONFIG="$2"
-      shift 2
-      ;;
+
     --no-robot-state)
       START_ROBOT_STATE=false
       shift
@@ -160,22 +147,7 @@ if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP
     die "Nav2 3D requires a projected map YAML. Missing: ${candidate_map}. Use --nav2-map or --no-nav2-3d."
   fi
 fi
-if [[ "$MODE" == "navigation" && -z "$COLLISION_MONITOR_CONFIG" ]]; then
-  collision_config_name="collision_monitor.yaml"
-  if [[ "$COLLISION_MONITOR_PROFILE" == "live-validation" ]]; then
-    collision_config_name="collision_monitor_live_validation.yaml"
-    warn "Using validation collision monitor profile. Only use this in supervised open space."
-  fi
-  for candidate in \
-    "${WORKSPACE}/install/a2_system/share/a2_system/config/${collision_config_name}" \
-    "${WORKSPACE}/src/a2_system/config/${collision_config_name}"; do
-    if [[ -f "$candidate" ]]; then
-      COLLISION_MONITOR_CONFIG="$candidate"
-      break
-    fi
-  done
-  [[ -n "$COLLISION_MONITOR_CONFIG" ]] || die "collision monitor config not found: ${collision_config_name}"
-fi
+
 
 mkdir -p "$LOG_DIR"
 
@@ -186,6 +158,25 @@ source_ros() {
     source "${WORKSPACE}/install/setup.bash"
   fi
   set -u
+}
+
+configure_ros_transport() {
+  export FASTDDS_BUILTIN_TRANSPORTS="${FAST_DDS_TRANSPORTS}"
+  log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
+}
+
+require_a2_system_executable() {
+  local name="$1"
+  local install_path="${WORKSPACE}/install/a2_system/lib/a2_system/${name}"
+  local source_path="${WORKSPACE}/src/a2_system/scripts/${name}"
+  if [[ -x "$install_path" ]]; then
+    return 0
+  fi
+  if [[ -x "$source_path" ]]; then
+    warn "install executable missing for ${name}; launch will fall back to source path ${source_path}"
+    return 0
+  fi
+  die "required a2_system executable is unavailable: ${name} (checked ${install_path} and ${source_path})"
 }
 
 stop_navigation_components() {
@@ -262,7 +253,10 @@ start_web() {
 }
 
 source_ros
+configure_ros_transport
 command -v ros2 >/dev/null 2>&1 || die "ros2 not found after sourcing workspace"
+require_a2_system_executable "traversability_to_obstacle_cloud.py"
+require_a2_system_executable "octomap_mapping_node.py"
 
 log "Starting JT128 DLIO mapping base stack"
 DLIO_MAPPING_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/start_jt128_dlio_mapping.sh"
@@ -285,20 +279,19 @@ fi
 
 stop_navigation_components
 NAV_LOG="${LOG_DIR}/jt128_3d_navigation_$(date +%Y%m%d_%H%M%S).log"
-log "Starting JT128 3D navigation components map_id=${MAP_ID} localization_mode=${LOCALIZATION_MODE} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} enable_nav2_3d=${ENABLE_NAV2_3D} collision_profile=${COLLISION_MONITOR_PROFILE}"
+log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} enable_nav2_3d=${ENABLE_NAV2_3D}"
 setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
+  export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
   ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
     start_static_tf:=true \
     start_robot_state:=${START_ROBOT_STATE} \
     start_safety:=${START_SAFETY} \
-    localization_mode:='${LOCALIZATION_MODE}' \
     enable_nav2_3d:=${ENABLE_NAV2_3D} \
     nav2_3d_map:='${NAV2_3D_MAP}' \
-    collision_monitor_config:='${COLLISION_MONITOR_CONFIG}' \
     enable_motion:=${ENABLE_MOTION} \
     dry_run:=${DRY_RUN} \
     sdk_interface:='${SDK_IFACE}' \
@@ -316,11 +309,8 @@ sdk_interface: ${SDK_IFACE}
 control_interface: ${CONTROL_IFACE}
 enable_motion: ${ENABLE_MOTION}
 dry_run: ${DRY_RUN}
-localization_mode: ${LOCALIZATION_MODE}
 enable_nav2_3d: ${ENABLE_NAV2_3D}
 nav2_3d_map: ${NAV2_3D_MAP}
-collision_monitor_profile: ${COLLISION_MONITOR_PROFILE}
-collision_monitor_config: ${COLLISION_MONITOR_CONFIG}
 started_at: $(date --iso-8601=seconds)
 EOF
 

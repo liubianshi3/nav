@@ -67,6 +67,7 @@ install(PROGRAMS
   scripts/octomap_to_2d_grid.py
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
+  scripts/nav2_corridor_gate.py
   scripts/traversability_to_obstacle_cloud.py
   scripts/odometry_to_pose_covariance.py
   scripts/pcd_to_2d_map.py

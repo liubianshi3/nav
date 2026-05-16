@@ -76,6 +76,9 @@ class TraversabilityToObstacleCloud(Node):
         self._output_frame = str(
             self.declare_parameter("output_frame", "map").value
         )
+        self._treat_unknown_as_obstacle = bool(
+            self.declare_parameter("treat_unknown_as_obstacle", False).value
+        )
 
         self._last_grid: OccupancyGrid | None = None
 
@@ -110,13 +113,15 @@ class TraversabilityToObstacleCloud(Node):
 
         data = np.array(grid.data, dtype=np.int8).reshape((height, width))
 
-        # Cells that are obstacle (>= threshold) or unknown (-1)
+        # Cells that are obstacle (>= threshold). Unknown cells are only
+        # merged when treat_unknown_as_obstacle is explicitly enabled,
+        # keeping unmapped areas from permanently polluting obstacle_points.
         obstacle_mask = data >= self._obstacle_threshold
-        unknown_mask = data == -1
-
-        # For unknown cells at the rolling window edge, also add as obstacles
-        # (conservative: treat unmapped areas as blocked)
-        mask = obstacle_mask | unknown_mask
+        if self._treat_unknown_as_obstacle:
+            unknown_mask = data == -1
+            mask = obstacle_mask | unknown_mask
+        else:
+            mask = obstacle_mask
 
         ys, xs = np.where(mask)
         if len(xs) == 0:

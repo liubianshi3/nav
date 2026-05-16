@@ -211,7 +211,7 @@ export function MapManagementSection({
       {selectedMap ? (
         <div className="map-asset-card">
           <StatusMini label="representation" value={formatNullable(selectedMap.representation)} />
-          <StatusMini label="2D source" value={formatNullable(selectedMap.source_topic)} />
+          <StatusMini label="projected 2D source" value={formatNullable(selectedMap.source_topic)} />
           <StatusMini
             label="3D asset"
             value={

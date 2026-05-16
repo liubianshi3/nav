@@ -940,7 +940,7 @@ export default function App() {
   const sceneSubtitle =
     effectiveViewMode === "3d"
       ? "JT128 + DLIO 3D 主视图 / 双击点云选导航目标"
-      : "2D 栅格兼容视图 / 单击地图选初始位姿或目标";
+      : "投影规划地图 (projected 2D) / 单击地图选初始位姿或目标";
 
   const showMediaDockNow = showMediaDock;
 
@@ -970,7 +970,7 @@ export default function App() {
               onClick={() => setViewMode("2d")}
               disabled={!snapshot.map.loaded}
             >
-              2D 地图
+              投影2D
             </button>
             <button
               type="button"
@@ -1136,7 +1136,7 @@ export default function App() {
               <h2>可视化控制</h2>
               <div className="function-button-grid">
                 <button type="button" className="secondary-button" onClick={() => setViewMode("2d")} disabled={!snapshot.map.loaded}>
-                  切到 2D 视图
+                  切到投影 2D 视图
                 </button>
                 <button type="button" className="secondary-button" onClick={() => setViewMode("3d")} disabled={!has3DViewerData}>
                   切到 3D 视图
