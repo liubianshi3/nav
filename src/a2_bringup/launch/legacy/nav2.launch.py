@@ -1,3 +1,4 @@
+# LEGACY 2D FILE — moved to launch/legacy/. See legacy/README.md.
 import os
 import tempfile
 import yaml

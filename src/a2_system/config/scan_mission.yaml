@@ -6,7 +6,9 @@ auto_scan_mission:
     waypoints_file: ${HOME}/a2_system_ws/src/a2_system/config/scan_waypoints.example.yaml
     reports_root: ${HOME}/a2_system_ws/runtime/reports/scan_mission
     map_topic: /map
-    pose_topic: /amcl_pose
+    # 3D-first default: pcd_relocalizer_3d publishes pose on
+    # /a2/relocalization/pose. legacy AMCL launch overrides via parameters.
+    pose_topic: /a2/relocalization/pose
     pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
     odom_topic: /odom
     pointcloud_topic: /jt128/front/points

@@ -197,8 +197,11 @@ def _launch_setup(context, *args, **kwargs):
                 "real_camera_config": real_camera_config_path,
             }.items(),
         ),
+        # LEGACY 2D PATH: only launched when enable_nav2_bringup:=true.
+        # Default (enable_nav2_bringup:=false) keeps these out of the runtime.
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(f"{bringup_share}/launch/slam.launch.py"),
+            PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/slam.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -207,7 +210,8 @@ def _launch_setup(context, *args, **kwargs):
             }.items(),
         ),
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(f"{bringup_share}/launch/mapping.launch.py"),
+            PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/mapping.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -216,7 +220,8 @@ def _launch_setup(context, *args, **kwargs):
             }.items(),
         ),
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(f"{bringup_share}/launch/localization.launch.py"),
+            PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/localization.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -225,7 +230,8 @@ def _launch_setup(context, *args, **kwargs):
             }.items(),
         ),
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(f"{bringup_share}/launch/nav2.launch.py"),
+            PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/nav2.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -261,7 +267,8 @@ def generate_launch_description():
         DeclareLaunchArgument("network_interface", default_value=""),
         DeclareLaunchArgument("enable_nav2_bringup", default_value="false"),
         DeclareLaunchArgument("enable_control_bridge", default_value="false"),
-        DeclareLaunchArgument("real_localization_mode", default_value="amcl"),
+        # Legacy default "amcl" changed to "uslam_odom"; 3D-first path uses NDT /a2/relocalization/pose
+        DeclareLaunchArgument("real_localization_mode", default_value="uslam_odom"),
         DeclareLaunchArgument("map", default_value=""),
         OpaqueFunction(function=_launch_setup),
     ])

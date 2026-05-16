@@ -46,6 +46,7 @@ install(PROGRAMS
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py
   scripts/task_manager.py
+  scripts/nav2_corridor_gate.py
   scripts/traversability_to_obstacle_cloud.py
   scripts/odometry_to_pose_covariance.py
   scripts/pcd_to_2d_map.py
