@@ -41,7 +41,8 @@ START_STABILITY_POLLS = 3
 LOG_TAIL_LINE_LIMIT = 80
 LOG_HIGHLIGHT_LIMIT = 12
 LOG_TEXT_LIMIT = 1800
-NAV_LIFECYCLE_NODES = ("map_server", "amcl")
+# Legacy 2D AMCL removed from primary lifecycle nodes; 3D NDT adapter is not lifecycle-managed
+NAV_LIFECYCLE_NODES = ("map_server",)
 LOG_HIGHLIGHT_MARKERS = (
     "[error]",
     "traceback",
@@ -66,7 +67,7 @@ NAVIGATION_NODES: list[tuple[str, str, PatternSpec]] = [
     ("bringup", "bringup.launch.py", "bringup.launch.py"),
     ("sdk", "a2_sdk_bridge", "a2_sdk_bridge_node"),
     ("control", "a2_control_bridge", "a2_control_bridge_node"),
-    ("localization", "AMCL localization", "amcl"),
+    ("localization", "3D NDT localization", ("ndt_adapter", "localization_gate")),  # legacy AMCL removed
     ("goal_bridge", "goal bridge", "goal_bridge"),
     ("map_server", "map server", "map_server"),
     ("controller", "controller server", "controller_server"),
@@ -112,15 +113,16 @@ STACK_CLEANUP_PATTERNS = [
     "jt128_dlio_map",
     "dlio_odom_node",
     "dlio_map_node",
-    "pointcloud_to_laserscan",
-    "slam_toolbox",
+    # Legacy 2D nodes removed from primary validation:
+    # "pointcloud_to_laserscan",
+    # "slam_toolbox",
     "native_map_relay",
     "slam_orchestrator",
     "pcd_relocalizer_3d",
     "localization_gate",
     "exploration_manager",
     "manual_localization_publisher",
-    "amcl",
+    # "amcl",  # legacy 2D — removed from primary validation
     "goal_bridge",
     "pose_goal_controller_3d",
     "occupancy_mapper",
@@ -372,7 +374,7 @@ class StackController:
         slam_cfg = self._read_yaml(self.a2_system_config_dir / "slam.yaml")
         params = slam_cfg.get("slam_manager", {}).get("ros__parameters", {}) or {}
         profile = str(params.get("mapping_stack_profile", "") or "").strip()
-        return profile or "slam_toolbox"
+        return profile or "front_lidar_pointcloud_3d"  # legacy default "slam_toolbox" removed
 
     def navigation_representation(self) -> str:
         slam_cfg = self._read_yaml(self.a2_system_config_dir / "slam.yaml")
