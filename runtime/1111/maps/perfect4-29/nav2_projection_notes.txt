@@ -1,4 +1,0 @@
-Generated for Nav2 closed-loop validation on 2026-05-13.
-Source: pointcloud_map_3d.pcd
-Params: resolution=0.05, ground_threshold=0.50, min_obstacle_points=8, dilate=0
-Reason: default projection put occupied cells within ~0.06m of current NDT pose, causing SmacPlanner "Starting point in lethal space".
