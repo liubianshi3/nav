@@ -49,9 +49,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             python3-setuptools \
             python3-venv \
             python3-yaml \
+            libeigen3-dev \
+            libomp-dev \
             ros-humble-navigation2 \
             ros-humble-nav2-bringup \
             ros-humble-rmw-cyclonedds-cpp \
+            ros-humble-rosidl-default-generators \
             ros-humble-sensor-msgs-py \
             ros-humble-tf-transformations \
             ros-humble-robot-localization \
@@ -125,7 +128,7 @@ RUN --mount=type=cache,target=/root/.ccache,sharing=locked \
     source /opt/ros/humble/setup.bash \
     && export CCACHE_DIR=/root/.ccache \
     && OUR_PACKAGES=$(colcon list \
-        | grep -vE 'autoware_|fast_lio|livox_ros_driver2|direct_lidar_inertial_odometry' \
+        | grep -vE 'autoware_|fast_lio|livox_ros_driver2' \
         | awk '{print $1}' \
         | tr '\n' ' ') \
     && colcon build --event-handlers console_direct+ --packages-select ${OUR_PACKAGES} --cmake-args \
