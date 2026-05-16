@@ -26,7 +26,7 @@ class RosTopicConfig:
     pointcloud_preview_max_points: int = 20000
     manage_map_service: str = "/map_manager/manage_map"
     task_manager_service: str = "/a2/task_manager/command"
-    localization_pose_topic: str = "/amcl_pose"
+    localization_pose_topic: str = "/a2/relocalization/pose"  # legacy /amcl_pose → 3D NDT
     localization_pose_msg_type: str = "geometry_msgs/msg/PoseWithCovarianceStamped"
     odom_topic: str = "/odom"
     tf_topic: str = "/tf"

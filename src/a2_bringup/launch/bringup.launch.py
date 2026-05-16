@@ -197,10 +197,11 @@ def _launch_setup(context, *args, **kwargs):
                 "real_camera_config": real_camera_config_path,
             }.items(),
         ),
-        # LEGACY 2D PATH: slam.launch.py defaults to slam_toolbox / Fast-LIO.
-        # 3D-first projects should use start_jt128_3d_stack.sh or disable via enable_nav2_bringup:=false.
+        # LEGACY 2D PATH: only launched when enable_nav2_bringup:=true.
+        # Default (enable_nav2_bringup:=false) keeps these out of the runtime.
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/slam.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -210,6 +211,7 @@ def _launch_setup(context, *args, **kwargs):
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/mapping.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -219,6 +221,7 @@ def _launch_setup(context, *args, **kwargs):
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/localization.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,
@@ -228,6 +231,7 @@ def _launch_setup(context, *args, **kwargs):
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(f"{bringup_share}/launch/legacy/nav2.launch.py"),
+            condition=IfCondition(enable_nav2_bringup),
             launch_arguments={
                 "runtime_mode": runtime_mode,
                 "use_sim_time": use_sim_time_text,

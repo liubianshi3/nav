@@ -13,7 +13,7 @@ ros:
   pointcloud_primary_stale_sec: 2.0
   pointcloud_preview_max_points: 20000
   task_manager_service: /a2/task_manager/command
-  localization_pose_topic: /amcl_pose
+  localization_pose_topic: /a2/relocalization/pose  # legacy /amcl_pose → 3D NDT
   localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
   odom_topic: /odom
   tf_topic: /tf
