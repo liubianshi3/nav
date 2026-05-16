@@ -313,7 +313,9 @@ export interface BatterySnapshot {
   percentage: number | null;
   voltage: number | null;
   charging: boolean | null;
+  health: number | null;
   stamp: string | null;
+  stale: boolean;
 }
 
 export interface SystemHealth {

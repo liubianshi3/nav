@@ -38,6 +38,11 @@ ros:
 
 navigation:
   backend: nav2
+
+health:
+  pose_stale_sec: 2.0
+  battery_stale_sec: 5.0
+  health_broadcast_hz: 1.0
   action_name: /navigate_to_pose
   goal_topic: /goal_pose_
   goal_frame: map

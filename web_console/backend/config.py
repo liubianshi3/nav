@@ -100,6 +100,7 @@ class NavigationConfig:
 @dataclass
 class HealthConfig:
     pose_stale_sec: float = 2.0
+    battery_stale_sec: float = 5.0
     health_broadcast_hz: float = 1.0
 
 

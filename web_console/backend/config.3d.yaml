@@ -1,3 +1,8 @@
+grpc:
+  enabled: true
+  host: 0.0.0.0
+  port: 50051
+
 ros:
   map_topic: /map
   pointcloud_topic: /jt128/front/points
@@ -18,6 +23,11 @@ navigation:
   cancel_stop_topic: /cmd_vel
   require_localization_ready: true
   require_map_for_goal: true
+
+health:
+  pose_stale_sec: 2.0
+  battery_stale_sec: 5.0
+  health_broadcast_hz: 1.0
 
 stack:
   workspace: /home/unitree/a2_system_ws

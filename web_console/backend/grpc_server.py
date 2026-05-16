@@ -44,6 +44,10 @@ def _battery_percent(value: float | None) -> int:
     return int(max(0.0, min(100.0, value)))
 
 
+def _log_battery_missing(*, reason: str, extra: dict[str, Any]) -> None:
+    logger.warning("battery missing: reason=%s extra=%s", reason, extra)
+
+
 def _yaw_to_quat(yaw: float) -> tuple[float, float, float, float]:
     return 0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0)
 
@@ -724,12 +728,45 @@ class A2GrpcServices:
 
         async def GetBattery(self, request, context):
             node = await self.p._node_or_abort(context)
-            snapshot = node.build_snapshot(ros_thread_alive=bool(self.p.ros_runtime.thread and self.p.ros_runtime.thread.is_alive()))
+            device_id = (request.device_id or "").strip() or "a2"
+            ros_thread_alive = bool(self.p.ros_runtime.thread and self.p.ros_runtime.thread.is_alive())
+            snapshot = node.build_snapshot(ros_thread_alive=ros_thread_alive)
+            battery_stale = bool(getattr(snapshot.battery, "stale", False))
+            has_data = bool(snapshot.battery.available) and not battery_stale and snapshot.battery.percentage is not None
+            if not has_data:
+                reason = "unknown"
+                if not ros_thread_alive:
+                    reason = "ros_thread_dead"
+                elif not bool(snapshot.battery.available):
+                    reason = "battery_not_present"
+                elif battery_stale:
+                    reason = "battery_stale"
+                elif snapshot.battery.percentage is None:
+                    reason = "battery_percentage_missing"
+                _log_battery_missing(
+                    reason=reason,
+                    extra={
+                        "device_id": device_id,
+                        "ros_thread_alive": ros_thread_alive,
+                        "battery_available": bool(snapshot.battery.available),
+                        "battery_stale": battery_stale,
+                        "battery_percentage": snapshot.battery.percentage,
+                        "battery_voltage": snapshot.battery.voltage,
+                        "battery_charging": snapshot.battery.charging,
+                        "battery_stamp": snapshot.battery.stamp,
+                    },
+                )
+            health_code = snapshot.battery.health
+            health = self.p.robot_dog_pb2.BATTERY_HEALTH_UNSPECIFIED
+            if health_code == 1:
+                health = self.p.robot_dog_pb2.BATTERY_HEALTH_GOOD
+            elif health_code in {2, 3, 4, 5, 6, 7, 8}:
+                health = self.p.robot_dog_pb2.BATTERY_HEALTH_POOR
             return self.p.robot_dog_pb2.BatteryResponse(
-                percentage=_battery_percent(snapshot.battery.percentage),
-                is_charging=bool(snapshot.battery.charging),
-                estimated_minutes=0,
-                health=self.p.robot_dog_pb2.BATTERY_HEALTH_UNSPECIFIED,
+                percentage=_battery_percent(snapshot.battery.percentage) if has_data else -1,
+                is_charging=bool(snapshot.battery.charging) if has_data else False,
+                estimated_minutes=0 if has_data else -1,
+                health=health if has_data else self.p.robot_dog_pb2.BATTERY_HEALTH_UNSPECIFIED,
             )
 
         async def GetPose(self, request, context):

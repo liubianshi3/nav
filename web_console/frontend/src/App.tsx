@@ -148,7 +148,9 @@ function createEmptySnapshot(): DashboardSnapshot {
       percentage: null,
       voltage: null,
       charging: null,
+      health: null,
       stamp: null,
+      stale: true,
     },
     recovery: {
       active: false,

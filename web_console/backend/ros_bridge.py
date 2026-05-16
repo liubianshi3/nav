@@ -93,6 +93,19 @@ class RosBridgeError(RuntimeError):
     """Raised when the backend cannot execute a ROS-side command."""
 
 
+def _battery_percent_0_100(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        raw = float(value)
+    except Exception:
+        return None
+    if not math.isfinite(raw) or raw < 0.0:
+        return None
+    pct = raw * 100.0 if raw <= 1.0 else raw
+    return float(max(0.0, min(100.0, pct)))
+
+
 def _world_to_grid(map_snapshot: MapSnapshot, x: float, y: float) -> tuple[int, int] | None:
     if not map_snapshot.loaded or map_snapshot.resolution <= 0.0 or map_snapshot.width <= 0 or map_snapshot.height <= 0:
         return None
@@ -221,6 +234,8 @@ class RosBridgeNode(Node):
         self._last_primary_pointcloud_monotonic = 0.0
         self._last_fallback_pointcloud_monotonic = 0.0
         self._last_pose_monotonic = 0.0
+        self._last_battery_monotonic = 0.0
+        self._last_battery_warn_monotonic = 0.0
         self._active_pose_goal: NavigationGoal | None = None
         self._active_pose_goal_started_at: float | None = None
         self._native_slam_response_cv = threading.Condition()
@@ -342,7 +357,12 @@ class RosBridgeNode(Node):
             self.create_subscription(RobotState, ros.raw_state_topic, self._on_raw_state, 10)
         else:
             self.get_logger().warning("a2_interfaces.msg.RobotState is unavailable. /a2/raw_state will be skipped.")
-        self.create_subscription(BatteryState, ros.battery_topic, self._on_battery, 10)
+        battery_topics = [str(ros.battery_topic or "").strip()]
+        for fallback in ["/battery", "/a2/battery"]:
+            if fallback and fallback not in battery_topics:
+                battery_topics.append(fallback)
+        for topic in [t for t in battery_topics if t]:
+            self.create_subscription(BatteryState, topic, self._on_battery, 10)
         self.create_subscription(String, ros.scan_mission_status_topic, self._on_scan_mission_status, 10)
 
         if self.config.camera.enabled:
@@ -953,16 +973,46 @@ class RosBridgeNode(Node):
         self._publish("status", dump_model(self.status))
 
     def _on_battery(self, msg: BatteryState) -> None:
+        stamp = now_iso()
+        try:
+            stamp_sec = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
+            stamp = datetime.fromtimestamp(stamp_sec).isoformat()
+        except Exception:
+            stamp = now_iso()
+
+        available = bool(getattr(msg, "present", False))
+        pct: float | None = None
+        voltage: float | None = None
+        charging: bool | None = None
+        health: int | None = None
+        if available:
+            pct = _battery_percent_0_100(getattr(msg, "percentage", None))
+            raw_voltage = float(getattr(msg, "voltage", float("nan")))
+            if math.isfinite(raw_voltage) and raw_voltage > 0.0:
+                voltage = raw_voltage
+            try:
+                charging = msg.power_supply_status == BatteryState.POWER_SUPPLY_STATUS_CHARGING
+            except Exception:
+                charging = None
+        try:
+            health = int(getattr(msg, "power_supply_health", 0))
+        except Exception:
+            health = None
         with self._lock:
-            self.battery.available = msg.present
-            self.battery.percentage = float(msg.percentage) if msg.percentage >= 0.0 else None
-            self.battery.voltage = float(msg.voltage) if msg.voltage > 0.0 else None
-            self.battery.charging = (
-                msg.power_supply_status == BatteryState.POWER_SUPPLY_STATUS_CHARGING
-            )
-            self.battery.stamp = datetime.fromtimestamp(
-                msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-            ).isoformat()
+            self.battery.available = available
+            self.battery.percentage = pct
+            self.battery.voltage = voltage
+            self.battery.charging = charging
+            self.battery.health = health
+            self.battery.stamp = stamp
+            self.battery.stale = False
+            if available and pct is not None:
+                self._last_battery_monotonic = time.monotonic()
+            elif time.monotonic() - self._last_battery_warn_monotonic > 5.0:
+                self._last_battery_warn_monotonic = time.monotonic()
+                self.get_logger().warning(
+                    f"battery update incomplete: available={str(available).lower()} percentage={str(pct)} voltage={str(voltage)} charging={str(charging)} raw_percentage={str(getattr(msg, 'percentage', None))} raw_voltage={str(getattr(msg, 'voltage', None))} status={str(int(getattr(msg, 'power_supply_status', 0) or 0))} topic={str(self.config.ros.battery_topic)}"
+                )
         self._publish("battery", dump_model(self.battery))
 
     def _on_scan_mission_status(self, msg: String) -> None:
@@ -1159,6 +1209,7 @@ class RosBridgeNode(Node):
             status = deep_copy_model(self.status)
             navigation = deep_copy_model(self.navigation)
             health = deep_copy_model(self.health)
+            battery = deep_copy_model(self.battery)
             if ros_thread_alive is not None:
                 health.ros_thread_alive = ros_thread_alive
             if not health.ros_thread_alive:
@@ -1169,9 +1220,13 @@ class RosBridgeNode(Node):
                 status.system_ready = False
                 status.localization_ok = False
                 pose.stale = True
+                battery.stale = True
             elif pose.stamp is not None:
                 pose_age = time.monotonic() - self._last_pose_monotonic if self._last_pose_monotonic > 0.0 else math.inf
                 pose.stale = pose_age > self.config.health.pose_stale_sec
+            if health.ros_thread_alive:
+                battery_age = time.monotonic() - self._last_battery_monotonic if self._last_battery_monotonic > 0.0 else math.inf
+                battery.stale = battery_age > float(self.config.health.battery_stale_sec)
             return DashboardSnapshot(
                 map=deep_copy_model(self.map_snapshot),
                 pointcloud=deep_copy_model(self.pointcloud_snapshot),
@@ -1180,7 +1235,7 @@ class RosBridgeNode(Node):
                 navigation=navigation,
                 camera=deep_copy_model(self.camera),
                 health=health,
-                battery=deep_copy_model(self.battery),
+                battery=battery,
                 recovery=deep_copy_model(self.recovery_status),
             )
 

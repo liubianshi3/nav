@@ -343,7 +343,9 @@ class BatterySnapshot(BaseModel):
     percentage: float | None = None
     voltage: float | None = None
     charging: bool | None = None
+    health: int | None = None
     stamp: str | None = None
+    stale: bool = True
 
 
 class DashboardSnapshot(BaseModel):

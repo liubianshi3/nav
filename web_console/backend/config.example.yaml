@@ -76,6 +76,7 @@ navigation:
 
 health:
   pose_stale_sec: 2.0
+  battery_stale_sec: 5.0
   health_broadcast_hz: 1.0
 
 native_slam:

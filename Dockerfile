@@ -18,7 +18,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV A2_WORKSPACE=/opt/a2_system_ws
 ENV UNITREE_SDK2_ROOT=/opt/unitree_robotics
 ENV CONFIG_PATH=/opt/a2_system_ws/web_console/backend/config.docker.yaml
-ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib:/opt/unitree_robotics/lib/x86_64
+ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib
+ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 ARG UBUNTU_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/ubuntu
 ARG UBUNTU_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/ubuntu
@@ -80,6 +81,31 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Use the bundled Unitree SDK so the image can build on hosts without buildx.
 COPY docker/unitree_sdk/ /opt/unitree_robotics/
 RUN test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake
+RUN set -euo pipefail; \
+    fix_so_link() { \
+      dir="$1"; \
+      soname="$2"; \
+      realname="$3"; \
+      realpath="${dir}/${realname}"; \
+      sonamepath="${dir}/${soname}"; \
+      if [ -f "${realpath}" ] && [ ! -e "${sonamepath}" ]; then \
+        ln -s "${realname}" "${sonamepath}"; \
+      fi; \
+      if [ -e "${sonamepath}" ] && [ ! -L "${sonamepath}" ]; then \
+        size="$(stat -c%s "${sonamepath}" 2>/dev/null || echo 0)"; \
+        if [ "${size}" -lt 4096 ]; then \
+          content="$(tr -d '\r\n\0' < "${sonamepath}" | head -c 128 || true)"; \
+          if [ "${content}" = "${realname}" ] && [ -f "${realpath}" ]; then \
+            rm -f "${sonamepath}"; \
+            ln -s "${realname}" "${sonamepath}"; \
+          fi; \
+        fi; \
+      fi; \
+    }; \
+    for d in /opt/unitree_robotics/lib /opt/unitree_robotics/lib/x86_64; do \
+      fix_so_link "${d}" libddscxx.so.0 libddscxx.so; \
+      fix_so_link "${d}" libddsc.so.0 libddsc.so; \
+    done
 COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
 
 WORKDIR /opt/a2_system_ws
@@ -118,6 +144,13 @@ RUN sed -i 's/\r$//' /usr/local/bin/a2-web-entrypoint \
     && chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
     && mkdir -p runtime/maps runtime/logs
+RUN printf '%s\n' \
+    'source /opt/ros/humble/setup.bash' \
+    'source /opt/a2_system_ws/install/setup.bash' \
+    'export LD_LIBRARY_PATH=/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}' \
+    'export RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}' \
+    > /etc/profile.d/a2_system_ws.sh \
+    && chmod +x /etc/profile.d/a2_system_ws.sh
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/a2-web-entrypoint"]

@@ -1,5 +1,9 @@
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -7,11 +11,14 @@
 #include "a2_system/network_utils.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/battery_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 
 #if A2_ENABLE_UNITREE_SDK
+#include <unitree/idl/go2/LowState_.hpp>
 #include <unitree/idl/go2/SportModeState_.hpp>
+#include <unitree/idl/hg/BmsState_.hpp>
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
 #endif
@@ -32,8 +39,20 @@ public:
       "interface_candidates", std::vector<std::string>{});
     state_topic_ = declare_parameter<std::string>("state_topic", "/a2/raw_state");
     sport_state_topic_ = declare_parameter<std::string>("sport_state_topic", "rt/lf/sportmodestate");
+    low_state_topic_ = declare_parameter<std::string>("low_state_topic", "rt/lf/lowstate");
+    low_state_topic_candidates_ = declare_parameter<std::vector<std::string>>(
+      "low_state_topic_candidates", std::vector<std::string>{});
+    bms_state_topic_ = declare_parameter<std::string>("bms_state_topic", "lf/bmsstate");
+    bms_state_topic_candidates_ = declare_parameter<std::vector<std::string>>(
+      "bms_state_topic_candidates", std::vector<std::string>{});
+    battery_topic_ = declare_parameter<std::string>("battery_topic", "/a2/battery");
     timer_hz_ = declare_parameter<double>("timer_hz", 50.0);
     stale_timeout_sec_ = declare_parameter<double>("stale_timeout_sec", 0.5);
+    battery_publish_hz_ = std::max(0.2, declare_parameter<double>("battery_publish_hz", 1.0));
+    battery_stale_timeout_sec_ = std::max(0.5, declare_parameter<double>("battery_stale_timeout_sec", 5.0));
+    mock_battery_percent_ = std::max(
+      0.0,
+      std::min(100.0, declare_parameter<double>("mock_battery_percent", 85.0)));
     mock_cmd_topic_ = declare_parameter<std::string>("mock_cmd_topic", "/cmd_vel");
     mock_cmd_timeout_sec_ = declare_parameter<double>("mock_cmd_timeout_sec", 0.5);
     mock_linear_speed_ = declare_parameter<double>("mock_linear_speed", 0.1);
@@ -42,6 +61,7 @@ public:
     state_pub_ = create_publisher<a2_interfaces::msg::RobotState>(state_topic_, 20);
     sdk_connected_pub_ = create_publisher<std_msgs::msg::Bool>("/a2/sdk/connected", 10);
     sdk_status_pub_ = create_publisher<std_msgs::msg::String>("/a2/sdk/status", 10);
+    battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>(battery_topic_, 10);
     resolved_interface_ = resolve_interface();
 
     if (use_mock_) {
@@ -57,6 +77,10 @@ public:
       mock_timer_ = create_wall_timer(
         std::chrono::duration_cast<std::chrono::milliseconds>(period),
         std::bind(&A2SdkBridgeNode::publish_mock_state, this));
+      const auto battery_period = std::chrono::duration<double>(1.0 / battery_publish_hz_);
+      battery_timer_ = create_wall_timer(
+        std::chrono::duration_cast<std::chrono::milliseconds>(battery_period),
+        std::bind(&A2SdkBridgeNode::publish_battery_state, this));
       watchdog_timer_ = create_wall_timer(
         std::chrono::milliseconds(500),
         std::bind(&A2SdkBridgeNode::watchdog_tick, this));
@@ -86,9 +110,64 @@ public:
     unitree::robot::ChannelFactory::Instance()->Init(0, resolved_interface_);
     suber_ = std::make_shared<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>>(sport_state_topic_);
     suber_->InitChannel(std::bind(&A2SdkBridgeNode::on_sport_state, this, std::placeholders::_1), 1);
+
+    auto norm = [](std::string s) {
+      s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c) != 0; }), s.end());
+      return s;
+    };
+
+    auto merge_topics = [&](std::vector<std::string> base, const std::vector<std::string> & extra, std::vector<std::string> defaults) {
+      for (auto & item : base) {
+        item = norm(item);
+      }
+      if (!extra.empty()) {
+        for (auto candidate : extra) {
+          candidate = norm(candidate);
+          if (!candidate.empty()) {
+            base.push_back(candidate);
+          }
+        }
+      } else {
+        for (auto item : defaults) {
+          item = norm(item);
+          if (!item.empty()) {
+            base.push_back(item);
+          }
+        }
+      }
+      base.erase(std::remove_if(base.begin(), base.end(), [](const std::string & s) { return s.empty(); }), base.end());
+      std::sort(base.begin(), base.end());
+      base.erase(std::unique(base.begin(), base.end()), base.end());
+      return base;
+    };
+
+    const auto low_topics = merge_topics(
+      std::vector<std::string>{low_state_topic_},
+      low_state_topic_candidates_,
+      std::vector<std::string>{"rt/lf/lowstate", "rt/lowstate", "lf/lowstate", "lowstate", "/rt/lf/lowstate", "/rt/lowstate", "/lf/lowstate", "/lowstate"});
+    for (const auto & topic : low_topics) {
+      auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::LowState_>>(topic);
+      sub->InitChannel(std::bind(&A2SdkBridgeNode::on_low_state, this, std::placeholders::_1), 1);
+      low_subers_.push_back(sub);
+    }
+
+    const auto bms_topics = merge_topics(
+      std::vector<std::string>{bms_state_topic_},
+      bms_state_topic_candidates_,
+      std::vector<std::string>{"lf/bmsstate", "rt/lf/bmsstate", "rt/bmsstate", "bmsstate", "/lf/bmsstate", "/rt/lf/bmsstate", "/rt/bmsstate", "/bmsstate"});
+    for (const auto & topic : bms_topics) {
+      auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::BmsState_>>(topic);
+      sub->InitChannel(std::bind(&A2SdkBridgeNode::on_bms_state, this, std::placeholders::_1), 1);
+      bms_subers_.push_back(sub);
+    }
+
+    const auto battery_period = std::chrono::duration<double>(1.0 / battery_publish_hz_);
+    battery_timer_ = create_wall_timer(
+      std::chrono::duration_cast<std::chrono::milliseconds>(battery_period),
+      std::bind(&A2SdkBridgeNode::publish_battery_state, this));
     RCLCPP_INFO(
-      get_logger(), "SDK mode armed on interface '%s', topic '%s'.",
-      resolved_interface_.c_str(), sport_state_topic_.c_str());
+      get_logger(), "SDK mode armed on interface '%s', sport_topic='%s', low_topic='%s' (+%zu fallbacks).",
+      resolved_interface_.c_str(), sport_state_topic_.c_str(), low_state_topic_.c_str(), low_subers_.size() > 0 ? (low_subers_.size() - 1U) : 0U);
     publish_sdk_status(false, "waiting_for_a2_state");
 #else
     RCLCPP_ERROR(get_logger(), "This binary was built without unitree_sdk2. Rebuild with UNITREE_SDK2_ROOT available or use mock mode.");
@@ -216,7 +295,93 @@ private:
     state_pub_->publish(msg);
     publish_sdk_status(true, "a2_state_ok");
   }
+
+  void on_low_state(const void * message)
+  {
+    const auto & state = *static_cast<const unitree_go::msg::dds_::LowState_ *>(message);
+    const auto current_time = now();
+    const double soc_ratio = std::max(0.0, std::min(1.0, static_cast<double>(state.bms_state().soc()) / 100.0));
+    const double voltage = static_cast<double>(state.power_v());
+    const double current_a = static_cast<double>(state.power_a());
+    const bool charging = current_a < -0.1;
+    {
+      std::lock_guard<std::mutex> lock(battery_mutex_);
+      last_battery_time_ = current_time;
+      battery_percentage_ratio_ = soc_ratio;
+      battery_voltage_ = voltage;
+      battery_current_a_ = current_a;
+      battery_charging_ = charging;
+      battery_present_ = true;
+    }
+  }
+
+  void on_bms_state(const void * message)
+  {
+    const auto & state = *static_cast<const unitree_hg::msg::dds_::BmsState_ *>(message);
+    const auto current_time = now();
+    const double soc_ratio = std::max(0.0, std::min(1.0, static_cast<double>(state.soc()) / 100.0));
+    double voltage = 0.0;
+    const auto & bmsvoltage = state.bmsvoltage();
+    if (bmsvoltage[0] > 0) {
+      voltage = static_cast<double>(bmsvoltage[0]) / 1000.0;
+    } else {
+      double sum_mv = 0.0;
+      for (const auto mv : state.cell_vol()) {
+        sum_mv += static_cast<double>(mv);
+      }
+      if (sum_mv > 0.0) {
+        voltage = sum_mv / 1000.0;
+      }
+    }
+    const double current_a = static_cast<double>(state.current()) / 1000.0;
+    const bool charging = current_a < -0.1;
+    {
+      std::lock_guard<std::mutex> lock(battery_mutex_);
+      last_battery_time_ = current_time;
+      battery_percentage_ratio_ = soc_ratio;
+      battery_voltage_ = voltage;
+      battery_current_a_ = current_a;
+      battery_charging_ = charging;
+      battery_present_ = true;
+    }
+  }
 #endif
+
+  void publish_battery_state()
+  {
+    const auto current_time = now();
+    sensor_msgs::msg::BatteryState msg;
+    msg.header.stamp = to_builtin_time(current_time);
+
+    if (use_mock_) {
+      msg.present = true;
+      msg.percentage = static_cast<float>(std::max(0.0, std::min(1.0, mock_battery_percent_ / 100.0)));
+      msg.voltage = 29.4F;
+      msg.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING;
+    } else {
+      std::lock_guard<std::mutex> lock(battery_mutex_);
+      const bool has_battery = battery_present_ && last_battery_time_.nanoseconds() != 0;
+      const double age = has_battery ? (current_time - last_battery_time_).seconds() : 1e9;
+      if (!has_battery || age > battery_stale_timeout_sec_) {
+        msg.present = false;
+        msg.percentage = std::numeric_limits<float>::quiet_NaN();
+        msg.voltage = std::numeric_limits<float>::quiet_NaN();
+        msg.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
+      } else {
+        msg.present = true;
+        msg.percentage = static_cast<float>(battery_percentage_ratio_);
+        msg.voltage = static_cast<float>(battery_voltage_);
+        msg.current = static_cast<float>(battery_current_a_);
+        msg.power_supply_status = battery_charging_ ?
+          sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_CHARGING :
+          sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING;
+      }
+    }
+
+    msg.power_supply_health = sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_GOOD;
+    msg.power_supply_technology = sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+    battery_pub_->publish(msg);
+  }
 
   void watchdog_tick()
   {
@@ -301,10 +466,18 @@ private:
   std::string robot_model_;
   std::string state_topic_;
   std::string sport_state_topic_;
+  std::string low_state_topic_;
+  std::vector<std::string> low_state_topic_candidates_;
+  std::string bms_state_topic_;
+  std::vector<std::string> bms_state_topic_candidates_;
+  std::string battery_topic_;
   std::string mock_cmd_topic_;
   std::string resolved_interface_;
   double timer_hz_{50.0};
   double stale_timeout_sec_{0.5};
+  double battery_publish_hz_{1.0};
+  double battery_stale_timeout_sec_{5.0};
+  double mock_battery_percent_{85.0};
   double mock_cmd_timeout_sec_{0.5};
   bool sdk_interface_ready_{true};
   double mock_linear_speed_{0.1};
@@ -318,17 +491,29 @@ private:
   rclcpp::Publisher<a2_interfaces::msg::RobotState>::SharedPtr state_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr sdk_connected_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr sdk_status_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr mock_cmd_sub_;
   rclcpp::TimerBase::SharedPtr mock_timer_;
+  rclcpp::TimerBase::SharedPtr battery_timer_;
   rclcpp::TimerBase::SharedPtr watchdog_timer_;
   rclcpp::Time last_state_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_battery_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_mock_update_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_mock_cmd_time_{0, 0, RCL_ROS_TIME};
   geometry_msgs::msg::Twist mock_cmd_;
 
 #if A2_ENABLE_UNITREE_SDK
   std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>> suber_;
+  std::vector<std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::LowState_>>> low_subers_;
+  std::vector<std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::BmsState_>>> bms_subers_;
 #endif
+
+  std::mutex battery_mutex_;
+  bool battery_present_{false};
+  double battery_percentage_ratio_{0.0};
+  double battery_voltage_{0.0};
+  double battery_current_a_{0.0};
+  bool battery_charging_{false};
 };
 
 int main(int argc, char ** argv)
