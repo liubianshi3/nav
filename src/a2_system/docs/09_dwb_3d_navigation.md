@@ -116,8 +116,12 @@ local_costmap:
 
 The ground segmentation node publishes `/a2/traversability` as an `OccupancyGrid` in the map
 frame. Nav2's `ObstacleLayer` cannot consume `OccupancyGrid` directly — it requires
-`PointCloud2`. The bridge converts cells with value ≥ 90 (steep/non-traversable terrain) and
-unknown cells (−1, conservative) into 3D obstacle points at z=0.15.
+`PointCloud2`. The bridge converts cells with value ≥ 90 (steep/non-traversable terrain)
+into 3D obstacle points at z=0.15.
+
+Unknown cells (`-1`) are kept as unknown map information by default and are not published
+as physical obstacle points. Set `treat_unknown_as_obstacle:=true` only for deliberately
+conservative validation profiles where unknown should block the obstacle pointcloud.
 
 Publishes at 2 Hz to `/a2/traversability/obstacle_points`.
 

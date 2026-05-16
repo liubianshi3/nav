@@ -63,6 +63,7 @@ def generate_launch_description():
                 "traversability_topic": "/a2/traversability",
                 "output_topic": "/a2/traversability/obstacle_points",
                 "output_frame": "map",
+                "treat_unknown_as_obstacle": False,
                 "use_sim_time": use_sim_time,
             }],
             output="screen",

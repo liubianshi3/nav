@@ -6,6 +6,8 @@ The ground segmentation node publishes a 2D traversability grid in the "map"
 frame. Cells with value >= threshold (default 90) represent steep/non-traversable
 terrain. This node converts those cells to 3D obstacle points so the Nav2
 costmap obstacle_layer can consume them alongside the live pointcloud.
+Unknown cells (-1) are not emitted by default; unknown is map uncertainty, not
+an observed physical obstacle.
 
 Published topics:
   /a2/traversability/obstacle_points (sensor_msgs/PointCloud2, frame "map")
@@ -76,6 +78,9 @@ class TraversabilityToObstacleCloud(Node):
         self._output_frame = str(
             self.declare_parameter("output_frame", "map").value
         )
+        self._treat_unknown_as_obstacle = bool(
+            self.declare_parameter("treat_unknown_as_obstacle", False).value
+        )
 
         self._last_grid: OccupancyGrid | None = None
 
@@ -87,9 +92,10 @@ class TraversabilityToObstacleCloud(Node):
 
         self.get_logger().info(
             "TraversabilityToObstacleCloud started: "
-            "threshold=%d z=%.2f hz=%.1f input=%s output=%s",
+            "threshold=%d z=%.2f hz=%.1f unknown_as_obstacle=%s input=%s output=%s",
             self._obstacle_threshold, self._obstacle_z, self._publish_hz,
-            self._traversability_topic, self._output_topic,
+            self._treat_unknown_as_obstacle, self._traversability_topic,
+            self._output_topic,
         )
 
     def _on_grid(self, msg: OccupancyGrid) -> None:
@@ -110,13 +116,13 @@ class TraversabilityToObstacleCloud(Node):
 
         data = np.array(grid.data, dtype=np.int8).reshape((height, width))
 
-        # Cells that are obstacle (>= threshold) or unknown (-1)
+        # OccupancyGrid uses -1 for unknown/no-information. Keep those cells
+        # out of the Nav2 obstacle pointcloud unless explicitly requested.
         obstacle_mask = data >= self._obstacle_threshold
-        unknown_mask = data == -1
-
-        # For unknown cells at the rolling window edge, also add as obstacles
-        # (conservative: treat unmapped areas as blocked)
-        mask = obstacle_mask | unknown_mask
+        if self._treat_unknown_as_obstacle:
+            mask = obstacle_mask | (data == -1)
+        else:
+            mask = obstacle_mask
 
         ys, xs = np.where(mask)
         if len(xs) == 0:
