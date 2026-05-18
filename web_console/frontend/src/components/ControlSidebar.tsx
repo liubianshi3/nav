@@ -402,6 +402,8 @@ export function ManualControlSection({
   onManualVelocityCommand,
 }: ManualControlSectionProps) {
   const buttonDisabled = disabled;
+  const motionAlreadyAuthorized =
+    motionAuthorization?.standing === true && motionAuthorization?.motion_authorized === true;
   const topicLabel = cmdTopic && cmdTopic.trim() ? cmdTopic : "速度控制 topic";
   const repeatTimerRef = useRef<number | null>(null);
   const stopDelayTimerRef = useRef<number | null>(null);
@@ -536,10 +538,10 @@ export function ManualControlSection({
         <button
           type="button"
           className="primary-button"
-          disabled={buttonDisabled || motionAuthorizationBusy}
+          disabled={buttonDisabled || motionAuthorizationBusy || motionAlreadyAuthorized}
           onClick={onAuthorizeMotion}
         >
-          启动运动授权
+          {motionAlreadyAuthorized ? "已授权" : "启动运动授权"}
         </button>
       </div>
       <div className="manual-auth-grid">

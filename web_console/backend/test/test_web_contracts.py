@@ -284,6 +284,9 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "onClick={() =>" in controls_source
     assert "按住方向键持续发布" in controls_source
     assert "manual-auth-grid" in controls_source
+    assert "motionAlreadyAuthorized" in controls_source
+    assert 'motionAlreadyAuthorized ? "已授权" : "启动运动授权"' in controls_source
+    assert "disabled={buttonDisabled || motionAuthorizationBusy || motionAlreadyAuthorized}" in controls_source
     assert ".manual-auth-grid .status-value" in styles_source
     assert "overflow-wrap: anywhere" in styles_source
     assert "def ensure_manual_control_standby" in stack_source
