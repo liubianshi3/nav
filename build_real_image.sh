@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_NAME="${A2_DOCKER_IMAGE:-a2-system-ws:real}"
 NODE_IMAGE="${A2_NODE_IMAGE:-docker.m.daocloud.io/library/node:20-bookworm-slim}"
 ROS_IMAGE="${A2_ROS_IMAGE:-docker.m.daocloud.io/library/ros:humble-ros-base-jammy}"

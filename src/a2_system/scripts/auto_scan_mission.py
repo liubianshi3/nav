@@ -542,8 +542,9 @@ class AutoScanMission(Node):
 
     def build_goal(self, waypoint: WaypointSpec) -> PoseStamped:
         goal = PoseStamped()
-        goal.header.stamp = self.get_clock().now().to_msg()
         goal.header.frame_id = self.goal_frame
+        if self.navigation_backend != "nav2":
+            goal.header.stamp = self.get_clock().now().to_msg()
         goal.pose.position.x = waypoint.x
         goal.pose.position.y = waypoint.y
         _, _, goal.pose.orientation.z, goal.pose.orientation.w = yaw_to_quaternion(waypoint.yaw)

@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -30,7 +31,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "enable_global_ekf_debug",
             default_value="false",
-            description="Run the map-frame EKF debug topic alongside the local odom chain",
+            description=(
+                "Debug-only global EKF chain. Keep disabled for NDT navigation; "
+                "the NDT adapter owns /a2/ndt/open_loop_pose initial guesses."
+            ),
         ),
 
         LogInfo(
@@ -41,8 +45,13 @@ def generate_launch_description():
             )
         ),
 
-        # Optional map-frame EKF debug topic. The local odom mainline is started
-        # by jt128_3d_navigation.launch.py and remains the primary Nav2 odom feed.
+        # Debug-only global EKF: DLIO odom + NDT pose -> smooth map-frame estimate.
+        #
+        # Do not run this in the normal Nav2/NDT stack. Its bridge publishes
+        # ekf_pose_with_covariance, which ndt_adapter.launch.py remaps to
+        # /a2/ndt/open_loop_pose. Running it beside ndt_adapter creates two
+        # initial-guess publishers for Autoware NDT and can keep NDT stuck before
+        # the first score.
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(
@@ -57,6 +66,7 @@ def generate_launch_description():
                 "output_topic": "/odometry/global_debug",
                 "enable_odom_to_pose_bridge": "false",
             }.items(),
+            condition=IfCondition(LaunchConfiguration("enable_global_ekf_debug")),
         ),
 
         # Traversability grid → obstacle pointcloud bridge
@@ -71,6 +81,7 @@ def generate_launch_description():
                 "traversability_topic": "/a2/traversability",
                 "output_topic": "/a2/traversability/obstacle_points",
                 "output_frame": "map",
+                "treat_unknown_as_obstacle": False,
                 "use_sim_time": use_sim_time,
             }],
             output="screen",

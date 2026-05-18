@@ -113,10 +113,10 @@ def check_nav2_stack(result: CheckResult) -> None:
 
 def check_localization(result: CheckResult) -> None:
     params = get(load_yaml(CONFIG_DIR / "localization.yaml"), "localization_gate", "ros__parameters", default={})
-    result.require(params.get("input_pose_topic") == "/amcl_pose", "localization_gate must consume /amcl_pose in Nav2 AMCL mode")
+    result.require(params.get("input_pose_topic") == "/a2/relocalization/pose", "localization_gate must consume /a2/relocalization/pose (3D NDT)")
     result.require(
         params.get("input_pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
-        "localization_gate must consume geometry_msgs/msg/PoseWithCovarianceStamped in AMCL mode",
+        "localization_gate must consume geometry_msgs/msg/PoseWithCovarianceStamped (3D NDT)",
     )
     result.require(
         not bool(params.get("pose_transient_local", True)),
@@ -177,10 +177,10 @@ def check_scan_mission(result: CheckResult) -> None:
     scan_launch = (BRINGUP_DIR / "scan_mission.launch.py").read_text(encoding="utf-8")
 
     result.require(params.get("navigation_backend") == "nav2", "scan mission must default to nav2")
-    result.require(params.get("pose_topic") == "/amcl_pose", "scan mission must consume /amcl_pose in AMCL mode")
+    result.require(params.get("pose_topic") == "/a2/relocalization/pose", "scan mission must consume /a2/relocalization/pose (3D NDT)")
     result.require(
         params.get("pose_msg_type") == "geometry_msgs/msg/PoseWithCovarianceStamped",
-        "scan mission pose_msg_type must be geometry_msgs/msg/PoseWithCovarianceStamped in AMCL mode",
+        "scan mission pose_msg_type must be geometry_msgs/msg/PoseWithCovarianceStamped (3D NDT)",
     )
     result.require(params.get("pointcloud_topic") == "/jt128/front/points", "scan mission must use JT128 front pointcloud")
     result.require(params.get("navigate_action_name") == "/navigate_to_pose", "scan mission must keep Nav2 action as fallback")
@@ -219,16 +219,23 @@ def check_scan_mission(result: CheckResult) -> None:
 def check_launch_defaults(result: CheckResult) -> None:
     for name in (
         "bringup.launch.py",
-        "nav2.launch.py",
-        "localization.launch.py",
+        "legacy/nav2.launch.py",
+        "legacy/localization.launch.py",
         "scan_mission.launch.py",
     ):
         text = (BRINGUP_DIR / name).read_text(encoding="utf-8")
         if name != "scan_mission.launch.py":
-            result.require(
-                'DeclareLaunchArgument("real_localization_mode", default_value="amcl")' in text,
-                f"{name} must default real_localization_mode to amcl",
-            )
+            # Legacy launch files in legacy/ may still default to amcl
+            if name.startswith("legacy/"):
+                result.require(
+                    'DeclareLaunchArgument("real_localization_mode", default_value="amcl")' in text,
+                    f"{name} (legacy) must default real_localization_mode to amcl",
+                )
+            else:
+                result.require(
+                    'DeclareLaunchArgument("real_localization_mode", default_value="uslam_odom")' in text,
+                    f"{name} must default real_localization_mode to uslam_odom (3D-first)",
+                )
         else:
             result.require("waypoints_file" in text, "scan_mission.launch.py must expose a waypoints_file argument")
             result.require("dry_run" in text, "scan_mission.launch.py must expose a dry_run argument")
@@ -237,8 +244,8 @@ def check_launch_defaults(result: CheckResult) -> None:
 def check_real_entrypoints(result: CheckResult) -> None:
     start_real_stack = (TOOLS_DIR / "start_real_stack.sh").read_text(encoding="utf-8")
     result.require(
-        'A2_REAL_LOCALIZATION_MODE:-amcl' in start_real_stack,
-        "start_real_stack.sh must default A2_REAL_LOCALIZATION_MODE to amcl",
+        'A2_REAL_LOCALIZATION_MODE:-uslam_odom' in start_real_stack,
+        "start_real_stack.sh must default A2_REAL_LOCALIZATION_MODE to uslam_odom (3D-first)",
     )
     result.require(
         'A2_REAL_LOCALIZATION_MODE:-manual_odom' not in start_real_stack,
@@ -247,7 +254,7 @@ def check_real_entrypoints(result: CheckResult) -> None:
 
 
 def check_real_mapping_source_contract(result: CheckResult) -> None:
-    mapping_launch = (BRINGUP_DIR / "mapping.launch.py").read_text(encoding="utf-8")
+    mapping_launch = (BRINGUP_DIR / "legacy" / "mapping.launch.py").read_text(encoding="utf-8")
     slam_cfg = load_yaml(CONFIG_DIR / "slam.yaml")
     slam_params = get(slam_cfg, "slam_manager", "ros__parameters", default={})
     slam_toolbox_cfg = load_yaml(CONFIG_DIR / "slam_toolbox_mapping.yaml")
@@ -259,13 +266,14 @@ def check_real_mapping_source_contract(result: CheckResult) -> None:
         "native_map_relay" in mapping_launch,
         "mapping.launch.py must support native_map_relay",
     )
+    # Legacy mapping.launch.py moved to legacy/; 3D-first contract checks for pointcloud_map_3d
     result.require(
-        "slam_toolbox" in mapping_launch,
-        "mapping.launch.py must support slam_toolbox",
+        "pointcloud_map_3d" in mapping_launch or "slam_toolbox" in mapping_launch,
+        "mapping launch must reference pointcloud_map_3d (3D-first) or slam_toolbox (legacy)",
     )
     result.require(
-        slam_params.get("mapping_stack_profile") == "slam_toolbox",
-        "slam.yaml must default mapping_stack_profile to slam_toolbox for Nav2-first navigation",
+        slam_params.get("mapping_stack_profile") == "front_lidar_pointcloud_3d",
+        "slam.yaml must default mapping_stack_profile to front_lidar_pointcloud_3d for 3D-first navigation",
     )
     result.require(
         slam_toolbox_params.get("scan_topic") == "/scan",

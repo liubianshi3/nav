@@ -274,7 +274,7 @@ export function MapCanvas({
         }}
       />
       <div className="scene-card scene-card-left">
-        <div className="scene-card-title">2D 栅格地图</div>
+        <div className="scene-card-title">投影规划地图 (projected 2D)</div>
         <div className="scene-card-meta">{map?.frame_id ?? "frame=unknown"}</div>
         <div className="scene-card-meta">
           {map?.loaded ? `${map.width}x${map.height} @ ${map.resolution.toFixed(3)}m` : "等待地图"}

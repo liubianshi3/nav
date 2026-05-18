@@ -131,16 +131,35 @@ def project(
     min_obstacle_points=2,
     min_ground_points=1,
     border_padding_m=1.0,
-    dilate_radius_cells=2,
+    dilate_radius_cells=0,
+    ignore_obstacles_within_radius=0.0,
+    clear_radius_around_origin=0.0,
 ):
     """Project classified points to a 2D occupancy grid.
 
-    Returns (OccupancyGrid data as list[int], origin_x, origin_y, grid_width, grid_height).
+    Returns ``(grid, origin_x, origin_y, width, height, cleared_cells)``.
     Grid values: 100 = occupied, 0 = free, -1 = unknown.
+
+    ``ignore_obstacles_within_radius`` (meters, world frame around (0, 0))
+    skips obstacle accumulation for points whose XY radius is below this
+    value. It does NOT mark those cells occupied; it just keeps near-origin
+    self-shell / leg / near-field noise out of the obstacle classifier.
+
+    ``clear_radius_around_origin`` (meters, world frame around (0, 0)) is
+    applied AFTER classification and FORCES every cell whose center lies
+    inside the disk to free (0). Used to guarantee the static map publishes a
+    real free patch around the build origin / robot start location.
     """
-    # Find bounding box from obstacle points
-    obs_pts = [(x, y) for x, y, z in zip(xs, ys, zs)
-               if ground_threshold <= z <= ceiling_threshold and math.isfinite(x) and math.isfinite(y)]
+    ignore_radius_sq = float(ignore_obstacles_within_radius) ** 2
+
+    # Bounding box from obstacle points (also subject to the ignore radius so
+    # a tight self-shell does not inflate the map bounds).
+    obs_pts = [
+        (x, y) for x, y, z in zip(xs, ys, zs)
+        if ground_threshold <= z <= ceiling_threshold
+        and math.isfinite(x) and math.isfinite(y)
+        and (ignore_radius_sq == 0.0 or (x * x + y * y) > ignore_radius_sq)
+    ]
 
     if not obs_pts:
         raise RuntimeError("No obstacle points found in z-range — check ground_threshold / ceiling_threshold")
@@ -149,6 +168,18 @@ def project(
     max_x = max(p[0] for p in obs_pts) + border_padding_m
     min_y = min(p[1] for p in obs_pts) - border_padding_m
     max_y = max(p[1] for p in obs_pts) + border_padding_m
+
+    # If we are going to force-clear a disk around the world origin, the grid
+    # must actually contain that disk. Without this, a scene whose obstacles
+    # are all far from (0, 0) — combined with ignore_obstacles_within_radius
+    # dropping the near-origin self-shell — would put the origin outside the
+    # grid and clear_disk_around_world_point would silently no-op.
+    if clear_radius_around_origin > 0.0:
+        r = float(clear_radius_around_origin)
+        min_x = min(min_x, -r - border_padding_m)
+        max_x = max(max_x, r + border_padding_m)
+        min_y = min(min_y, -r - border_padding_m)
+        max_y = max(max_y, r + border_padding_m)
 
     # Snap origin to resolution grid
     origin_x = math.floor(min_x / resolution) * resolution
@@ -167,13 +198,18 @@ def project(
         if not (0 <= col < width and 0 <= row < height):
             continue
         if ground_threshold <= z <= ceiling_threshold:
+            # Skip near-origin obstacle accumulation only; do not mark it
+            # free. The cell can still become free via ground hits or via the
+            # explicit clear_radius_around_origin pass below.
+            if ignore_radius_sq > 0.0 and (x * x + y * y) <= ignore_radius_sq:
+                continue
             obstacle_count[row][col] += 1
         elif z < ground_threshold:
             ground_count[row][col] += 1
 
-    # Classify cells
+    # Classify cells (PGM row 0 = top, so we walk world rows in reverse)
     grid = []
-    for r in range(height - 1, -1, -1):  # PGM row 0 = top, so reverse
+    for r in range(height - 1, -1, -1):
         for c in range(width):
             if obstacle_count[r][c] >= min_obstacle_points:
                 grid.append(100)
@@ -182,11 +218,64 @@ def project(
             else:
                 grid.append(-1)
 
-    # Dilate occupied cells (morphological)
+    # Projection-stage dilation defaults to 0: Nav2 global / local costmap
+    # inflation already adds the safety buffer, so double-inflating here was
+    # producing a permanent ~0.5 m occupied shell on the JT128 maps.
     if dilate_radius_cells > 0:
         grid = _dilate_occupied(grid, width, height, dilate_radius_cells)
 
-    return grid, origin_x, origin_y, width, height
+    cleared_cells = 0
+    if clear_radius_around_origin > 0.0:
+        cleared_cells = clear_disk_around_world_point(
+            grid, width, height, origin_x, origin_y, resolution,
+            0.0, 0.0, float(clear_radius_around_origin),
+        )
+
+    return grid, origin_x, origin_y, width, height, cleared_cells
+
+
+def clear_disk_around_world_point(
+    grid: list,
+    width: int,
+    height: int,
+    origin_x: float,
+    origin_y: float,
+    resolution: float,
+    center_x: float,
+    center_y: float,
+    radius: float,
+) -> int:
+    """Force every grid cell whose center lies within ``radius`` (meters) of
+    (``center_x``, ``center_y``) to free (0).
+
+    ``grid`` is the flat PGM-ordered list produced by :func:`project`
+    (PGM row 0 = top), so cell (pgm_row, c) corresponds to world row
+    ``world_r = height - 1 - pgm_row``, and the cell center is
+    ``(origin_x + (c + 0.5) * resolution, origin_y + (world_r + 0.5) * resolution)``.
+
+    Returns the number of cells cleared. Short-term patch: ideally a future
+    revision should carve a robot-footprint tube along the recorded mapping
+    trajectory rather than only clearing a disk at world origin.
+    """
+    if radius <= 0.0 or resolution <= 0.0:
+        return 0
+    radius_sq = radius * radius
+    cleared = 0
+    for pgm_row in range(height):
+        world_r = height - 1 - pgm_row
+        wy = origin_y + (world_r + 0.5) * resolution
+        dy = wy - center_y
+        if dy * dy > radius_sq:
+            continue
+        for c in range(width):
+            wx = origin_x + (c + 0.5) * resolution
+            dx = wx - center_x
+            if dx * dx + dy * dy <= radius_sq:
+                idx = pgm_row * width + c
+                if grid[idx] != 0:
+                    grid[idx] = 0
+                    cleared += 1
+    return cleared
 
 
 def _dilate_occupied(grid, width, height, radius):
@@ -264,6 +353,23 @@ def write_map_output(grid, width, height, resolution, origin_x, origin_y, output
     print(f"[pcd_to_2d_map] Cells: {occ_pct:.1f}% occupied, {free_pct:.1f}% free, {unk_pct:.1f}% unknown")
 
 
+def _log_projection_summary(
+    *,
+    ignore_obstacles_within_radius: float,
+    clear_radius_around_origin: float,
+    cleared_cells: int,
+    dilate_radius_cells: int,
+    log=print,
+) -> None:
+    log(
+        f"[pcd_to_2d_map] dilate_radius_cells={dilate_radius_cells}, "
+        f"ignore_obstacles_within_radius={ignore_obstacles_within_radius:.3f} m, "
+        f"clear_radius_around_origin={clear_radius_around_origin:.3f} m"
+    )
+    if clear_radius_around_origin > 0.0:
+        log(f"[pcd_to_2d_map] clear_disk_around_world_point cleared {cleared_cells} cells")
+
+
 # ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
@@ -284,8 +390,30 @@ def _cli_args():
                    help="Minimum ground points per cell to mark free (default: 1)")
     p.add_argument("--border-padding", type=float, default=1.0,
                    help="Padding around obstacle bounds in meters (default: 1.0)")
-    p.add_argument("--dilate", type=int, default=2,
-                   help="Dilation radius in cells for occupied regions (default: 2)")
+    p.add_argument("--dilate", type=int, default=0,
+                   help=(
+                       "Dilation radius in cells for occupied regions (default: 0). "
+                       "Keep at 0 in production: Nav2 global/local costmap "
+                       "inflation already adds the safety buffer; pass a small "
+                       "positive value (e.g. 1) only if you must inflate at "
+                       "projection time."
+                   ))
+    p.add_argument("--ignore-obstacles-within-radius", type=float, default=0.0,
+                   help=(
+                       "Skip obstacle accumulation for points whose XY radius "
+                       "from the world origin (0, 0) is below this value "
+                       "(meters). Default 0.0 (no-op). Use ~0.45-0.5 to drop "
+                       "self-shell / leg / near-field noise the SLAM build "
+                       "kept around the start pose."
+                   ))
+    p.add_argument("--clear-radius-around-origin", type=float, default=0.0,
+                   help=(
+                       "After classification, force every cell within this "
+                       "radius (meters) of the world origin (0, 0) to free. "
+                       "Default 0.0 (no-op). Use ~0.45-0.5 to guarantee the "
+                       "static map exposes a real free patch around the robot "
+                       "start location."
+                   ))
     return p.parse_args()
 
 
@@ -323,7 +451,13 @@ def _ros_entry():
     min_obstacle_points = int(node.declare_parameter("min_obstacle_points", 2).value)
     min_ground_points = int(node.declare_parameter("min_ground_points", 1).value)
     border_padding = float(node.declare_parameter("border_padding_m", 1.0).value)
-    dilate = int(node.declare_parameter("dilate_radius_cells", 2).value)
+    dilate = int(node.declare_parameter("dilate_radius_cells", 0).value)
+    ignore_obstacles_within_radius = float(
+        node.declare_parameter("ignore_obstacles_within_radius", 0.0).value
+    )
+    clear_radius_around_origin = float(
+        node.declare_parameter("clear_radius_around_origin", 0.0).value
+    )
     oneshot = bool(node.declare_parameter("oneshot", True).value)
 
     node.get_logger().info(f"Projecting {pcd_path} → {output_dir}")
@@ -331,7 +465,7 @@ def _ros_entry():
     xs, ys, zs = read_pcd(pcd_path)
     node.get_logger().info(f"Read {len(xs)} points from PCD")
 
-    grid, ox, oy, w, h = project(
+    grid, ox, oy, w, h, cleared_cells = project(
         xs, ys, zs,
         resolution=resolution,
         ground_threshold=ground_threshold,
@@ -340,8 +474,17 @@ def _ros_entry():
         min_ground_points=min_ground_points,
         border_padding_m=border_padding,
         dilate_radius_cells=dilate,
+        ignore_obstacles_within_radius=ignore_obstacles_within_radius,
+        clear_radius_around_origin=clear_radius_around_origin,
     )
     write_map_output(grid, w, h, resolution, ox, oy, output_dir)
+    _log_projection_summary(
+        ignore_obstacles_within_radius=ignore_obstacles_within_radius,
+        clear_radius_around_origin=clear_radius_around_origin,
+        cleared_cells=cleared_cells,
+        dilate_radius_cells=dilate,
+        log=node.get_logger().info,
+    )
     node.get_logger().info("Done.")
     if oneshot:
         rclpy.shutdown()
@@ -380,7 +523,7 @@ def main():
     xs, ys, zs = read_pcd(pcd_path)
     print(f"[pcd_to_2d_map] Read {len(xs)} points from {pcd_path}")
 
-    grid, ox, oy, w, h = project(
+    grid, ox, oy, w, h, cleared_cells = project(
         xs, ys, zs,
         resolution=args.resolution,
         ground_threshold=args.ground_threshold,
@@ -389,8 +532,16 @@ def main():
         min_ground_points=args.min_ground_points,
         border_padding_m=args.border_padding,
         dilate_radius_cells=args.dilate,
+        ignore_obstacles_within_radius=args.ignore_obstacles_within_radius,
+        clear_radius_around_origin=args.clear_radius_around_origin,
     )
     write_map_output(grid, w, h, args.resolution, ox, oy, output_dir)
+    _log_projection_summary(
+        ignore_obstacles_within_radius=args.ignore_obstacles_within_radius,
+        clear_radius_around_origin=args.clear_radius_around_origin,
+        cleared_cells=cleared_cells,
+        dilate_radius_cells=args.dilate,
+    )
 
 
 if __name__ == "__main__":

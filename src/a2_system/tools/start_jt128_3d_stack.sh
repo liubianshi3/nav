@@ -21,12 +21,13 @@ WEB_URL="${A2_WEB_URL:-http://127.0.0.1:8080}"
 WEB_BACKEND_PYTHON="${WORKSPACE}/web_console/.venv/bin/python"
 WEB_BACKEND_CONFIG="${WORKSPACE}/web_console/backend/config.3d.yaml"
 WEB_FALLBACK_LOG="${LOG_DIR}/web_console_fallback.log"
+FAST_DDS_TRANSPORTS="${A2_FASTDDS_BUILTIN_TRANSPORTS:-${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}}"
 
 usage() {
   cat <<EOF
 Usage:
   $(basename "$0") --mode mapping [--lidar-iface net1] [--no-web]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--enable-motion] [--live-motion]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-motion] [--live-motion]
 
 Starts the 3D-first JT128 stack:
   mapping:
@@ -45,6 +46,7 @@ Starts the 3D-first JT128 stack:
 Safety defaults:
   - --enable-motion starts a2_control_bridge.
   - without --enable-motion, navigation remains a dry-run/control-disabled stack.
+
 EOF
 }
 
@@ -100,6 +102,7 @@ while [[ $# -gt 0 ]]; do
       ENABLE_NAV2_3D=true
       shift
       ;;
+
     --no-nav2-3d)
       ENABLE_NAV2_3D=false
       shift
@@ -108,6 +111,7 @@ while [[ $# -gt 0 ]]; do
       NAV2_3D_MAP="$2"
       shift 2
       ;;
+
     --no-robot-state)
       START_ROBOT_STATE=false
       shift
@@ -127,6 +131,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be mapping or navigation"
+[[ "$LOCALIZATION_MODE" == "ndt" || "$LOCALIZATION_MODE" == "odom_only" ]] || die "localization mode must be ndt or odom_only"
+[[ "$COLLISION_MONITOR_PROFILE" == "strict" || "$COLLISION_MONITOR_PROFILE" == "live-validation" ]] || die "collision profile must be strict or live-validation"
 if [[ "$MODE" == "navigation" && -z "$MAP_ID" ]]; then
   die "--map-id is required for navigation mode"
 fi
@@ -142,6 +148,7 @@ if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP
   fi
 fi
 
+
 mkdir -p "$LOG_DIR"
 
 source_ros() {
@@ -151,6 +158,25 @@ source_ros() {
     source "${WORKSPACE}/install/setup.bash"
   fi
   set -u
+}
+
+configure_ros_transport() {
+  export FASTDDS_BUILTIN_TRANSPORTS="${FAST_DDS_TRANSPORTS}"
+  log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
+}
+
+require_a2_system_executable() {
+  local name="$1"
+  local install_path="${WORKSPACE}/install/a2_system/lib/a2_system/${name}"
+  local source_path="${WORKSPACE}/src/a2_system/scripts/${name}"
+  if [[ -x "$install_path" ]]; then
+    return 0
+  fi
+  if [[ -x "$source_path" ]]; then
+    warn "install executable missing for ${name}; launch will fall back to source path ${source_path}"
+    return 0
+  fi
+  die "required a2_system executable is unavailable: ${name} (checked ${install_path} and ${source_path})"
 }
 
 stop_navigation_components() {
@@ -227,7 +253,10 @@ start_web() {
 }
 
 source_ros
+configure_ros_transport
 command -v ros2 >/dev/null 2>&1 || die "ros2 not found after sourcing workspace"
+require_a2_system_executable "traversability_to_obstacle_cloud.py"
+require_a2_system_executable "octomap_mapping_node.py"
 
 log "Starting JT128 DLIO mapping base stack"
 DLIO_MAPPING_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/start_jt128_dlio_mapping.sh"
@@ -255,6 +284,7 @@ setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
+  export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
   ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
     start_static_tf:=true \

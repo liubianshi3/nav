@@ -3,7 +3,15 @@ from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, IncludeLaunchDescription, OpaqueFunction, SetLaunchConfiguration
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
+    SetLaunchConfiguration,
+    TimerAction,
+)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -94,6 +102,8 @@ def _resolve_nav2_map_arguments(context, *args, **kwargs):
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     unitree_ddsc_env = _unitree_ddsc_env()
+    is_ndt_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'ndt'"])
+    is_odom_only_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'odom_only'"])
     return LaunchDescription(
         [
             DeclareLaunchArgument("map_id", default_value=""),
@@ -104,6 +114,11 @@ def generate_launch_description():
             DeclareLaunchArgument("start_task_manager", default_value="true"),
             DeclareLaunchArgument("start_scan_mission", default_value="true"),
             DeclareLaunchArgument("start_ekf_local", default_value="true"),
+            DeclareLaunchArgument(
+                "localization_mode",
+                default_value="ndt",
+                description="Localization mode for navigation: ndt for map localization, odom_only for short-range control-chain validation.",
+            ),
 
             DeclareLaunchArgument("start_safety", default_value="true"),
             DeclareLaunchArgument("enable_motion", default_value="false"),
@@ -111,6 +126,11 @@ def generate_launch_description():
             DeclareLaunchArgument("sdk_interface", default_value="eth0"),
             DeclareLaunchArgument("control_interface", default_value="eth0"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
+            DeclareLaunchArgument(
+                "ndt_odom_topic",
+                default_value="/jt128/dlio/odom",
+                description="Odometry topic used by ndt_adapter for NDT initial guesses.",
+            ),
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
@@ -119,12 +139,27 @@ def generate_launch_description():
                                   description="Maximum accepted NDT map->odom correction step in meters for real A2 startup and map alignment"),
             DeclareLaunchArgument("ndt_max_map_to_odom_rotation_step_deg", default_value="90.0",
                                   description="Maximum accepted NDT map->odom correction step in degrees for real A2 startup and map alignment"),
+            DeclareLaunchArgument(
+                "collision_monitor_config",
+                default_value=f"{a2_system_share}/config/collision_monitor.yaml",
+                description=(
+                    "Collision monitor YAML. Use collision_monitor_live_validation.yaml "
+                    "only for supervised open-space live-motion validation."
+                ),
+            ),
             OpaqueFunction(function=_resolve_nav2_map_arguments),
             LogInfo(
                 msg=(
-                    "Starting JT128 3D navigation: loading PCD, running the first-pass "
-                    "3D ICP relocalizer, localization gate, and pose-topic goal bridge."
+                    "Starting JT128 3D navigation: loading map assets, odometry, safety gates, "
+                    "and Nav2/control-chain components."
                 )
+            ),
+            LogInfo(
+                msg=(
+                    "localization_mode=odom_only is for short-range dry-run/live-motion "
+                    "validation only; it is not a formal inspection localization mode."
+                ),
+                condition=IfCondition(is_odom_only_localization),
             ),
             Node(
                 package="a2_sdk_bridge",
@@ -199,6 +234,14 @@ def generate_launch_description():
                     "output_topic": "/odometry/local",
                 }.items(),
             ),
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="odom_only_map_to_odom_static_tf",
+                condition=IfCondition(is_odom_only_localization),
+                arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+                output="screen",
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(
@@ -209,9 +252,11 @@ def generate_launch_description():
                 ),
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    "odom_topic": LaunchConfiguration("ndt_odom_topic"),
                     "max_map_to_odom_translation_step": LaunchConfiguration("ndt_max_map_to_odom_translation_step"),
                     "max_map_to_odom_rotation_step_deg": LaunchConfiguration("ndt_max_map_to_odom_rotation_step_deg"),
                 }.items(),
+                condition=IfCondition(is_ndt_localization),
             ),
             _pointcloud_guard_action(),
             # ── Ground segmentation → /a2/obstacle/points + /a2/traversability ──
@@ -231,24 +276,31 @@ def generate_launch_description():
                 executable="collision_monitor",
                 name="collision_monitor",
                 parameters=[
-                    f"{a2_system_share}/config/collision_monitor.yaml",
+                    LaunchConfiguration("collision_monitor_config"),
                     {"use_sim_time": LaunchConfiguration("use_sim_time")},
                 ],
                 output="screen",
             ),
-            Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager_collision_monitor",
-                parameters=[
-                    {
-                        "autostart": True,
-                        "bond_timeout": 12.0,
-                        "node_names": ["collision_monitor"],
-                        "use_sim_time": LaunchConfiguration("use_sim_time"),
-                    },
+            TimerAction(
+                period=18.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "bash",
+                            "-lc",
+                            (
+                                "for i in $(seq 1 20); do "
+                                "ros2 lifecycle get /collision_monitor 2>/dev/null | grep -q '^active' && exit 0; "
+                                "ros2 lifecycle set /collision_monitor configure || true; "
+                                "ros2 lifecycle set /collision_monitor activate || true; "
+                                "sleep 1; "
+                                "done; "
+                                "ros2 lifecycle get /collision_monitor || true"
+                            ),
+                        ],
+                        output="screen",
+                    )
                 ],
-                output="screen",
             ),
             # ── Battery publisher → /a2/battery ──
             Node(
@@ -302,6 +354,7 @@ def generate_launch_description():
                 package="localization_manager",
                 executable="localization_gate",
                 name="localization_gate",
+                condition=IfCondition(is_ndt_localization),
                 parameters=[
                     f"{a2_system_share}/config/localization_3d.yaml",
                     {
@@ -314,12 +367,13 @@ def generate_launch_description():
                 package="localization_manager",
                 executable="ndt_health_monitor",
                 name="ndt_health_monitor",
+                condition=IfCondition(is_ndt_localization),
                 parameters=[
                     {
                         "ndt_status_topic": "/a2/relocalization/status",
                         "health_pub_topic": "/a2/ndt/healthy",
                         "health_status_topic": "/a2/ndt/health_status",
-                        "min_score": 2.3,
+                        "min_score": 3.0,
                         "consecutive_failures_threshold": 5,
                         "eval_frequency": 5.0,
                         "initial_guess_timeout_sec": 1.0,
@@ -337,11 +391,13 @@ def generate_launch_description():
                     {
                         "runtime_mode": "",
                         "lidar_topic": "/jt128/front/points",
+                        "map_topic": "/a2/map/pointcloud_3d",
                         "map_representation": "pointcloud_map_3d",
-                        "require_map": False,
-                        "require_localization": True,
+                        "localization_mode": LaunchConfiguration("localization_mode"),
+                        "require_map": ParameterValue(is_ndt_localization, value_type=bool),
+                        "require_localization": ParameterValue(is_ndt_localization, value_type=bool),
                         "ndt_health_topic": "/a2/ndt/healthy",
-                        "require_ndt_health": True,
+                        "require_ndt_health": ParameterValue(is_ndt_localization, value_type=bool),
                         "lidar_timeout_sec": 1.5,
                         "state_timeout_sec": 1.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -407,6 +463,10 @@ def generate_launch_description():
                             "'.lower() in ('1', 'true', 't', 'yes', 'y', 'on') else 'real'",
                         ]),
                         "network_interface": LaunchConfiguration("control_interface"),
+                        "allow_motion_without_localization": ParameterValue(
+                            is_odom_only_localization,
+                            value_type=bool,
+                        ),
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
                         "linear_y_sign": float(os.environ.get("A2_CONTROL_LINEAR_Y_SIGN", "1.0")),
                         "yaw_sign": float(os.environ.get("A2_CONTROL_YAW_SIGN", "1.0")),

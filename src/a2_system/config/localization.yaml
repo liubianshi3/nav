@@ -1,6 +1,10 @@
 localization_gate:
   ros__parameters:
-    input_pose_topic: /amcl_pose
+    # 3D-first default: NDT relocalizer publishes
+    # PoseWithCovarianceStamped on /a2/relocalization/pose. The legacy AMCL
+    # path overrides this back to /amcl_pose via legacy/localization.launch.py
+    # parameters dict, so flipping the default here is safe.
+    input_pose_topic: /a2/relocalization/pose
     input_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
     status_topic: /a2/localization_ok
     status_report_topic: /a2/localization/status
