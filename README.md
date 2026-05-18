@@ -39,7 +39,7 @@ A2_ROS_IMAGE=ros:humble-ros-base-jammy \
 Run the container:
 
 ```bash
-docker run -d --name a2-system-ws --restart unless-stopped \
+docker run -d --name a2-system-ws-dev --restart unless-stopped \
   --net host --privileged \
   -e A2_DOCKER_START_MODE=auto \
   -e A2_JT128_INTERFACE=net1 \

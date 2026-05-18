@@ -104,6 +104,23 @@ def _launch_setup(context, *args, **kwargs):
                             ("save_pcd", "/jt128/dlio/save_pcd"),
                         ],
                     ),
+                    Node(
+                        package="a2_system",
+                        executable="odometry_tf_broadcaster.py",
+                        name="jt128_dlio_odom_tf_broadcaster",
+                        output="screen",
+                        parameters=[
+                            {
+                                "odom_topic": "/jt128/dlio/odom",
+                                "parent_frame": "odom",
+                                "child_frame": "base_link",
+                                "use_msg_frame_ids": False,
+                                "flatten_z": True,
+                                "planarize_orientation": True,
+                                "use_sim_time": use_sim_time,
+                            }
+                        ],
+                    ),
                 ]
             )
         except PackageNotFoundError:

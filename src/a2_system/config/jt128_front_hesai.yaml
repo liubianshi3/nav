@@ -1,16 +1,25 @@
 lidar:
   - driver:
       use_gpu: false
+      pcap_play_synchronization: true
+      pcap_path: ""
+      correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
+      firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"
       source_type: 1
+      device_ip_address: 192.168.124.20
+      udp_port: 2368
+      is_use_ptc: false
+      ptc_port: 9347
+      multicast_ip_address: ""
       lidar_udp_type:
         device_ip_address: 192.168.124.20
         udp_port: 2368
         ptc_port: 9347
         multicast_ip_address: ""
-        use_ptc_connected: true
+        use_ptc_connected: false
         host_ptc_port: 0
-        correction_file_path: ""
-        firetimes_path: ""
+        correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
+        firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"
         recv_point_cloud_timeout: -1
         ptc_connect_timeout: -1
         host_ip_address: ""
@@ -23,21 +32,23 @@ lidar:
         caFile: ""
       pcap_type:
         pcap_path: ""
-        correction_file_path: ""
-        firetimes_path: ""
+        correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
+        firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"
         pcap_play_synchronization: true
         pcap_play_in_loop: false
         play_rate_: 1.0
       rosbag_type:
-        correction_file_path: ""
-        firetimes_path: ""
+        correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
+        firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"
       serial_type:
         rs485_com: ""
         rs232_com: ""
         point_cloud_baudrate: 3125000
         correction_save_path: ""
         correction_file_path: ""
+      use_timestamp_type: 0
       frame_start_azimuth: 0
+      thread_num: 4
       transform_flag: false
       x: 0.0
       y: 0.0
@@ -45,13 +56,11 @@ lidar:
       roll: 0.0
       pitch: 0.0
       yaw: 0.0
-      use_timestamp_type: 0
-      thread_num: 4
       fov_start: -1
       fov_end: -1
       channel_fov_filter_path: ""
       multi_fov_filter_ranges: ""
-      enable_packet_loss_tool: false
+      enable_packet_loss_tool: true
       distance_correction_flag: false
       xt_spot_correction: false
       device_udp_src_port: 0
@@ -59,7 +68,6 @@ lidar:
       frame_frequency: 0
       default_frame_frequency: 10.0
       echo_mode_filter: 0
-      socket_buffer_size: 262144000
     ros:
       ros_frame_id: jt128_front_link
       ros_recv_packet_topic: /jt128/front/packets

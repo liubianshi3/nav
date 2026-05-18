@@ -29,6 +29,9 @@ install(PROGRAMS
   scripts/ndt_adapter_dry_run_check.py
   scripts/odometry_tf_broadcaster.py
   scripts/preflight_check.py
+  scripts/sim_validate_perception_pipeline.py
+  scripts/sim_validate_gazebo_perception.py
+  scripts/sim_validate_simple_car_perception.py
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
   tools/bootstrap_env.sh
@@ -73,6 +76,10 @@ install(PROGRAMS
   scripts/traversability_to_obstacle_cloud.py
   scripts/odometry_to_pose_covariance.py
   scripts/pcd_to_2d_map.py
+  scripts/analyze_perception_bag.py
+  scripts/sim_validate_perception_pipeline.py
+  scripts/sim_validate_gazebo_perception.py
+  scripts/sim_validate_simple_car_perception.py
   scripts/a2_battery_publisher.py
   tools/map_quality/check_map_quality.py
   DESTINATION lib/${PROJECT_NAME})
