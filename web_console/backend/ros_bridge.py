@@ -914,7 +914,7 @@ class RosBridgeNode(Node):
         return False
 
     def _publish_current_pointcloud_snapshot(self) -> None:
-        self._publish("pointcloud", dump_model(self.pointcloud_snapshot))
+        self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))
         self._publish("health", self.get_health_dict())
 
     def get_navigation_pointcloud_snapshot(self) -> PointCloudSnapshot:
@@ -1552,6 +1552,20 @@ class RosBridgeNode(Node):
     def get_map_snapshot(self) -> MapSnapshot:
         with self._lock:
             return deep_copy_model(self.map_snapshot)
+
+    def _websocket_pointcloud_snapshot(self, snapshot: PointCloudSnapshot) -> PointCloudSnapshot:
+        max_points = max(100, int(self.config.ros.websocket_pointcloud_max_points))
+        if len(snapshot.points) <= max_points:
+            return snapshot
+        stride = max(1, int(math.ceil(len(snapshot.points) / max_points)))
+        points = snapshot.points[::stride]
+        return snapshot.model_copy(
+            update={
+                "points": points,
+                "points_sampled": len(points),
+                "sample_stride": max(1, int(snapshot.sample_stride) * stride),
+            }
+        )
 
     def _pointcloud_snapshot_from_msg(self, msg: PointCloud2, source_topic: str) -> PointCloudSnapshot:
         x_field = next((field for field in msg.fields if field.name == "x"), None)

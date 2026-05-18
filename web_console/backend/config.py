@@ -37,6 +37,7 @@ class RosTopicConfig:
     )
     pointcloud_primary_stale_sec: float = 2.0
     pointcloud_preview_max_points: int = 20000
+    websocket_pointcloud_max_points: int = 4000
     manage_map_service: str = "/map_manager/manage_map"
     task_manager_service: str = "/a2/task_manager/command"
     localization_pose_topic: str = "/a2/relocalization/pose"  # legacy /amcl_pose → 3D NDT

@@ -858,6 +858,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             if node is not None:
                 ros_thread_alive = bool(ros_runtime.thread and ros_runtime.thread.is_alive())
                 snapshot = node.build_snapshot(ros_thread_alive=ros_thread_alive)
+                snapshot.pointcloud = node._websocket_pointcloud_snapshot(snapshot.pointcloud)
                 await websocket.send_json({"type": "snapshot", "payload": jsonable_encoder(snapshot)})
             while True:
                 await websocket.receive_text()

@@ -67,6 +67,7 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.pose_goal_status_topic == "/a2/nav2/status"
     assert config.ros.pointcloud_primary_stale_sec > 0.0
     assert config.ros.pointcloud_preview_max_points >= 20000
+    assert 1000 <= config.ros.websocket_pointcloud_max_points <= 5000
     assert config.health.websocket_pose_hz <= 10.0
     assert config.health.websocket_status_hz <= 5.0
     assert config.stack.start_script.endswith("start_jt128_3d_stack.sh")
@@ -555,6 +556,18 @@ def test_websocket_odom_updates_are_rate_limited_to_keep_pointcloud_responsive()
     assert 'self._publish("health", self.get_health_dict())' not in odom_handler
     assert 'self._publish("status", dump_model(self.status))' not in status_handlers
     assert 'self._publish("battery", dump_model(self.battery))' not in battery_handler
+
+
+def test_websocket_pointcloud_uses_lightweight_preview():
+    root = Path(__file__).resolve().parents[3]
+    bridge = (root / "web_console/backend/ros_bridge.py").read_text(encoding="utf-8")
+    main = (root / "web_console/backend/main.py").read_text(encoding="utf-8")
+    config = (root / "web_console/backend/config.py").read_text(encoding="utf-8")
+
+    assert "websocket_pointcloud_max_points" in config
+    assert "def _websocket_pointcloud_snapshot" in bridge
+    assert 'self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))' in bridge
+    assert "snapshot.pointcloud = node._websocket_pointcloud_snapshot(snapshot.pointcloud)" in main
 
 
 def test_frontend_warns_when_websocket_disconnected_without_snapshot_polling():
