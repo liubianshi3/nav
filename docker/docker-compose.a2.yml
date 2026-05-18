@@ -34,6 +34,3 @@ services:
       - ${A2_HOST_ROUTE_ROOT:-/home/unitree/a2_system_ws/runtime/routes}:/opt/a2_system_ws/runtime/routes
       - ${A2_HOST_REPORT_ROOT:-/home/unitree/a2_system_ws/runtime/reports}:/opt/a2_system_ws/runtime/reports
       - ${A2_HOST_TEST_RECORD_ROOT:-/home/unitree/a2_system_ws/runtime/test_records}:/opt/a2_system_ws/runtime/test_records
-      # DLIO is a ROS2 feature-branch package installed on the A2 host.
-      - ${A2_HOST_DLIO_INSTALL:-/home/unitree/a2_system_ws/install/direct_lidar_inertial_odometry}:/opt/a2_system_ws/install/direct_lidar_inertial_odometry:ro
-      - ${A2_HOST_DLIO_BUILD:-/home/unitree/a2_system_ws/build/direct_lidar_inertial_odometry}:/home/unitree/a2_system_ws/build/direct_lidar_inertial_odometry:ro

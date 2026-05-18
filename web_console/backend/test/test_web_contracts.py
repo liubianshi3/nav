@@ -38,25 +38,32 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.pointcloud_topic == "/jt128/front/points"
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points"
     assert config.ros.task_manager_service == "/a2/task_manager/command"
-    assert config.ros.localization_pose_topic == "/amcl_pose"
+    assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
     assert config.ros.pose_goal_status_topic == "/a2/nav2/status"
     assert config.ros.pointcloud_primary_stale_sec > 0.0
     assert config.ros.pointcloud_preview_max_points >= 20000
-    assert config.stack.start_script.endswith("start_real_stack.sh")
+    assert config.stack.start_script.endswith("start_jt128_3d_stack.sh")
 
 
 def test_navigation_contract_uses_nav2_by_default():
     labels = {label for _, label, _ in NAVIGATION_NODES}
     patterns = {pattern for _, _, pattern in NAVIGATION_NODES}
 
-    assert "AMCL localization" in labels
+    assert "3D NDT localization" in labels  # legacy "AMCL localization" removed
     assert "goal bridge" in labels
     assert "map server" in labels
     assert "planner server" in labels
     assert "controller server" in labels
     assert "bt navigator" in labels
-    assert "amcl" in patterns
+    # expand tuple patterns for membership checks
+    flat_patterns = set()
+    for p in patterns:
+        if isinstance(p, tuple):
+            flat_patterns.update(p)
+        else:
+            flat_patterns.add(p)
+    assert ("ndt_adapter" in flat_patterns or "localization_gate" in flat_patterns)  # 3D-first, legacy "amcl" removed
     assert "planner_server" in patterns
     assert "controller_server" in patterns
     assert "bt_navigator" in patterns
@@ -67,7 +74,7 @@ def test_navigation_contract_uses_nav2_by_default():
 def test_mapping_contract_accepts_slam_toolbox_and_native_fallbacks():
     mapping_patterns = {pattern for _, _, pattern in MAPPING_NODES}
 
-    assert "slam_toolbox" in STACK_CLEANUP_PATTERNS
+    assert "slam_toolbox" in STACK_CLEANUP_PATTERNS  # kept in cleanup for legacy process kill safety
     assert "native_map_relay" in STACK_CLEANUP_PATTERNS
     assert "pointcloud_accumulator" in STACK_CLEANUP_PATTERNS
     assert ("jt128_dlio_map", "dlio_map_node") in mapping_patterns

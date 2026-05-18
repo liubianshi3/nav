@@ -400,7 +400,11 @@ class TaskManager(Node):
         normalized.pose = pose.pose
         if not normalized.header.frame_id:
             normalized.header.frame_id = self.map_frame
-        if normalized.header.stamp.sec == 0 and normalized.header.stamp.nanosec == 0:
+        if (
+            self.navigation_backend != "nav2"
+            and normalized.header.stamp.sec == 0
+            and normalized.header.stamp.nanosec == 0
+        ):
             normalized.header.stamp = self.get_clock().now().to_msg()
         orientation = normalized.pose.orientation
         if (

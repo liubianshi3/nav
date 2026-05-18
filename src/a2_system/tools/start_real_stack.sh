@@ -16,9 +16,10 @@ if [[ $# -gt 0 ]]; then
   EXTRA_ARGS=("$@")
 fi
 if [[ "${A2_ENABLE_NAV2:-false}" == "1" || "${A2_ENABLE_NAV2:-false}" == "true" ]]; then
+  # Legacy 2D nav2 path; 3D-first projects should set A2_ENABLE_NAV2=false and use start_jt128_3d_stack.sh instead
   EXTRA_ARGS+=("enable_nav2_bringup:=true")
   EXTRA_ARGS+=("enable_control_bridge:=true")
-  EXTRA_ARGS+=("real_localization_mode:=${A2_REAL_LOCALIZATION_MODE:-amcl}")
+  EXTRA_ARGS+=("real_localization_mode:=${A2_REAL_LOCALIZATION_MODE:-uslam_odom}")
 fi
 if [[ -n "${A2_MAP_YAML:-}" ]]; then
   EXTRA_ARGS+=("map:=${A2_MAP_YAML}")

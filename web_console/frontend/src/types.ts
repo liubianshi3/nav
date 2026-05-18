@@ -75,6 +75,8 @@ export interface RobotStatus {
   lidar_status: TextStatus;
   camera_status: TextStatus;
   localization_status: TextStatus;
+  relocalization_status: TextStatus;
+  safety_status: TextStatus;
   map_manager_status: TextStatus;
   task_manager_status: TextStatus;
   sdk_status: TextStatus;
@@ -283,6 +285,14 @@ export interface StackStatus {
   log_file: string | null;
   selected_map_id: string | null;
   selected_map_yaml: string | null;
+  localization_mode: string | null;
+  motion_mode: string | null;
+  enable_motion: boolean | null;
+  live_motion: boolean | null;
+  dry_run: boolean | null;
+  enable_nav2_3d: boolean | null;
+  collision_monitor_profile: string | null;
+  collision_monitor_config: string | null;
   nodes: NodeCheck[];
   maps: SavedMapInfo[];
   message: string | null;
@@ -303,7 +313,9 @@ export interface BatterySnapshot {
   percentage: number | null;
   voltage: number | null;
   charging: boolean | null;
+  health: number | null;
   stamp: string | null;
+  stale: boolean;
 }
 
 export interface SystemHealth {

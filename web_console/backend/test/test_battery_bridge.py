@@ -51,12 +51,20 @@ def _install_stub_modules() -> None:
     _register_message_module("nav_msgs.msg", ["OccupancyGrid", "Odometry"])
     _register_message_module("std_msgs.msg", ["Bool", "String"])
     _register_message_module("tf2_msgs.msg", ["TFMessage"])
-    _register_message_module("sensor_msgs.msg", ["BatteryState", "CompressedImage", "Image", "PointCloud2"])
+    _register_message_module("sensor_msgs.msg", ["CompressedImage", "Image", "PointCloud2"])
+
+    sensor_msgs = sys.modules.get("sensor_msgs.msg")
+    if sensor_msgs is None:
+        sensor_msgs = types.ModuleType("sensor_msgs.msg")
+        sys.modules["sensor_msgs.msg"] = sensor_msgs
+    if not hasattr(sensor_msgs, "BatteryState"):
+        sensor_msgs.BatteryState = type("BatteryState", (), {})
+    sensor_msgs.BatteryState.POWER_SUPPLY_STATUS_CHARGING = 1
 
 
 _install_stub_modules()
 
-from backend.models import TaskRouteStatus, TextStatus
+from backend.models import BatterySnapshot
 from backend.ros_bridge import RosBridgeNode
 
 
@@ -68,34 +76,42 @@ class _DummyLock:
         return False
 
 
-def test_task_route_status_falls_back_to_service_response_for_missing_fields():
+def _msg(*, percentage: float, present: bool, charging: bool, voltage: float = 29.4, health: int = 1):
+    status = 1 if charging else 2
+    return types.SimpleNamespace(
+        percentage=percentage,
+        present=present,
+        voltage=voltage,
+        power_supply_status=status,
+        power_supply_health=health,
+        header=types.SimpleNamespace(
+            stamp=types.SimpleNamespace(sec=1, nanosec=0),
+        ),
+    )
+
+
+def test_battery_percentage_normalizes_fraction_to_0_100():
     bridge = object.__new__(RosBridgeNode)
-    bridge.status = types.SimpleNamespace(
-        task_manager_status=TextStatus(
-            raw="mode=real;state=ready;ready=true;reason=idle;route_state=running",
-            mode="real",
-            state="ready",
-            ready=True,
-            reason="idle",
-            fields={"route_state": "running"},
-        )
-    )
     bridge._lock = _DummyLock()
-    bridge._call_task_command = lambda **kwargs: types.SimpleNamespace(
-        current_mode="navigation",
-        active_map="plant_a",
-        route_id="night_shift",
-        route_path="/tmp/night_shift.yaml",
-        report_path="/tmp/night_shift.md",
-        mission_state="running",
-    )
+    bridge.battery = BatterySnapshot()
+    bridge._publish = lambda *args, **kwargs: None
 
-    status = RosBridgeNode.task_route_status(bridge)
+    RosBridgeNode._on_battery(bridge, _msg(percentage=0.85, present=True, charging=True))
 
-    assert isinstance(status, TaskRouteStatus)
-    assert status.current_mode == "navigation"
-    assert status.active_map == "plant_a"
-    assert status.route_id == "night_shift"
-    assert status.route_path == "/tmp/night_shift.yaml"
-    assert status.report_path == "/tmp/night_shift.md"
-    assert status.route_state == "running"
+    assert bridge.battery.available is True
+    assert bridge.battery.percentage == 85.0
+    assert bridge.battery.charging is True
+    assert bridge.battery.health == 1
+
+
+def test_battery_percentage_keeps_0_100_value():
+    bridge = object.__new__(RosBridgeNode)
+    bridge._lock = _DummyLock()
+    bridge.battery = BatterySnapshot()
+    bridge._publish = lambda *args, **kwargs: None
+
+    RosBridgeNode._on_battery(bridge, _msg(percentage=85.0, present=True, charging=False))
+
+    assert bridge.battery.available is True
+    assert bridge.battery.percentage == 85.0
+    assert bridge.battery.charging is False

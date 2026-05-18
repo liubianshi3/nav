@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import subprocess
 import time
 from datetime import datetime
@@ -40,6 +41,36 @@ from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
 from .utils import is_lan_or_loopback
 from .ws import WebSocketManager
+
+
+def _pcd_to_2d_map_args(tool_path: Path, pcd_path: Path, map_dir: Path) -> list[str]:
+    """Argument list for the 3D-first map projection pipeline.
+
+    Centralised so both the mapping→navigation transition and the explicit
+    ``/api/maps/project-2d`` endpoint apply the same self-filter and dilation
+    policy:
+
+    * ``--dilate 0``: do not double-inflate against Nav2 global/local costmap
+      inflation. The static map only expresses true occupancy; safety margin
+      is the costmap's job.
+    * ``--ignore-obstacles-within-radius 0.45``: drop near-origin self-shell /
+      legs / near-field noise the SLAM build kept around the start pose.
+    * ``--clear-radius-around-origin 0.45``: force a real free patch around
+      the build origin so the corridor gate does not fail on
+      ``static_clearance_low`` at startup.
+    """
+    return [
+        "python3", str(tool_path), str(pcd_path),
+        "--output", str(map_dir),
+        "--resolution", "0.05",
+        "--ground-threshold", "0.08",
+        "--ceiling-threshold", "2.0",
+        "--min-obstacle-points", "2",
+        "--min-ground-points", "1",
+        "--dilate", "0",
+        "--ignore-obstacles-within-radius", "0.45",
+        "--clear-radius-around-origin", "0.45",
+    ]
 
 
 def _route_updated_at(route_path: str | None) -> str | None:
@@ -349,7 +380,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
     @app.post("/api/stack/start-navigation")
     async def start_navigation_stack(request: StartNavigationRequest):
         try:
-            result = await asyncio.to_thread(stack_controller.start_navigation, request.map_id)
+            result = await asyncio.to_thread(stack_controller.start_navigation_from_request, request)
         except StackControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, **result, "stack": jsonable_encoder(stack_controller.status())}
@@ -502,7 +533,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             ok = await _step(
                 "project_pcd_to_2d",
                 lambda: subprocess.run(
-                    ["python3", str(tool_path), str(pcd_path), "--output", str(map_dir), "--resolution", "0.05"],
+                    _pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
                     capture_output=True, text=True, timeout=60,
                 ),
                 timeout=65.0,
@@ -598,7 +629,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
         try:
             result = await asyncio.to_thread(
                 subprocess.run,
-                ["python3", str(tool_path), str(pcd_path), "--output", str(map_dir), "--resolution", "0.05"],
+                _pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
                 capture_output=True,
                 text=True,
                 timeout=60,

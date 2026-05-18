@@ -24,7 +24,7 @@ export function StatusSidebar(props: StatusSidebarProps) {
       <NodeStatusSection stack={props.stack} />
       <BatterySection battery={props.battery} />
       <RecoverySection recovery={props.recovery} />
-      <RuntimeInfoSection status={props.status} />
+      <RuntimeInfoSection status={props.status} stack={props.stack} />
       <PoseSection pose={props.pose} />
       <HealthSection health={props.health} />
     </div>
@@ -81,6 +81,9 @@ export function SystemStatusSection({
     <section className="panel">
       <h2>系统状态</h2>
       <StatusRow label="栈模式" value={formatNullable(stack?.mode)} />
+      <StatusRow label="定位模式" value={formatNullable(stack?.localization_mode ?? status?.safety_status?.fields?.localization_mode)} />
+      <StatusRow label="运动模式" value={formatNullable(stack?.motion_mode)} />
+      <StatusRow label="防撞配置" value={formatNullable(stack?.collision_monitor_profile)} />
       <StatusRow label="ready" value={status?.system_ready === true ? "true" : "false"} />
       <StatusRow label="robot" value={formatNullable(robotModel || robotProfile)} />
       <StatusRow label="lidar model" value={formatNullable(lidarModel || lidarProfile)} />
@@ -89,6 +92,8 @@ export function SystemStatusSection({
       <StatusRow label="camera topic" value={formatNullable(cameraTopic)} />
       <StatusRow label="定位" value={localizationLabel(status, pose)} />
       <StatusRow label="NDT score" value={ndtScoreLabel(status)} />
+      <StatusRow label="NDT state" value={formatStatusSummary(status?.relocalization_status)} />
+      <StatusRow label="safety" value={formatStatusSummary(status?.safety_status)} />
       <StatusRow label="lidar" value={formatStatusSummary(status?.lidar_status)} />
       <StatusRow label="camera" value={formatStatusSummary(status?.camera_status)} />
       <StatusRow label="SDK" value={formatStatusSummary(status?.sdk_status)} />
@@ -116,16 +121,21 @@ export function NodeStatusSection({ stack }: Pick<StatusSidebarProps, "stack">) 
   );
 }
 
-export function RuntimeInfoSection({ status }: Pick<StatusSidebarProps, "status">) {
+export function RuntimeInfoSection({ status, stack }: Pick<StatusSidebarProps, "status" | "stack">) {
   return (
     <section className="panel">
       <h2>运行信息</h2>
       <StatusRow label="线速度 x" value={`${formatNumber(status?.velocity_linear_x, 3)} m/s`} />
       <StatusRow label="角速度 z" value={`${formatNumber(status?.velocity_angular_z, 3)} rad/s`} />
       <StatusRow label="active_map" value={formatNullable(status?.active_map)} />
+      <StatusRow label="Nav2 3D" value={stack?.enable_nav2_3d == null ? "—" : String(stack.enable_nav2_3d)} />
+      <StatusRow label="motion" value={stack?.live_motion ? "live" : stack?.enable_motion ? "dry-run" : "planning-only"} />
+      <StatusRow label="collision cfg" value={formatNullable(stack?.collision_monitor_config)} />
       <StatusRow label="规划器" value={formatNullable(status?.planner_type)} />
       <StatusRow label="行为树" value={formatNullable(status?.bt_filename)} />
       <StatusRow label="map manager" value={formatStatusSummary(status?.map_manager_status)} />
+      <StatusRow label="score/pose Δ" value={formatNullable(status?.relocalization_status?.fields?.last_score_pose_delta_sec)} />
+      <StatusRow label="odom age" value={formatNullable(status?.relocalization_status?.fields?.odom_receive_age)} />
     </section>
   );
 }

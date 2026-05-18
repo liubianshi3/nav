@@ -1,0 +1,54 @@
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+
+    cmd_vel_in_topic: "/cmd_vel"
+    cmd_vel_out_topic: "/cmd_vel_safe"
+
+    transform_tolerance: 0.5
+    source_timeout: 2.0
+    base_shift_correction: true
+    stop_pub_timeout: 2.0
+
+    # Validation-only profile for supervised open-space live-motion tests.
+    # The current raw near-field obstacle sources include self/ground returns
+    # inside the STOP polygon. This profile keeps collision_monitor in the
+    # command chain while avoiding false STOP until self-filtering is added.
+    polygons: ["PolygonStop", "PolygonSlow"]
+
+    PolygonStop:
+      type: "polygon"
+      points: [0.5, 0.4, 0.5, -0.4, -0.3, -0.4, -0.3, 0.4]
+      action_type: "stop"
+      max_points: 50000
+      visualize: true
+      polygon_pub_topic: "polygon_stop"
+      enabled: true
+
+    PolygonSlow:
+      type: "polygon"
+      points: [0.9, 0.7, 0.9, -0.7, -0.5, -0.7, -0.5, 0.7]
+      action_type: "slowdown"
+      max_points: 50000
+      slowdown_ratio: 0.3
+      visualize: true
+      polygon_pub_topic: "polygon_slowdown"
+      enabled: true
+
+    observation_sources: ["obstacle_cloud", "traversability_cloud"]
+
+    obstacle_cloud:
+      type: "pointcloud"
+      topic: "/a2/obstacle/points"
+      min_height: 0.05
+      max_height: 0.85
+      enabled: true
+
+    traversability_cloud:
+      type: "pointcloud"
+      topic: "/a2/traversability/obstacle_points"
+      min_height: 0.0
+      max_height: 0.5
+      enabled: true

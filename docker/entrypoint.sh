@@ -3,8 +3,8 @@ set -euo pipefail
 
 export A2_WORKSPACE="${A2_WORKSPACE:-/opt/a2_system_ws}"
 export CONFIG_PATH="${CONFIG_PATH:-${A2_WORKSPACE}/web_console/backend/config.docker.yaml}"
-export LD_LIBRARY_PATH="/opt/unitree_robotics/lib:/opt/unitree_robotics/lib/x86_64:${LD_LIBRARY_PATH:-}"
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 
 mkdir -p "${A2_WORKSPACE}/runtime/maps" "${A2_WORKSPACE}/runtime/logs"
 
@@ -12,6 +12,8 @@ set +u
 source /opt/ros/humble/setup.bash
 source "${A2_WORKSPACE}/install/setup.bash"
 set -u
+
+export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
 
 log() {
   printf '[a2-docker] %s\n' "$*"
@@ -130,7 +132,52 @@ start_a2_stack() {
   return 0
 }
 
+start_sdk_bridge() {
+  local autostart="${A2_AUTOSTART_SDK_BRIDGE:-true}"
+  local sdk_iface="${A2_SDK_INTERFACE:-eth0}"
+  local use_mock="${A2_SDK_BRIDGE_USE_MOCK:-false}"
+
+  if [[ "${autostart}" != "true" && "${autostart}" != "1" ]]; then
+    log "sdk bridge autostart disabled A2_AUTOSTART_SDK_BRIDGE=${autostart}"
+    return 0
+  fi
+
+  if pgrep -f "a2_sdk_bridge_node" >/dev/null 2>&1; then
+    log "sdk bridge already running"
+    return 0
+  fi
+
+  local preload_candidate=""
+  for candidate in /opt/unitree_robotics/lib/x86_64/libddsc.so.0 /opt/unitree_robotics/lib/x86_64/libddsc.so; do
+    if [[ -f "${candidate}" ]]; then
+      preload_candidate="${candidate}"
+      break
+    fi
+  done
+
+  local cmd=(
+    ros2 run a2_sdk_bridge a2_sdk_bridge_node
+    --ros-args
+    --params-file "${A2_WORKSPACE}/src/a2_system/config/a2_sdk.yaml"
+    -p use_mock:="${use_mock}"
+    -p allow_loopback:=false
+    -p network_interface:="${sdk_iface}"
+  )
+
+  log "autostarting sdk bridge on iface=${sdk_iface}"
+  (
+    export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
+    if [[ -n "${preload_candidate}" ]]; then
+      export LD_PRELOAD="${preload_candidate}${LD_PRELOAD:+:${LD_PRELOAD}}"
+    fi
+    exec "${cmd[@]}"
+  ) >"${A2_WORKSPACE}/runtime/logs/a2_sdk_bridge.log" 2>&1 &
+}
+
 start_a2_stack
+
+start_sdk_bridge
 
 # Keep the container alive with the Web console backend in the foreground.
 exec "${A2_WORKSPACE}/web_console/scripts/run_backend.sh" "$@"

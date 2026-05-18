@@ -26,13 +26,30 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 
 @dataclass
 class GridProbe:
-    x: float
-    y: float
-    grid_x: int | None
-    grid_y: int | None
-    value: int | None
-    state: str
-    nearest_occupied_m: float | None = None
+    # World-frame sample coordinates.
+    sample_x: float
+    sample_y: float
+    # Why this sample is blocking (or "free" if it passed every check). One of:
+    #   free, pose_out_of_map, static_map_blocker, static_clearance_low,
+    #   inflation_blocker.
+    # The priority order matches the report-level reason rollup below so that
+    # the first failing sample explains the gate failure unambiguously.
+    sample_reason: str
+    # Static /map probe: where in the static OccupancyGrid we sampled and what
+    # value we got. Lets us tell "static map said this cell is occupied" apart
+    # from "costmap inflation pushed cost high here".
+    static_gx: int | None
+    static_gy: int | None
+    static_value: int | None
+    # Global costmap probe at the same world point.
+    costmap_gx: int | None
+    costmap_gy: int | None
+    costmap_value: int | None
+    # Distance (meters) and world-frame XY of the nearest static-occupied cell
+    # within the search window. None when there is no occupied cell in range.
+    nearest_occupied_distance: float | None = None
+    nearest_occupied_x: float | None = None
+    nearest_occupied_y: float | None = None
 
 
 @dataclass
@@ -150,11 +167,27 @@ def occupied_centers_near_corridor(
     return centers
 
 
-def nearest_occupied_distance(point: tuple[float, float], centers: list[tuple[float, float]]) -> float | None:
+def nearest_occupied_distance(
+    point: tuple[float, float],
+    centers: list[tuple[float, float]],
+) -> tuple[float | None, float | None, float | None]:
+    """Return ``(distance_m, occupied_x, occupied_y)`` of the closest center.
+
+    All three are ``None`` when there is no occupied cell in the search window.
+    """
     if not centers:
-        return None
+        return None, None, None
     px, py = point
-    return min(math.hypot(px - ox, py - oy) for ox, oy in centers)
+    best_distance = math.inf
+    best_x: float | None = None
+    best_y: float | None = None
+    for ox, oy in centers:
+        distance = math.hypot(px - ox, py - oy)
+        if distance < best_distance:
+            best_distance = distance
+            best_x = ox
+            best_y = oy
+    return best_distance, best_x, best_y
 
 
 class CorridorGateNode(Node):
@@ -221,7 +254,7 @@ def build_report(args: argparse.Namespace, pose_msg: PoseWithCovarianceStamped, 
         static_gx, static_gy = world_to_grid(static_map, x, y)
         static_value = grid_value(static_map, static_gx, static_gy)
         static_state = classify_occupancy(static_value, args.static_occupied_threshold, args.allow_static_unknown)
-        clearance = nearest_occupied_distance((x, y), occupied_centers)
+        clearance, occ_x, occ_y = nearest_occupied_distance((x, y), occupied_centers)
         if clearance is not None:
             min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
         if static_state == "unknown":
@@ -239,25 +272,38 @@ def build_report(args: argparse.Namespace, pose_msg: PoseWithCovarianceStamped, 
         if cost_state in {"occupied", "out_of_bounds"}:
             costmap_blocked += 1
 
-        state = "free"
-        if static_state != "free":
-            state = f"static_{static_state}"
+        # Per-sample reason rollup. Priority is fixed and the same as the
+        # report-level reason: pose_out_of_map (sample left the static /map at
+        # all) > static_map_blocker (static cell is occupied/unknown when
+        # unknown is not allowed) > static_clearance_low (free cell, but too
+        # close to a static-occupied cell) > inflation_blocker (static side is
+        # fine but the global costmap blocks via inflation / unknown / high
+        # cost). "free" means the sample passed every check.
+        if static_state == "out_of_bounds":
+            sample_reason = "pose_out_of_map"
+        elif static_state in {"occupied", "unknown"}:
+            sample_reason = "static_map_blocker"
         elif clearance is not None and clearance < args.min_static_clearance:
-            state = "static_clearance_low"
-        elif cost_state != "free":
-            state = f"costmap_{cost_state}"
-        elif cost_value is not None and cost_value > args.max_global_cost:
-            state = "costmap_cost_high"
+            sample_reason = "static_clearance_low"
+        elif cost_state != "free" or (cost_value is not None and cost_value > args.max_global_cost):
+            sample_reason = "inflation_blocker"
+        else:
+            sample_reason = "free"
 
         samples.append(
             GridProbe(
-                x=x,
-                y=y,
-                grid_x=static_gx,
-                grid_y=static_gy,
-                value=cost_value,
-                state=state,
-                nearest_occupied_m=clearance,
+                sample_x=x,
+                sample_y=y,
+                sample_reason=sample_reason,
+                static_gx=static_gx,
+                static_gy=static_gy,
+                static_value=static_value,
+                costmap_gx=cost_gx,
+                costmap_gy=cost_gy,
+                costmap_value=cost_value,
+                nearest_occupied_distance=clearance,
+                nearest_occupied_x=occ_x,
+                nearest_occupied_y=occ_y,
             )
         )
 
@@ -269,18 +315,19 @@ def build_report(args: argparse.Namespace, pose_msg: PoseWithCovarianceStamped, 
             candidate_yaw = yaw + delta
             candidate_points = list(corridor_points(start_x, start_y, candidate_yaw, args.distance, args.sample_count))
             centers = occupied_centers_near_corridor(static_map, candidate_points, args.static_occupied_threshold, search_radius)
-            clearances = [nearest_occupied_distance(point, centers) for point in candidate_points]
+            clearances = [nearest_occupied_distance(point, centers)[0] for point in candidate_points]
             numeric = [value for value in clearances if value is not None]
             candidate_clearance = min(numeric) if numeric else search_radius
             if best_direction_clearance is None or candidate_clearance > best_direction_clearance:
                 best_direction_clearance = candidate_clearance
                 best_direction_deg = math.degrees(delta)
 
-    failed_states = [sample.state for sample in samples if sample.state != "free"]
-    pass_gate = not failed_states
-    reason = "pass"
-    if not pass_gate:
-        reason = failed_states[0]
+    failed_reasons = [sample.sample_reason for sample in samples if sample.sample_reason != "free"]
+    pass_gate = not failed_reasons
+    # Report-level reason is just the first failing sample's reason. Both use
+    # the same four-category vocabulary so JSON consumers do not have to
+    # translate between sample-level and report-level labels.
+    reason = "pass" if pass_gate else failed_reasons[0]
 
     return GateReport(
         pass_gate=pass_gate,

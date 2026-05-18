@@ -7,6 +7,7 @@ a2_sdk_bridge:
     interface_candidates: ["lo"]
     state_topic: /a2/raw_state
     sport_state_topic: rt/lf/sportmodestate
+    bms_state_topic: lf/bmsstate
     mock_cmd_topic: /cmd_vel
     mock_cmd_timeout_sec: 0.5
     timer_hz: 50.0
