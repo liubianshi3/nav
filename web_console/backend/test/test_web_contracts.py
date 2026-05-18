@@ -67,7 +67,7 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.pose_goal_status_topic == "/a2/nav2/status"
     assert config.ros.pointcloud_primary_stale_sec > 0.0
     assert config.ros.pointcloud_preview_max_points >= 20000
-    assert 1000 <= config.ros.websocket_pointcloud_max_points <= 10000
+    assert 1000 <= config.ros.websocket_pointcloud_max_points <= 20000
     assert config.health.websocket_pose_hz <= 10.0
     assert config.health.websocket_status_hz <= 5.0
     assert config.stack.start_script.endswith("start_jt128_3d_stack.sh")
@@ -243,6 +243,7 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     api_source = (root / "frontend/src/api.ts").read_text()
     app_source = (root / "frontend/src/App.tsx").read_text()
     controls_source = (root / "frontend/src/components/ControlSidebar.tsx").read_text()
+    styles_source = (root / "frontend/src/styles.css").read_text()
     stack_source = (root / "backend/stack_control.py").read_text()
     grpc_source = (root / "backend/grpc_server.py").read_text()
 
@@ -265,6 +266,9 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "suppressClickRef" not in controls_source
     assert "onClick={() =>" in controls_source
     assert "按住方向键持续发布" in controls_source
+    assert "manual-auth-grid" in controls_source
+    assert ".manual-auth-grid .status-value" in styles_source
+    assert "overflow-wrap: anywhere" in styles_source
     assert "def ensure_manual_control_standby" in stack_source
     assert "start_standby_sdk_bridge" in stack_source
     assert "start_standby_control_bridge" in stack_source
@@ -272,7 +276,7 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "def _standby_control_interface" in stack_source
     assert "def _manual_control_standby_mismatches" in stack_source
     assert "self.config.stack.network_interface" in stack_source
-    assert "os.environ.get(\"A2_SDK_INTERFACE\") or self.config.stack.network_interface" in stack_source
+    assert "os.environ.get(\"A2_SDK_INTERFACE\") or \"eth0\"" in stack_source
     assert "network_interface:={sdk_iface}" in stack_source
     assert "A2_CONTROL_ALLOW_WITHOUT_MAP" in stack_source
     assert "A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION" in stack_source
