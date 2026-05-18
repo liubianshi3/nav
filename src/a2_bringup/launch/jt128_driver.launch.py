@@ -37,6 +37,11 @@ def _launch_setup(context, *args, **kwargs):
 
     driver_config.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(config_path, driver_config)
+    correction_dir = Path(config_path).parent / "hesai_correction"
+    if correction_dir.exists():
+        for correction_file in correction_dir.iterdir():
+            if correction_file.is_file():
+                shutil.copy2(correction_file, driver_config.parent / correction_file.name)
 
     return [
         LogInfo(

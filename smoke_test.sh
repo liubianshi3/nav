@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE_NAME="${A2_DOCKER_IMAGE:-a2-system-ws:real}"
+IMAGE_NAME="${A2_DOCKER_IMAGE:-a2-system-ws:dev}"
 CONTAINER_NAME="${A2_DOCKER_TEST_NAME:-a2-system-ws-smoke}"
 PORT="${A2_DOCKER_TEST_PORT:-18080}"
 HOST_MAP_ROOT="${A2_HOST_MAP_ROOT:-/home/unitree/a2_system_ws/runtime/maps}"

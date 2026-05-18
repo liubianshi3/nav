@@ -1,0 +1,171 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 78
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz_default_plugins/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: map
+    - Alpha: 0.8
+      Cell Size: 1
+      Class: rviz_default_plugins/Grid
+      Color: 100; 100; 100
+      Enabled: true
+      Name: Grid (base_link)
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: base_link
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Frame Timeout: 15
+      Name: TF
+      Marker Scale: 1
+    # ── Raw JT128 pointcloud ──────────────────────────────────────
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 200; 200; 200
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Name: JT128 Raw (grey)
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 2
+      Style: Flat Squares
+      Topic: /jt128/front/points
+      Use Fixed Frame: true
+    # ── Ground points ─────────────────────────────────────────────
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 50; 200; 50
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Ground (green)
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 2
+      Style: Flat Squares
+      Topic: /a2/ground/points
+      Use Fixed Frame: true
+    # ── Obstacle points (post self-filter) ────────────────────────
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 200; 50; 50
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Obstacle (red)
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic: /a2/obstacle/points
+      Use Fixed Frame: true
+    # ── Traversability grid ───────────────────────────────────────
+    - Alpha: 0.7
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: Traversability Costmap
+      Topic: /a2/traversability
+      Update Topic: /a2/traversability_updates
+      Use Timestamp: false
+    # ── Traversability obstacle points (for Nav2 obstacle_layer) ──
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 120; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Traversability Obstacle (orange)
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Style: Flat Squares
+      Topic: /a2/traversability/obstacle_points
+      Use Fixed Frame: true
+    # ── Debug layers (V2 traversability) ───────────────────────────
+    # When V2 traversability publishes per-reason OccupancyGrid layers,
+    # add Map displays here:
+    #   Topic: /a2/traversability/debug/slope
+    #   Topic: /a2/traversability/debug/roughness
+    #   Topic: /a2/traversability/debug/step
+    #   Topic: /a2/traversability/debug/confidence
+    #   Topic: /a2/traversability/debug/reason
+    # Debug layers are not required for core bag validation.
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic: /initialpose
+    - Class: rviz_default_plugins/SetGoal
+      Topic: /goal_pose
+    - Class: rviz_default_plugins/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 5.0
+      Focal Point:
+        X: 1.0
+        Y: 0
+        Z: 0
+      Name: Current View
+      Target Frame: <Fixed Frame>
+      Yaw: -1.57
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Distance: 5.0
+        Focal Point:
+          X: 1.0
+          Y: 0
+          Z: 0.3
+        Name: Front View
+        Pitch: 0.5
+        Yaw: -1.57
+        Target Frame: base_link
+      - Class: rviz_default_plugins/TopDownOrtho
+        Name: Top-down (base_link)
+        Target Frame: base_link
+        Yaw: 0
+  Window Geometry:
+    Displays:
+      collapsed: false
+    Height: 900
+    Width: 1600

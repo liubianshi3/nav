@@ -161,6 +161,7 @@ stop_interference() {
     "navigation_mapping.py" \
     "dwa_obstacle_avoidance.py" \
     "point_cloud_fusion" \
+    "dlio_mapping.launch.py" \
     "hesai_ros_driver_node" \
     "unitree_slam" \
     "pointcloud_to_laserscan" \
@@ -175,6 +176,7 @@ stop_interference() {
     "octomap_mapping_node.py" \
     "dlio_odom_node" \
     "dlio_map_node" \
+    "odometry_tf_broadcaster.py" \
     "jt128_dlio_watchdog.py" \
     "map_manager_node"; do
     kill_pattern TERM "$pattern"
@@ -190,6 +192,7 @@ stop_interference() {
     "navigation_mapping.py" \
     "dwa_obstacle_avoidance.py" \
     "point_cloud_fusion" \
+    "dlio_mapping.launch.py" \
     "hesai_ros_driver_node" \
     "unitree_slam" \
     "pointcloud_to_laserscan" \
@@ -200,6 +203,7 @@ stop_interference() {
     "octomap_mapping_node.py" \
     "dlio_odom_node" \
     "dlio_map_node" \
+    "odometry_tf_broadcaster.py" \
     "jt128_dlio_watchdog.py" \
     "map_manager_node"; do
     kill_pattern KILL "$pattern"

@@ -397,8 +397,10 @@ def generate_launch_description():
                     {
                         "runtime_mode": "",
                         "lidar_topic": "/jt128/front/points",
-                        "map_topic": "/a2/map/pointcloud_3d",
-                        "map_representation": "pointcloud_map_3d",
+                        "map_topic": "/map",
+                        "map_representation": "occupancy_grid_2d",
+                        "latch_map_ready": True,
+                        "map_transient_local": True,
                         "localization_mode": LaunchConfiguration("localization_mode"),
                         "require_map": ParameterValue(is_ndt_localization, value_type=bool),
                         "require_localization": ParameterValue(is_ndt_localization, value_type=bool),

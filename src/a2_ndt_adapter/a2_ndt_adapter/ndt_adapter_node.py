@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped
 from nav_msgs.msg import Odometry
@@ -154,8 +155,11 @@ class A2NdtAdapter(Node):
         self.declare_parameter('score_min_is_good', True)
         self.declare_parameter('odom_timeout_sec', 1.0)
         self.declare_parameter('score_timeout_sec', 12.0)
+        self.declare_parameter('max_score_pose_delta_sec', 2.0)
         self.declare_parameter('max_map_to_odom_translation_step', 1.0)
         self.declare_parameter('max_map_to_odom_rotation_step_deg', 20.0)
+        self.declare_parameter('first_fix_max_translation_m', 3.0)
+        self.declare_parameter('first_fix_max_rotation_rad', math.radians(45.0))
         self.declare_parameter('map_service_min_radius', 1.0)
         self.declare_parameter('map_service_max_radius', 25.0)
         self.declare_parameter('map_service_margin_m', 3.0)
@@ -182,8 +186,8 @@ class A2NdtAdapter(Node):
         self.last_pose_stamp = None
 
         self.last_odom_stamp = None
-        self.last_odom_receive_time = None
         self.last_odom_msg_stamp = None
+        self.last_odom_receive_time = None
         self.last_iteration_num = None
         self.cached_map = None
         self.cached_map_frame = self.get_parameter('map_frame').value
@@ -203,7 +207,8 @@ class A2NdtAdapter(Node):
         self.last_ndt_trigger_attempt_time = None
         
         # Publishers
-        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('pose_topic').value, 10)
+        pose_qos = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('pose_topic').value, pose_qos)
         self.status_pub = self.create_publisher(String, self.get_parameter('status_topic').value, 10)
         self.ndt_initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, self.get_parameter('ndt_initial_pose_topic').value, 10)
         self.tf_broadcaster = TransformBroadcaster(self)

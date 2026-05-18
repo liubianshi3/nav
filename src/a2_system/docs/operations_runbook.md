@@ -7,7 +7,8 @@ This runbook is the standard operating flow for the current front-LiDAR-first A2
 - Use the robot body stack, not the gimbal or cloud-platform path.
 - Treat rear LiDAR `.21` as offline unless verified live.
 - Use AMCL as the default real localization mode for Nav2.
-- Keep `a2_control_bridge` disabled if the current task is mapping, localization, web monitoring, or dry-run validation only.
+- For the JT128 3D closed-loop path, use the host-source real-motion runbook:
+  `src/a2_system/docs/jt128_real_closed_loop_runbook.md`.
 
 ## Local Pre-Deployment Checks
 
@@ -72,13 +73,27 @@ Pass condition:
 ## JT128 3D Navigation
 
 ```bash
-ros2 launch a2_bringup jt128_3d_navigation.launch.py map_id:=<saved_map_id> dry_run:=true enable_motion:=false
+cd /home/unitree/a2_system_ws
+A2_WORKSPACE=/home/unitree/a2_system_ws \
+src/a2_system/tools/start_jt128_3d_stack.sh \
+  --mode navigation \
+  --map-id <saved_map_id> \
+  --lidar-iface net1 \
+  --sdk-iface eth0 \
+  --control-iface eth0 \
+  --localization-mode ndt \
+  --collision-profile strict
 ```
 
-Dry-run readiness check:
+Readiness check before sending a real goal:
 
 ```bash
-ros2 run a2_system ndt_adapter_dry_run_check.py
+now=$(date +%s%N); sec=${now%?????????}; nsec=${now: -9}
+ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+"{header: {stamp: {sec: ${sec}, nanosec: ${nsec}}, frame_id: map}, pose: {pose: {orientation: {w: 1.0}}}}"
+sleep 4
+timeout 3 ros2 topic echo /a2/safety/status --once
+timeout 3 ros2 topic echo /a2/real/report --once
 ```
 
 Pass condition:
@@ -94,8 +109,8 @@ Pass condition:
 - confirm `/a2/real/report` says ready=true
 - confirm `/jt128/front/points` is fresh before accepting a 3D goal
 - confirm `/a2/nav3/status` transitions out of `waiting_goal`
-- run dry-run goal first
-- only enable motion after NDT ready and a clear area is verified
+- send only a small first goal after NDT, safety, and real readiness are ready
+- keep the physical area clear and the emergency stop available
 
 ## Web Console
 

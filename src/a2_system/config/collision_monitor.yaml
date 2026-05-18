@@ -44,18 +44,13 @@ collision_monitor:
       enabled: true
 
     # ── Observation sources ─────────────────────────────────────
-    observation_sources: ["obstacle_cloud", "traversability_cloud"]
+    # Keep collision_monitor tied to live filtered obstacles only. The 2.5D
+    # traversability layer is a planning-cost input, not an emergency-stop source.
+    observation_sources: ["obstacle_cloud"]
 
     obstacle_cloud:
       type: "pointcloud"
       topic: "/a2/obstacle/points"
       min_height: 0.05
       max_height: 0.85
-      enabled: true
-
-    traversability_cloud:
-      type: "pointcloud"
-      topic: "/a2/traversability/obstacle_points"
-      min_height: 0.0
-      max_height: 0.5
       enabled: true

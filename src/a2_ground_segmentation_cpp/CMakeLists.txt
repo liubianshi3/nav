@@ -17,10 +17,13 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP)
 
@@ -43,10 +46,13 @@ add_executable(ground_segmentation_cpp_node
 target_link_libraries(ground_segmentation_cpp_node ${PROJECT_NAME}_core)
 ament_target_dependencies(ground_segmentation_cpp_node
   rclcpp
+  geometry_msgs
   sensor_msgs
   nav_msgs
   std_msgs
   builtin_interfaces
+  tf2
+  tf2_ros
 )
 
 install(TARGETS
@@ -79,6 +85,6 @@ endif()
 
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME}_core)
-ament_export_dependencies(rclcpp sensor_msgs nav_msgs std_msgs builtin_interfaces Eigen3)
+ament_export_dependencies(rclcpp geometry_msgs sensor_msgs nav_msgs std_msgs builtin_interfaces tf2 tf2_ros Eigen3)
 
 ament_package()

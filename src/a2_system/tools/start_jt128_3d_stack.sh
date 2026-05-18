@@ -46,8 +46,9 @@ Starts the 3D-first JT128 stack:
     Nav2 3D global/local navigation -> collision_monitor -> /cmd_vel_safe
     a2_control_bridge -> Unitree motion
 
-Default:
-  Navigation starts the real Unitree control chain. Keep the robot supervised.
+Motion defaults:
+  - navigation starts the real a2_control_bridge by default.
+  - do not send goals until LiDAR, map, NDT, safety, and real readiness are all ready.
 
 EOF
 }
@@ -93,10 +94,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --enable-motion)
+      warn "--enable-motion is deprecated; real motion is now the default"
       ENABLE_MOTION=true
       shift
       ;;
     --live-motion)
+      warn "--live-motion is deprecated; live motion is now the default"
       ENABLE_MOTION=true
       DRY_RUN=false
       shift
@@ -170,6 +173,11 @@ if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP
   else
     die "Nav2 3D requires a projected map YAML. Missing: ${candidate_map}. Use --nav2-map or --no-nav2-3d."
   fi
+fi
+
+COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor.yaml"
+if [[ "$COLLISION_MONITOR_PROFILE" == "live-validation" ]]; then
+  COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor_live_validation.yaml"
 fi
 
 

@@ -121,6 +121,7 @@ def test_a2_docker_defaults_start_real_live_motion():
     legacy_special_suffix = "".join(("z", "be"))
 
     assert legacy_special_suffix not in compose_source.lower()
+    assert not (repo_root / "docker/docker-compose.a2.yml").exists()
     assert not (repo_root / f"web_console/backend/config.docker.{legacy_special_suffix}.yaml").exists()
     assert "A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}" in compose_source
     assert "A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-true}" in compose_source
