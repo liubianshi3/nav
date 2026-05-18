@@ -1,7 +1,7 @@
 services:
   a2-system-ws:
-    container_name: ${A2_CONTAINER_NAME:-nav-dev}
-    image: ${A2_DOCKER_IMAGE:-nav:dev}
+    container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}
+    image: ${A2_DOCKER_IMAGE:-a2-system-ws:dev}
     init: true
     build:
       context: .
