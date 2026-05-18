@@ -10,7 +10,7 @@ ros:
   pointcloud_fallback_topic: ""
   pointcloud_map_topics:
     - /jt128/dlio/map_points
-  websocket_pointcloud_max_points: 4000
+  websocket_pointcloud_max_points: 8000
   localization_pose_topic: /a2/relocalization/pose
   localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
   odom_topic: /jt128/dlio/odom

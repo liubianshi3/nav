@@ -67,7 +67,7 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.pose_goal_status_topic == "/a2/nav2/status"
     assert config.ros.pointcloud_primary_stale_sec > 0.0
     assert config.ros.pointcloud_preview_max_points >= 20000
-    assert 1000 <= config.ros.websocket_pointcloud_max_points <= 5000
+    assert 1000 <= config.ros.websocket_pointcloud_max_points <= 10000
     assert config.health.websocket_pose_hz <= 10.0
     assert config.health.websocket_status_hz <= 5.0
     assert config.stack.start_script.endswith("start_jt128_3d_stack.sh")
@@ -146,6 +146,31 @@ def test_jt128_navigation_starts_live_motion_not_dry_run():
 
     assert "--enable-motion" in command
     assert "--live-motion" in command
+
+
+def test_manual_control_standby_uses_unitree_sdk_interface_by_default(monkeypatch):
+    monkeypatch.delenv("A2_SDK_INTERFACE", raising=False)
+    monkeypatch.delenv("A2_CONTROL_INTERFACE", raising=False)
+    config = load_config(Path(__file__).resolve().parents[1] / "config.3d.yaml")
+    controller = StackController(config)
+
+    assert config.stack.network_interface == "net1"
+    assert controller._standby_sdk_interface() == "eth0"
+    assert controller._standby_control_interface() == "eth0"
+
+
+def test_manual_control_standby_control_interface_follows_sdk_override(monkeypatch):
+    monkeypatch.setenv("A2_SDK_INTERFACE", "eth1")
+    monkeypatch.delenv("A2_CONTROL_INTERFACE", raising=False)
+    config = load_config(Path(__file__).resolve().parents[1] / "config.3d.yaml")
+    controller = StackController(config)
+
+    assert controller._standby_sdk_interface() == "eth1"
+    assert controller._standby_control_interface() == "eth1"
+
+    monkeypatch.setenv("A2_CONTROL_INTERFACE", "eth2")
+
+    assert controller._standby_control_interface() == "eth2"
 
 
 def test_default_navigation_requests_are_live_motion():
