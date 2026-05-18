@@ -243,10 +243,24 @@ global_costmap:
       robot_radius: 0.35
       transform_tolerance: 2.0
       track_unknown_space: true
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "global_traversability_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
+      global_traversability_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: "global_traversability_cloud"
+        global_traversability_cloud:
+          topic: /a2/global_traversability/obstacle_points
+          data_type: "PointCloud2"
+          max_obstacle_height: 1.0
+          min_obstacle_height: 0.0
+          marking: true
+          clearing: false
+          obstacle_max_range: 100.0
+          obstacle_min_range: 0.0
+          expected_update_rate: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0

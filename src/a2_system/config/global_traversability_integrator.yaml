@@ -1,0 +1,23 @@
+global_traversability_integrator:
+  ros__parameters:
+    input_topic: /a2/traversability
+    output_obstacle_topic: /a2/global_traversability/obstacle_points
+    output_costmap_topic: /a2/global_traversability/costmap
+    status_topic: /a2/global_traversability/status
+    frame_id: map
+    high_cost_threshold: 90
+    lethal_threshold: 70
+    min_observations: 3
+    min_confidence: 0.6
+    confidence_increment: 0.25
+    confidence_decay: 0.10
+    observation_decay_sec: 20.0
+    stale_clear_sec: 60.0
+    publish_hz: 1.0
+    max_points: 50000
+    unknown_policy: ignore
+    local_update_window_enabled: true
+    local_update_radius_m: 8.0
+    transform_timeout_sec: 0.2
+    odom_topic: /odometry/local
+    use_sim_time: false

@@ -73,6 +73,7 @@ install(PROGRAMS
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
   scripts/nav2_corridor_gate.py
+  scripts/global_traversability_integrator.py
   scripts/traversability_to_obstacle_cloud.py
   scripts/odometry_to_pose_covariance.py
   scripts/pcd_to_2d_map.py

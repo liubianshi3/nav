@@ -36,6 +36,20 @@ def generate_launch_description():
                 "the NDT adapter owns /a2/ndt/open_loop_pose initial guesses."
             ),
         ),
+        DeclareLaunchArgument(
+            "enable_global_traversability_layer",
+            default_value="false",
+            description=(
+                "When true, launch global_traversability_integrator to feed "
+                "stable 2.5D traversability obstacles into global_costmap. "
+                "Default false — safe for A/B testing and fast rollback."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "global_traversability_config",
+            default_value="",
+            description="Optional path to global_traversability_integrator YAML config.",
+        ),
 
         LogInfo(
             msg=(
@@ -69,7 +83,7 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("enable_global_ekf_debug")),
         ),
 
-        # Traversability grid → obstacle pointcloud bridge
+        # Traversability grid → obstacle pointcloud bridge (local costmap feed)
         Node(
             package="a2_system",
             executable="traversability_to_obstacle_cloud.py",
@@ -97,6 +111,19 @@ def generate_launch_description():
                 "max_output_points": 20000,
                 "use_sim_time": use_sim_time,
             }],
+            output="screen",
+        ),
+
+        # Stable global traversability integrator → global_costmap feed (opt-in)
+        Node(
+            package="a2_system",
+            executable="global_traversability_integrator.py",
+            name="global_traversability_integrator",
+            condition=IfCondition(LaunchConfiguration("enable_global_traversability_layer")),
+            parameters=[
+                LaunchConfiguration("global_traversability_config"),
+                {"use_sim_time": use_sim_time},
+            ],
             output="screen",
         ),
 
