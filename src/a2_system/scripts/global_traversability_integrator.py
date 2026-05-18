@@ -458,9 +458,13 @@ class GlobalTraversabilityIntegrator(Node):
         self._memory.update(msg, self._last_robot_x, self._last_robot_y)
         self._grid_count += 1
 
+        # Reset state on every successful update so we recover from
+        # transient tf_error / frame_error without needing a restart.
         if self._grid_count == 1:
             self._memory.set_ready()
-            self._memory._stats.reason = "ok"
+        self._memory._stats.state = "active"
+        self._memory._stats.ready = True
+        self._memory._stats.reason = "ok"
 
     def _publish(self) -> None:
         now = time.monotonic()
@@ -471,15 +475,22 @@ class GlobalTraversabilityIntegrator(Node):
             now - self._last_publish_time if self._last_publish_time > 0 else 0.0
         )
 
-        # TF error → publish empty cloud for safety, but still apply decay.
-        if not self._tf_ok and self._local_update_window_enabled:
-            if self._memory._stats.state not in ("frame_error",):
+        # TF error or frame error → publish empty cloud / empty costmap so
+        # downstream global_costmap stops consuming stale stable points.
+        # Still apply decay on tf_error so points fade if TF stays bad.
+        tf_blocked = not self._tf_ok and self._local_update_window_enabled
+        frame_blocked = self._memory._stats.state == "frame_error"
+        if tf_blocked or frame_blocked:
+            if tf_blocked and not frame_blocked:
                 self._memory._stats.state = "tf_error"
+                self._memory._stats.ready = False
                 self._memory._stats.reason = self._tf_fail_reason or "waiting_tf"
-            self._memory.apply_decay()
+                self._memory.apply_decay()
             stamp = self.get_clock().now().to_msg()
             self._obstacle_pub.publish(_make_empty_pointcloud(stamp, self._frame_id))
-            self._costmap_pub.publish(_make_empty_costmap(self._frame_id))
+            empty_costmap = _make_empty_costmap(self._frame_id)
+            empty_costmap.header.stamp = stamp
+            self._costmap_pub.publish(empty_costmap)
             self._status_pub.publish(String(data=self._memory._stats.status_string()))
             self._last_publish_time = now
             return
