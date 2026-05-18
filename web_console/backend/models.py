@@ -137,6 +137,7 @@ class StartNavigationRequest(BaseModel):
     localization_mode: str = "ndt"
     motion_mode: str = "live_motion"
     enable_nav2_3d: bool = True
+    enable_global_traversability_layer: bool = True
     collision_monitor_profile: str = "strict"
 
 

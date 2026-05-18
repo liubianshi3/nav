@@ -11,6 +11,7 @@ START_WEB=1
 ENABLE_MOTION=true
 DRY_RUN=false
 ENABLE_NAV2_3D=true
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"
 NAV2_3D_MAP=""
 LOCALIZATION_MODE="${A2_REAL_LOCALIZATION_MODE:-ndt}"
 COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
@@ -31,7 +32,7 @@ usage() {
   cat <<EOF
 Usage:
   $(basename "$0") --mode mapping [--lidar-iface net1] [--no-web]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-global-traversability-layer|--no-global-traversability-layer]
 
 Starts the 3D-first JT128 stack:
   mapping:
@@ -51,6 +52,10 @@ Motion defaults:
   - navigation starts the real a2_control_bridge by default.
   - do not send goals until LiDAR, map, NDT, safety, and real readiness are all ready.
 
+Global traversability feedback:
+  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
+  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+
 EOF
 }
 
@@ -65,6 +70,15 @@ warn() {
 die() {
   printf '[ERROR] %s\n' "$*" >&2
   exit 1
+}
+
+normalize_bool() {
+  lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    1|true|yes|on) echo true ;;
+    0|false|no|off) echo false ;;
+    *) return 1 ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -122,6 +136,14 @@ while [[ $# -gt 0 ]]; do
       ENABLE_NAV2_3D=false
       shift
       ;;
+    --enable-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true
+      shift
+      ;;
+    --no-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false
+      shift
+      ;;
     --nav2-map)
       NAV2_3D_MAP="$2"
       shift 2
@@ -144,6 +166,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="$(normalize_bool "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER")" || die "A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER must be true/false"
 
 [[ "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be mapping or navigation"
 [[ "$LOCALIZATION_MODE" == "ndt" || "$LOCALIZATION_MODE" == "odom_only" ]] || die "localization mode must be ndt or odom_only"
@@ -313,7 +337,7 @@ fi
 
 stop_navigation_components
 NAV_LOG="${LOG_DIR}/jt128_3d_navigation_$(date +%Y%m%d_%H%M%S).log"
-log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} localization=${LOCALIZATION_MODE} collision_profile=${COLLISION_MONITOR_PROFILE} enable_nav2_3d=${ENABLE_NAV2_3D}"
+log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} localization=${LOCALIZATION_MODE} collision_profile=${COLLISION_MONITOR_PROFILE} enable_nav2_3d=${ENABLE_NAV2_3D} global_traversability=${ENABLE_GLOBAL_TRAVERSABILITY_LAYER}"
 setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
@@ -331,6 +355,7 @@ setsid bash -lc "
     collision_monitor_config:='${COLLISION_MONITOR_CONFIG}' \
     enable_motion:=${ENABLE_MOTION} \
     dry_run:=${DRY_RUN} \
+    enable_global_traversability_layer:=${ENABLE_GLOBAL_TRAVERSABILITY_LAYER} \
     sdk_interface:='${SDK_IFACE}' \
     control_interface:='${CONTROL_IFACE}'
 " </dev/null >"$NAV_LOG" 2>&1 &
@@ -350,6 +375,7 @@ localization_mode: ${LOCALIZATION_MODE}
 collision_monitor_profile: ${COLLISION_MONITOR_PROFILE}
 collision_monitor_config: ${COLLISION_MONITOR_CONFIG}
 enable_nav2_3d: ${ENABLE_NAV2_3D}
+enable_global_traversability_layer: ${ENABLE_GLOBAL_TRAVERSABILITY_LAYER}
 nav2_3d_map: ${NAV2_3D_MAP}
 started_at: $(date --iso-8601=seconds)
 EOF

@@ -386,6 +386,7 @@ class StackController:
         localization_mode: str = "ndt",
         motion_mode: str = "live_motion",
         enable_nav2_3d: bool = True,
+        enable_global_traversability_layer: bool = True,
         collision_monitor_profile: str = "strict",
     ) -> list[str]:
         if self.start_script.name == "start_jt128_3d_stack.sh":
@@ -409,6 +410,7 @@ class StackController:
                     collision_monitor_profile,
                 ])
                 command.append("--enable-nav2-3d" if enable_nav2_3d else "--no-nav2-3d")
+                command.append("--enable-global-traversability-layer" if enable_global_traversability_layer else "--no-global-traversability-layer")
                 if motion_mode == "live_motion":
                     command.append("--enable-motion")
                 if motion_mode == "live_motion":
@@ -515,6 +517,7 @@ class StackController:
         localization_mode: str = "ndt",
         motion_mode: str = "live_motion",
         enable_nav2_3d: bool = True,
+        enable_global_traversability_layer: bool = True,
         collision_monitor_profile: str = "strict",
     ) -> dict[str, str]:
         if not self.start_script.exists():
@@ -557,6 +560,7 @@ class StackController:
                     localization_mode=localization_mode,
                     motion_mode=motion_mode,
                     enable_nav2_3d=enable_nav2_3d,
+                    enable_global_traversability_layer=enable_global_traversability_layer,
                     collision_monitor_profile=collision_monitor_profile,
                 ),
                 env={
@@ -601,6 +605,7 @@ class StackController:
             localization_mode=request.localization_mode,
             motion_mode=request.motion_mode,
             enable_nav2_3d=bool(request.enable_nav2_3d),
+            enable_global_traversability_layer=bool(request.enable_global_traversability_layer),
             collision_monitor_profile=request.collision_monitor_profile,
         )
 

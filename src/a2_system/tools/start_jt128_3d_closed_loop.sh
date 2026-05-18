@@ -12,6 +12,7 @@ ENABLE_MOTION=true
 LIVE_MOTION=true
 LOCALIZATION_MODE=ndt
 COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"
 STOP_EXISTING=1
 RUN_PREFLIGHT=1
 RUN_ID=""
@@ -44,6 +45,9 @@ Safety:
   --mode navigation starts the real a2_control_bridge by default.
   Send goals only after LiDAR, map, NDT, safety, and real readiness are all ready.
   live-validation collision profile is only for supervised open-space tests.
+
+Global traversability feedback is enabled by default.
+Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false to disable it.
 EOF
 }
 
@@ -114,6 +118,14 @@ while [[ $# -gt 0 ]]; do
     --run-id)
       RUN_ID="$2"
       shift 2
+      ;;
+    --enable-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true
+      shift
+      ;;
+    --no-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false
+      shift
       ;;
     -h|--help)
       usage
@@ -333,6 +345,12 @@ start_stack_mode() {
       "--localization-mode" "$LOCALIZATION_MODE"
       "--collision-profile" "$COLLISION_MONITOR_PROFILE"
     )
+  fi
+
+  if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
+    args+=("--enable-global-traversability-layer")
+  else
+    args+=("--no-global-traversability-layer")
   fi
 
   log "Starting ${MODE} stack through ${STACK_SCRIPT}"
