@@ -100,6 +100,11 @@ export function PointCloudCanvas3D({
     : livePointCount > 0
       ? "实时点云主视图"
       : "暂无实时点云";
+  const poseLabel =
+    pose?.available && pose.x !== null && pose.y !== null
+      ? `robot=${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} yaw=${(pose.yaw ?? 0).toFixed(2)} ${pose.source}`
+      : "robot pose=暂无";
+  const poseStampLabel = pose?.stamp ? `pose_stamp=${pose.stamp.slice(11, 19)}` : "pose_stamp=暂无";
 
   useEffect(() => {
     poseFrameRef.current = pose?.frame_id ?? null;
@@ -394,8 +399,13 @@ export function PointCloudCanvas3D({
 
   useEffect(() => {
     const current = sceneRef.current;
-    updateMarker(current?.robotMarker ?? null, pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false) : null, pose?.yaw ?? 0);
-  }, [pose]);
+    const hasPose = Boolean(pose?.available && pose.x !== null && pose.y !== null);
+    updateMarker(
+      current?.robotMarker ?? null,
+      hasPose && pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false) : null,
+      pose?.yaw ?? 0,
+    );
+  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw]);
 
   useEffect(() => {
     const current = sceneRef.current;
@@ -478,6 +488,8 @@ export function PointCloudCanvas3D({
         <span>{selectedPointcloudPath ? "历史点云已接管主视图" : "默认地图点云主视图"}</span>
         <span>左键旋转 / 滚轮缩放 / 按住滑轮或右键平移</span>
         <span>{selectedGoal ? `双击选点 ${selectedGoal.x.toFixed(2)}, ${selectedGoal.y.toFixed(2)}` : "双击点云选导航目标"}</span>
+        <span>{poseLabel}</span>
+        <span>{poseStampLabel}</span>
         <span>{`saved=${renderStats.saved} / live=${renderStats.live}`}</span>
         <span>{renderError ?? "renderer=three.js"}</span>
       </div>
