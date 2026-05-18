@@ -97,20 +97,11 @@ export function PointCloudCanvas3D({
   const livePointCount = pointcloud?.loaded ? pointcloud.points.length : 0;
   const hasSavedMap = renderStats.saved > 0;
   const sourceLabel = hasSavedMap ? activeSavedPointcloudPath ?? "saved pointcloud_map_3d" : pointcloud?.source_topic ?? "none";
-  const overlayLabel = hasSavedMap
-    ? showLiveOverlay
-      ? livePointCount > 0
-        ? `实时点云叠加 ${livePointCount} 点`
-        : "当前没有实时点云"
-      : "实时点云已隐藏"
-    : livePointCount > 0
-      ? "实时点云主视图"
-      : "暂无实时点云";
-  const poseLabel =
+  const compactPoseLabel =
     pose?.available && pose.x !== null && pose.y !== null
-      ? `robot=${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} yaw=${(pose.yaw ?? 0).toFixed(2)} ${pose.source}`
-      : "robot pose=暂无";
-  const poseStampLabel = pose?.stamp ? `pose_stamp=${pose.stamp.slice(11, 19)}` : "pose_stamp=暂无";
+      ? `robot ${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} yaw ${((pose.yaw ?? 0) * 180 / Math.PI).toFixed(0)}deg`
+      : "robot 暂无";
+  const compactPoseStampLabel = pose?.stamp ? `stamp ${pose.stamp.slice(11, 19)}` : "stamp 暂无";
 
   useEffect(() => {
     poseFrameRef.current = pose?.frame_id ?? null;
@@ -519,17 +510,12 @@ export function PointCloudCanvas3D({
         </button>
       </div>
       <div className="map-overlay pointcloud-overlay">
-        <span>{`3D source: ${sourceLabel}`}</span>
-        <span>{artifactState}</span>
-        <span>{overlayLabel}</span>
-        <span>{selectedPointcloudPath ? "历史点云已接管主视图" : "默认地图点云主视图"}</span>
-        <span>左键旋转 / 滚轮缩放 / 按住滑轮或右键平移</span>
-        <span>{selectedGoal ? `双击选点 ${selectedGoal.x.toFixed(2)}, ${selectedGoal.y.toFixed(2)}` : "双击点云选导航目标"}</span>
-        <span>{poseLabel}</span>
-        <span>{poseStampLabel}</span>
+        <span className="pointcloud-status-source">{`3D ${sourceLabel}`}</span>
+        <span>{compactPoseLabel}</span>
+        <span>{compactPoseStampLabel}</span>
         <span>{sceneOriginLabel}</span>
-        <span>{`saved=${renderStats.saved} / live=${renderStats.live}`}</span>
-        <span>{renderError ?? "renderer=three.js"}</span>
+        <span>{`saved ${renderStats.saved} / live ${renderStats.live}`}</span>
+        <span>{renderError ?? "three.js"}</span>
       </div>
     </div>
   );
