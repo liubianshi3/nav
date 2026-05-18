@@ -19,6 +19,11 @@ services:
       A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
       A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
       A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}
+      A2_ENABLE_NAV2_3D: ${A2_ENABLE_NAV2_3D:-true}
+      A2_REQUIRE_NAV2_MAP: ${A2_REQUIRE_NAV2_MAP:-true}
+      A2_CONTROL_LINEAR_X_SIGN: ${A2_CONTROL_LINEAR_X_SIGN:-1.0}
+      A2_CONTROL_LINEAR_Y_SIGN: ${A2_CONTROL_LINEAR_Y_SIGN:-1.0}
+      A2_CONTROL_YAW_SIGN: ${A2_CONTROL_YAW_SIGN:-1.0}
       # Physical motion stays off unless both are explicitly enabled.
       A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-false}
       A2_LIVE_MOTION: ${A2_LIVE_MOTION:-false}
@@ -29,3 +34,6 @@ services:
       - ${A2_HOST_ROUTE_ROOT:-/home/unitree/a2_system_ws/runtime/routes}:/opt/a2_system_ws/runtime/routes
       - ${A2_HOST_REPORT_ROOT:-/home/unitree/a2_system_ws/runtime/reports}:/opt/a2_system_ws/runtime/reports
       - ${A2_HOST_TEST_RECORD_ROOT:-/home/unitree/a2_system_ws/runtime/test_records}:/opt/a2_system_ws/runtime/test_records
+      # DLIO is a ROS2 feature-branch package installed on the A2 host.
+      - ${A2_HOST_DLIO_INSTALL:-/home/unitree/a2_system_ws/install/direct_lidar_inertial_odometry}:/opt/a2_system_ws/install/direct_lidar_inertial_odometry:ro
+      - ${A2_HOST_DLIO_BUILD:-/home/unitree/a2_system_ws/build/direct_lidar_inertial_odometry}:/home/unitree/a2_system_ws/build/direct_lidar_inertial_odometry:ro
