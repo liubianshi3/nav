@@ -15,7 +15,14 @@ from PIL import Image as PilImage
 
 from .grpc_codegen import ensure_grpc_generated
 from .map_formats import _occupancy_bytes_from_nav2_luma, _parse_nav2_map_yaml, _read_pgm_luma
-from .models import NavigationGoal, NavigationGoalRequest
+from .models import (
+    InitialPoseRequest,
+    ManualVelocityCommand,
+    NavigationGoal,
+    NavigationGoalRequest,
+    StartNavigationRequest,
+)
+from .motion_control import ensure_manual_motion_authorized
 from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
 
@@ -48,8 +55,47 @@ def _log_battery_missing(*, reason: str, extra: dict[str, Any]) -> None:
     logger.warning("battery missing: reason=%s extra=%s", reason, extra)
 
 
+def _requires_motion_command(*values: float) -> bool:
+    return any(abs(float(value)) > 1e-6 for value in values)
+
+
 def _yaw_to_quat(yaw: float) -> tuple[float, float, float, float]:
     return 0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0)
+
+
+def _pointcloud_snapshot_to_ascii_pcd(pointcloud: Any) -> tuple[bytes, int]:
+    points = getattr(pointcloud, "points", None) or []
+    valid_points: list[tuple[float, float, float]] = []
+    for point in points:
+        if len(point) < 2:
+            continue
+        try:
+            x = float(point[0])
+            y = float(point[1])
+            z = float(point[2]) if len(point) >= 3 else 0.0
+        except Exception:
+            continue
+        if math.isfinite(x) and math.isfinite(y) and math.isfinite(z):
+            valid_points.append((x, y, z))
+
+    if not valid_points:
+        return b"", 0
+
+    handle = io.StringIO()
+    handle.write("# .PCD v0.7 - Point Cloud Data file format\n")
+    handle.write("VERSION 0.7\n")
+    handle.write("FIELDS x y z\n")
+    handle.write("SIZE 4 4 4\n")
+    handle.write("TYPE F F F\n")
+    handle.write("COUNT 1 1 1\n")
+    handle.write(f"WIDTH {len(valid_points)}\n")
+    handle.write("HEIGHT 1\n")
+    handle.write("VIEWPOINT 0 0 0 1 0 0 0\n")
+    handle.write(f"POINTS {len(valid_points)}\n")
+    handle.write("DATA ascii\n")
+    for x, y, z in valid_points:
+        handle.write(f"{x:.6f} {y:.6f} {z:.6f}\n")
+    return handle.getvalue().encode("ascii"), len(valid_points)
 
 
 @dataclass
@@ -495,6 +541,67 @@ class A2GrpcServices:
                 return self.p.laser_navigation_pb2.SelectMapResponse(success=False, message=str(exc), current_map_id="")
             return self.p.laser_navigation_pb2.SelectMapResponse(success=True, message=str(result.get("message", "ok")), current_map_id=map_id)
 
+        async def StartNavigation(self, request, context):
+            map_id = (request.map_id or "").strip()
+            if not map_id:
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "map_id is required")
+            stack_request = StartNavigationRequest(
+                map_id=map_id,
+                localization_mode=(request.localization_mode or "").strip() or "ndt",
+                motion_mode=(request.motion_mode or "").strip() or "live_motion",
+                enable_nav2_3d=bool(request.enable_nav2_3d),
+                collision_monitor_profile=(request.collision_monitor_profile or "").strip() or "strict",
+            )
+            try:
+                result = await asyncio.to_thread(self.p.stack_controller.start_navigation_from_request, stack_request)
+            except StackControlError as exc:
+                return self.p.laser_navigation_pb2.StartNavigationResponse(success=False, message=str(exc), current_map_id="")
+            return self.p.laser_navigation_pb2.StartNavigationResponse(
+                success=True,
+                message=str(result.get("message", "ok")),
+                current_map_id=map_id,
+            )
+
+        async def SetInitialPose(self, request, context):
+            node = await self.p._node_or_abort(context)
+            frame_id = (request.frame_id or "").strip() or "map"
+            pose = NavigationGoal(
+                x=float(request.x),
+                y=float(request.y),
+                yaw=float(request.theta),
+                frame_id=frame_id,
+            )
+            map_id = (request.map_id or "").strip() or None
+            validator = getattr(self.p.stack_controller, "validate_point_outside_virtual_obstacles", None)
+            if map_id and callable(validator):
+                navigation_config = getattr(getattr(node, "config", None), "navigation", None)
+                padding = float(getattr(navigation_config, "initial_pose_clearance_m", 0.0) or 0.0)
+                try:
+                    await asyncio.to_thread(
+                        validator,
+                        map_id,
+                        x=pose.x,
+                        y=pose.y,
+                        subject="初始位姿",
+                        padding=padding,
+                    )
+                except StackControlError as exc:
+                    return self.p.laser_navigation_pb2.SetInitialPoseResponse(success=False, message=str(exc))
+            try:
+                result = await asyncio.to_thread(node.set_initial_pose, InitialPoseRequest(pose=pose, map_id=map_id))
+            except RosBridgeError as exc:
+                return self.p.laser_navigation_pb2.SetInitialPoseResponse(success=False, message=str(exc))
+            result_pose = result.get("pose") if isinstance(result, dict) else None
+            response_pose = self.p.laser_navigation_pb2.PositionResponse(
+                x=float((result_pose or {}).get("x", pose.x)),
+                y=float((result_pose or {}).get("y", pose.y)),
+                theta=float((result_pose or {}).get("theta", (result_pose or {}).get("yaw", pose.yaw))),
+                confidence=1.0,
+                timestamp=_now_ms(),
+            )
+            message = str(result.get("message", "ok")) if isinstance(result, dict) else "ok"
+            return self.p.laser_navigation_pb2.SetInitialPoseResponse(success=True, message=message, pose=response_pose)
+
         async def GetMap(self, request, context):
             map_id = (request.map_id or "").strip()
             if not map_id:
@@ -595,9 +702,28 @@ class A2GrpcServices:
         async def ListMapPresets(self, request, context):
             return self.p.laser_navigation_pb2.ListMapPresetsResponse(presets=[])
 
-        async def GetScanData(self, request, context):
+        async def _build_scan_data_response(self, request, context):
             node = await self.p._node_or_abort(context)
             snapshot = node.build_snapshot(ros_thread_alive=bool(self.p.ros_runtime.thread and self.p.ros_runtime.thread.is_alive()))
+            if bool(request.include_pcd):
+                pointcloud = snapshot.pointcloud
+                if hasattr(node, "get_navigation_pointcloud_snapshot"):
+                    pointcloud = node.get_navigation_pointcloud_snapshot()
+                pcd_data, pcd_points_count = _pointcloud_snapshot_to_ascii_pcd(pointcloud)
+                if pcd_data:
+                    return self.p.laser_navigation_pb2.ScanDataResponse(
+                        ranges=[],
+                        angles=[],
+                        points_count=pcd_points_count,
+                        angle_min=0.0,
+                        angle_max=0.0,
+                        range_min=0.0,
+                        range_max=0.0,
+                        timestamp=_iso_to_ms(getattr(pointcloud, "stamp", None)),
+                        pcd_data=pcd_data,
+                        pcd_url="",
+                    )
+
             points = snapshot.pointcloud.points if snapshot.pointcloud.loaded else []
             angles: list[float] = []
             ranges: list[float] = []
@@ -627,6 +753,23 @@ class A2GrpcServices:
                 pcd_data=b"",
                 pcd_url="",
             )
+
+        async def GetScanData(self, request, context):
+            return await self._build_scan_data_response(request, context)
+
+        async def WatchScanData(self, request, context) -> AsyncIterator[Any]:
+            interval_ms = int(getattr(request, "interval_ms", 0) or 400)
+            interval_ms = max(100, min(5000, interval_ms))
+            last_key: tuple[int, int, int] | None = None
+
+            while True:
+                response = await self._build_scan_data_response(request, context)
+                has_payload = bool(getattr(response, "pcd_data", b"")) or bool(getattr(response, "ranges", []))
+                key = (int(response.timestamp), int(response.points_count), len(response.pcd_data))
+                if has_payload and key != last_key:
+                    last_key = key
+                    yield response
+                await asyncio.sleep(interval_ms / 1000.0)
 
         async def GetPath(self, request, context):
             return self.p.laser_navigation_pb2.GetPathResponse(
@@ -951,39 +1094,63 @@ class A2GrpcServices:
 
         async def Move(self, request, context):
             node = await self.p._node_or_abort(context)
-            from geometry_msgs.msg import Twist
-
-            msg = Twist()
-            msg.linear.x = float(request.velocity_x)
-            msg.linear.y = float(request.velocity_y)
-            msg.angular.z = float(request.angular_velocity)
-            node.direct_cmd_publisher.publish(msg)
-            return self.p.robot_dog_pb2.MoveResponse(success=True, message="ok", task_id=str(_now_ms()))
+            try:
+                if _requires_motion_command(request.velocity_x, request.velocity_y, request.angular_velocity):
+                    await asyncio.to_thread(self.p.stack_controller.ensure_manual_control_standby)
+                    await asyncio.to_thread(ensure_manual_motion_authorized, node)
+                result = await asyncio.to_thread(
+                    node.publish_manual_velocity,
+                    ManualVelocityCommand(
+                        linear_x=float(request.velocity_x),
+                        linear_y=float(request.velocity_y),
+                        angular_z=float(request.angular_velocity),
+                    ),
+                )
+            except StackControlError as exc:
+                return self.p.robot_dog_pb2.MoveResponse(success=False, message=str(exc), task_id="")
+            except RosBridgeError as exc:
+                return self.p.robot_dog_pb2.MoveResponse(success=False, message=str(exc), task_id="")
+            return self.p.robot_dog_pb2.MoveResponse(
+                success=True,
+                message=str(getattr(result, "message", "") or "ok"),
+                task_id=str(_now_ms()),
+            )
 
         async def Walk(self, request, context):
             node = await self.p._node_or_abort(context)
-            from geometry_msgs.msg import Twist
-
-            msg = Twist()
-            msg.linear.x = float(request.x)
-            msg.linear.y = float(request.y)
-            msg.angular.z = float(request.theta)
-            node.direct_cmd_publisher.publish(msg)
-            return self.p.robot_dog_pb2.WalkResponse(success=True, message="ok", task_id=str(_now_ms()))
+            try:
+                if _requires_motion_command(request.x, request.y, request.theta):
+                    await asyncio.to_thread(self.p.stack_controller.ensure_manual_control_standby)
+                    await asyncio.to_thread(ensure_manual_motion_authorized, node)
+                result = await asyncio.to_thread(
+                    node.publish_manual_velocity,
+                    ManualVelocityCommand(
+                        linear_x=float(request.x),
+                        linear_y=float(request.y),
+                        angular_z=float(request.theta),
+                    ),
+                )
+            except StackControlError as exc:
+                return self.p.robot_dog_pb2.WalkResponse(success=False, message=str(exc), task_id="")
+            except RosBridgeError as exc:
+                return self.p.robot_dog_pb2.WalkResponse(success=False, message=str(exc), task_id="")
+            return self.p.robot_dog_pb2.WalkResponse(
+                success=True,
+                message=str(getattr(result, "message", "") or "ok"),
+                task_id=str(_now_ms()),
+            )
 
         async def Stop(self, request, context):
             node = await self.p._node_or_abort(context)
-            from geometry_msgs.msg import Twist
-
-            msg = Twist()
-            node.cancel_stop_publisher.publish(msg)
-            node.direct_cmd_publisher.publish(msg)
             try:
-                result = await self._call_motion_command(context, command="stop")
+                result = await asyncio.to_thread(
+                    node.publish_manual_velocity,
+                    ManualVelocityCommand(linear_x=0.0, linear_y=0.0, angular_z=0.0),
+                )
             except RosBridgeError as exc:
                 return self.p.robot_dog_pb2.StopResponse(success=False, message=str(exc))
             return self.p.robot_dog_pb2.StopResponse(
-                success=bool(getattr(result, "success", False)),
+                success=True,
                 message=str(getattr(result, "message", "") or "ok"),
             )
 

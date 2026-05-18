@@ -121,6 +121,27 @@ export interface ManualControlResponse {
   message: string;
 }
 
+export interface MotionAuthorizationStatus {
+  success: boolean;
+  message: string;
+  error_code: string;
+  state: string;
+  required_action: string;
+  standing: boolean;
+  motion_authorized: boolean;
+  manual_start_required: boolean;
+  motion_mode: number;
+  gait_type: number;
+}
+
+export interface ManualControlSnapshot {
+  enabled: boolean;
+  cmd_topic: string;
+  max_linear_x: number;
+  max_linear_y: number;
+  max_angular_z: number;
+}
+
 export interface GaitControlCommand {
   gait_type?: number | null;
   speed_level?: number | null;
@@ -371,6 +392,7 @@ export interface DashboardSnapshot {
   pointcloud: PointCloudSnapshot;
   pose: RobotPose;
   status: RobotStatus;
+  manual_control: ManualControlSnapshot;
   navigation: NavigationTaskState;
   camera: CameraFrame;
   health: SystemHealth;

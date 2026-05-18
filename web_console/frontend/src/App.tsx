@@ -2,12 +2,14 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import {
+  authorizeMotion,
   cancelNavigationGoal,
   deleteMapObstacle,
   deleteTaskRoute,
   fetchHealth,
   fetchMapObstacles,
   fetchMaps,
+  fetchMotionAuthorization,
   fetchSnapshot,
   fetchStackStatus,
   fetchTaskRoute,
@@ -57,6 +59,7 @@ import type {
   DashboardSnapshot,
   GaitControlCommand,
   ManualVelocityCommand,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   SavedMapInfo,
@@ -128,6 +131,13 @@ function createEmptySnapshot(): DashboardSnapshot {
       ndt_healthy: null,
       planner_type: null,
       bt_filename: null,
+    },
+    manual_control: {
+      enabled: false,
+      cmd_topic: "",
+      max_linear_x: 0,
+      max_linear_y: 0,
+      max_angular_z: 0,
     },
     navigation: {
       state: "idle",
@@ -276,6 +286,8 @@ export default function App() {
   const [routeBusy, setRouteBusy] = useState(false);
   const [manualControlBusy, setManualControlBusy] = useState(false);
   const [lastManualControlMessage, setLastManualControlMessage] = useState<string | null>(null);
+  const [motionAuthorizationBusy, setMotionAuthorizationBusy] = useState(false);
+  const [motionAuthorization, setMotionAuthorization] = useState<MotionAuthorizationStatus | null>(null);
   const [gaitControlBusy, setGaitControlBusy] = useState(false);
   const [lastGaitControlMessage, setLastGaitControlMessage] = useState<string | null>(null);
   const [initialPoseBusy, setInitialPoseBusy] = useState(false);
@@ -515,7 +527,8 @@ export default function App() {
     selectedMap?.navigation_compatible === false
       ? selectedMap.navigation_compatibility_reason || "所选地图不兼容当前导航链"
       : null;
-  const has3DViewerData = snapshot.pointcloud.loaded || Boolean(selectedMap?.has_pointcloud_3d);
+  const has3DViewerData =
+    snapshot.pointcloud.loaded || stack?.mode === "mapping" || Boolean(selectedMap?.has_pointcloud_3d);
   const directNavigationBackend = snapshot.navigation.backend === "cmd_vel_direct";
   const navigationUses3D = snapshot.navigation.backend === "pose_topic_3d" || has3DViewerData;
   const navigationModeReady = stack?.mode === "navigation" || directNavigationBackend;
@@ -793,7 +806,8 @@ export default function App() {
     setManualControlBusy(true);
     try {
       const result = await sendManualVelocityCommand(command);
-      setLastManualControlMessage(result.message);
+      const stamp = new Date().toLocaleTimeString();
+      setLastManualControlMessage(`${stamp} ${result.message}`);
       setLastSuccess(result.message);
       setLastError(null);
     } catch (error) {
@@ -802,6 +816,38 @@ export default function App() {
       setLastError(error instanceof Error ? error.message : "手动控制失败");
     } finally {
       setManualControlBusy(false);
+    }
+  };
+
+  const handleQueryMotionAuthorization = async () => {
+    setMotionAuthorizationBusy(true);
+    try {
+      const result = await fetchMotionAuthorization();
+      setMotionAuthorization(result);
+      setLastManualControlMessage(result.message);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "查询运动授权失败");
+    } finally {
+      setMotionAuthorizationBusy(false);
+    }
+  };
+
+  const handleAuthorizeMotion = async () => {
+    setMotionAuthorizationBusy(true);
+    try {
+      const result = await authorizeMotion();
+      setMotionAuthorization(result);
+      setLastManualControlMessage(result.message);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "启动运动授权失败");
+    } finally {
+      setMotionAuthorizationBusy(false);
     }
   };
 
@@ -1063,6 +1109,11 @@ export default function App() {
         </header>
 
         <div className="legacy-console-stage">
+          {!websocketConnected ? (
+            <div className="notice notice-error websocket-reconnect-notice" role="status">
+              WebSocket 实时连接已断开，正在自动重连；位姿和点云显示会停留在最后一次实时数据。
+            </div>
+          ) : null}
           <button type="button" className="legacy-function-button" onClick={() => openDrawer("function")}>
             功能菜单
           </button>
@@ -1169,10 +1220,21 @@ export default function App() {
 
           <DrawerPanel side="right" open={activeDrawer === "nav"}>
             <ManualControlSection
-              disabled={!rosRuntimeHealthy}
+              disabled={!rosRuntimeHealthy || !snapshot.manual_control.enabled}
               busy={manualControlBusy}
-              disabledReason={rosRuntimeHealthy ? null : "后端 ROS 线程未运行，不能手动控制"}
+              disabledReason={
+                rosRuntimeHealthy
+                  ? snapshot.manual_control.enabled
+                    ? null
+                    : "手动控制未启用"
+                  : "后端 ROS 线程未运行，不能手动控制"
+              }
               lastMessage={lastManualControlMessage}
+              cmdTopic={snapshot.manual_control.cmd_topic}
+              motionAuthorization={motionAuthorization}
+              motionAuthorizationBusy={motionAuthorizationBusy}
+              onQueryMotionAuthorization={handleQueryMotionAuthorization}
+              onAuthorizeMotion={handleAuthorizeMotion}
               onManualVelocityCommand={handleManualVelocityCommand}
             />
             <GaitControlSection

@@ -39,6 +39,7 @@ from .models import (
     VirtualObstacleListing,
     VirtualObstacleUpsertRequest,
 )
+from .motion_control import ensure_manual_motion_authorized, get_manual_motion_authorization
 from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
 from .utils import is_lan_or_loopback
@@ -324,10 +325,37 @@ def create_app(config_path: str | None = None) -> FastAPI:
         if node is None:
             raise HTTPException(status_code=503, detail="ROS runtime 未启动")
         try:
+            if any(abs(value) > 1e-6 for value in (request.linear_x, request.linear_y, request.angular_z)):
+                await asyncio.to_thread(stack_controller.ensure_manual_control_standby)
+                await asyncio.to_thread(ensure_manual_motion_authorized, node)
             result = await asyncio.to_thread(node.publish_manual_velocity, request)
         except RosBridgeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, "manual_control": jsonable_encoder(result)}
+
+    @app.get("/api/manual-control/motion-authorization")
+    async def get_manual_motion_authorization_status():
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        return {"ok": True, "motion_authorization": jsonable_encoder(get_manual_motion_authorization(node))}
+
+    @app.post("/api/manual-control/motion-authorization/authorize")
+    async def authorize_manual_motion():
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        try:
+            result = await asyncio.to_thread(ensure_manual_motion_authorized, node)
+        except RosBridgeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            **jsonable_encoder(result),
+            "motion_authorization": jsonable_encoder(get_manual_motion_authorization(node)),
+        }
 
     @app.post("/api/gait-control")
     async def publish_gait_control(request: GaitControlCommand):

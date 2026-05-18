@@ -122,6 +122,7 @@ class _FakeNode:
     def __init__(self) -> None:
         self.cancel_stop_publisher = _Publisher()
         self.direct_cmd_publisher = _Publisher()
+        self.manual_velocity_commands = []
         self.motion_commands = []
         self.control_state = types.SimpleNamespace(
             stamp="2026-05-14T08:00:00+00:00",
@@ -155,6 +156,13 @@ class _FakeNode:
 
     def call_motion_command(self, command: str, int_value: int = 0, float_value: float = 0.0, bool_value: bool = False):
         self.motion_commands.append((command, int_value, float_value, bool_value))
+        self.control_state.last_command = command
+        if command == "stand_up":
+            self.snapshot.status.raw_state.motion_mode = 2
+        elif command == "balance_stand":
+            self.snapshot.status.raw_state.motion_mode = 3
+        elif command in {"stand_down", "damp"}:
+            self.snapshot.status.raw_state.motion_mode = 5
         return types.SimpleNamespace(
             success=True,
             message=f"{command} ok",
@@ -163,6 +171,10 @@ class _FakeNode:
             runtime_mode="mock",
             state="ready",
         )
+
+    def publish_manual_velocity(self, command):
+        self.manual_velocity_commands.append(command)
+        return types.SimpleNamespace(message="manual velocity ok")
 
     def build_snapshot(self, ros_thread_alive: bool = True):
         return self.snapshot
@@ -174,6 +186,14 @@ class _FakeRuntime:
         self.thread = types.SimpleNamespace(is_alive=lambda: True)
 
 
+class _FakeStackController:
+    def __init__(self) -> None:
+        self.manual_standby_calls = 0
+
+    def ensure_manual_control_standby(self) -> None:
+        self.manual_standby_calls += 1
+
+
 class _Context:
     async def abort(self, code, details):
         raise AssertionError(f"unexpected grpc abort: {code} {details}")
@@ -182,6 +202,7 @@ class _Context:
 class _FakeParent:
     def __init__(self, node: _FakeNode) -> None:
         self.ros_runtime = _FakeRuntime(node)
+        self.stack_controller = _FakeStackController()
         self.robot_dog_pb2 = _RobotDogPb2
         self.robot_mode = {}
 
@@ -230,23 +251,63 @@ def test_robot_dog_proto_keeps_mode_separate_from_motion_authorization() -> None
     assert "MOTION_AUTHORIZATION_ACTION_PRESS_REMOTE_START" in source
 
 
-def test_stop_publishes_zero_velocity_and_calls_motion_stop() -> None:
+def test_stop_publishes_zero_manual_velocity_without_motion_stop() -> None:
     node = _FakeNode()
     service = _service(node)
 
     response = asyncio.run(service.Stop(types.SimpleNamespace(device_id="a2", type=1), _Context()))
 
     assert response.success is True
-    assert node.motion_commands == [("stop", 0, 0.0, False)]
-    assert len(node.cancel_stop_publisher.messages) == 1
-    assert len(node.direct_cmd_publisher.messages) == 1
-    for zero in [node.cancel_stop_publisher.messages[0], node.direct_cmd_publisher.messages[0]]:
-        assert zero.linear.x == 0.0
-        assert zero.linear.y == 0.0
-        assert zero.angular.z == 0.0
+    assert node.motion_commands == []
+    assert len(node.cancel_stop_publisher.messages) == 0
+    assert len(node.direct_cmd_publisher.messages) == 0
+    assert len(node.manual_velocity_commands) == 1
+    zero = node.manual_velocity_commands[0]
+    assert zero.linear_x == 0.0
+    assert zero.linear_y == 0.0
+    assert zero.angular_z == 0.0
+    assert service.p.stack_controller.manual_standby_calls == 0
 
 
-def test_move_and_walk_publish_to_direct_control_topic() -> None:
+def test_move_authorizes_motion_before_publishing_manual_velocity() -> None:
+    node = _FakeNode()
+    node.control_state.last_command = "stand_up"
+    node.snapshot.status.raw_state.motion_mode = 2
+    service = _service(node)
+
+    response = asyncio.run(
+        service.Move(
+            types.SimpleNamespace(device_id="a2", velocity_x=0.2, velocity_y=0.0, angular_velocity=0.0),
+            _Context(),
+        )
+    )
+
+    assert response.success is True
+    assert node.motion_commands == [("balance_stand", 0, 0.0, False)]
+    assert len(node.manual_velocity_commands) == 1
+    assert node.manual_velocity_commands[0].linear_x == 0.2
+
+
+def test_move_requires_stand_up_before_authorizing_motion() -> None:
+    node = _FakeNode()
+    node.control_state.last_command = "stand_down"
+    node.snapshot.status.raw_state.motion_mode = 5
+    service = _service(node)
+
+    response = asyncio.run(
+        service.Move(
+            types.SimpleNamespace(device_id="a2", velocity_x=0.2, velocity_y=0.0, angular_velocity=0.0),
+            _Context(),
+        )
+    )
+
+    assert response.success is False
+    assert response.message == "stand up before requesting motion authorization"
+    assert node.motion_commands == []
+    assert node.manual_velocity_commands == []
+
+
+def test_move_and_walk_publish_through_manual_control_contract() -> None:
     node = _FakeNode()
     service = _service(node)
 
@@ -266,13 +327,16 @@ def test_move_and_walk_publish_to_direct_control_topic() -> None:
     assert move.success is True
     assert walk.success is True
     assert len(node.cancel_stop_publisher.messages) == 0
-    assert len(node.direct_cmd_publisher.messages) == 2
-    assert node.direct_cmd_publisher.messages[0].linear.x == 0.12
-    assert node.direct_cmd_publisher.messages[0].linear.y == 0.01
-    assert node.direct_cmd_publisher.messages[0].angular.z == 0.03
-    assert node.direct_cmd_publisher.messages[1].linear.x == -0.05
-    assert node.direct_cmd_publisher.messages[1].linear.y == 0.02
-    assert node.direct_cmd_publisher.messages[1].angular.z == -0.04
+    assert len(node.direct_cmd_publisher.messages) == 0
+    assert len(node.manual_velocity_commands) == 2
+    assert node.manual_velocity_commands[0].linear_x == 0.12
+    assert node.manual_velocity_commands[0].linear_y == 0.01
+    assert node.manual_velocity_commands[0].angular_z == 0.03
+    assert node.manual_velocity_commands[1].linear_x == -0.05
+    assert node.manual_velocity_commands[1].linear_y == 0.02
+    assert node.manual_velocity_commands[1].angular_z == -0.04
+    assert node.motion_commands == [("balance_stand", 0, 0.0, False)]
+    assert service.p.stack_controller.manual_standby_calls == 2
 
 
 def test_posture_maps_stand_and_lie_to_motion_service() -> None:

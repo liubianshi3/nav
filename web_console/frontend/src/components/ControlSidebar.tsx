@@ -1,6 +1,10 @@
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent, TouchEvent } from "react";
+
 import type {
   GaitControlCommand,
   ManualVelocityCommand,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   RobotPose,
@@ -358,6 +362,11 @@ interface ManualControlSectionProps {
   busy: boolean;
   disabledReason: string | null;
   lastMessage: string | null;
+  cmdTopic: string | null;
+  motionAuthorization: MotionAuthorizationStatus | null;
+  motionAuthorizationBusy: boolean;
+  onQueryMotionAuthorization: () => void;
+  onAuthorizeMotion: () => void;
   onManualVelocityCommand: (command: ManualVelocityCommand) => void;
 }
 
@@ -378,22 +387,135 @@ const MANUAL_COMMANDS: Record<string, ManualVelocityCommand> = {
   stop: { linear_x: 0.0, linear_y: 0.0, angular_z: 0.0 },
 };
 
+const MIN_MANUAL_PRESS_MS = 320;
+
 export function ManualControlSection({
   disabled,
   busy,
   disabledReason,
   lastMessage,
+  cmdTopic,
+  motionAuthorization,
+  motionAuthorizationBusy,
+  onQueryMotionAuthorization,
+  onAuthorizeMotion,
   onManualVelocityCommand,
 }: ManualControlSectionProps) {
-  const buttonDisabled = disabled || busy;
+  const buttonDisabled = disabled;
+  const topicLabel = cmdTopic && cmdTopic.trim() ? cmdTopic : "速度控制 topic";
+  const repeatTimerRef = useRef<number | null>(null);
+  const stopDelayTimerRef = useRef<number | null>(null);
+  const pressStartedAtRef = useRef<number>(0);
+  const activeCommandRef = useRef<ManualVelocityCommand | null>(null);
+  const lastDirectSendRef = useRef<{ key: keyof typeof MANUAL_COMMANDS; at: number } | null>(null);
+  const [activeKey, setActiveKey] = useState<keyof typeof MANUAL_COMMANDS | null>(null);
+
+  const clearRepeat = (sendStop: boolean) => {
+    if (repeatTimerRef.current !== null) {
+      window.clearInterval(repeatTimerRef.current);
+      repeatTimerRef.current = null;
+    }
+    if (stopDelayTimerRef.current !== null) {
+      window.clearTimeout(stopDelayTimerRef.current);
+      stopDelayTimerRef.current = null;
+    }
+    if (sendStop && activeCommandRef.current) {
+      onManualVelocityCommand(MANUAL_COMMANDS.stop);
+    }
+    activeCommandRef.current = null;
+    setActiveKey(null);
+  };
+
+  useEffect(() => () => clearRepeat(false), []);
+
+  const sendCommand = (key: keyof typeof MANUAL_COMMANDS) => {
+    lastDirectSendRef.current = { key, at: Date.now() };
+    onManualVelocityCommand(MANUAL_COMMANDS[key]);
+  };
+
+  const shouldSkipClickReplay = (key: keyof typeof MANUAL_COMMANDS) => {
+    const last = lastDirectSendRef.current;
+    return Boolean(last && last.key === key && Date.now() - last.at < 450);
+  };
+
+  const startCommand = (key: keyof typeof MANUAL_COMMANDS) => {
+    if (buttonDisabled) {
+      return;
+    }
+    const command = MANUAL_COMMANDS[key];
+    clearRepeat(false);
+    setActiveKey(key);
+    pressStartedAtRef.current = Date.now();
+    sendCommand(key);
+    if (key === "stop") {
+      return;
+    }
+    activeCommandRef.current = command;
+    repeatTimerRef.current = window.setInterval(() => {
+      onManualVelocityCommand(command);
+    }, 100);
+  };
+
+  const finishCommand = () => {
+    if (!activeCommandRef.current) {
+      clearRepeat(false);
+      return;
+    }
+    if (repeatTimerRef.current !== null) {
+      window.clearInterval(repeatTimerRef.current);
+      repeatTimerRef.current = null;
+    }
+    const remainingMs = MIN_MANUAL_PRESS_MS - (Date.now() - pressStartedAtRef.current);
+    if (remainingMs <= 0) {
+      clearRepeat(true);
+      return;
+    }
+    if (stopDelayTimerRef.current !== null) {
+      window.clearTimeout(stopDelayTimerRef.current);
+    }
+    stopDelayTimerRef.current = window.setTimeout(() => clearRepeat(true), remainingMs);
+  };
+
+  const handleMouseDown = (key: keyof typeof MANUAL_COMMANDS, event: MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    startCommand(key);
+  };
+
+  const handleTouchStart = (key: keyof typeof MANUAL_COMMANDS, _event: TouchEvent<HTMLButtonElement>) => {
+    startCommand(key);
+  };
+
   const commandButton = (key: keyof typeof MANUAL_COMMANDS, label: string, className: string, title: string) => (
     <button
       type="button"
-      className={`manual-control-button ${className}`}
+      className={`manual-control-button ${className} ${activeKey === key ? "manual-control-button-active" : ""}`}
       disabled={buttonDisabled}
       title={title}
       aria-label={title}
-      onClick={() => onManualVelocityCommand(MANUAL_COMMANDS[key])}
+      onMouseDown={(event) => handleMouseDown(key, event)}
+      onMouseUp={finishCommand}
+      onMouseLeave={(event) => {
+        if (event.buttons !== 0) {
+          finishCommand();
+        }
+      }}
+      onTouchStart={(event) => handleTouchStart(key, event)}
+      onTouchEnd={finishCommand}
+      onTouchCancel={finishCommand}
+      onClick={() => {
+        if (shouldSkipClickReplay(key)) {
+          return;
+        }
+        sendCommand(key);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onManualVelocityCommand(MANUAL_COMMANDS[key]);
+        }
+      }}
     >
       {label}
     </button>
@@ -402,6 +524,29 @@ export function ManualControlSection({
   return (
     <section className="panel">
       <h2>手动控制</h2>
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={motionAuthorizationBusy}
+          onClick={onQueryMotionAuthorization}
+        >
+          查询授权
+        </button>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={buttonDisabled || motionAuthorizationBusy}
+          onClick={onAuthorizeMotion}
+        >
+          启动运动授权
+        </button>
+      </div>
+      <div className="status-grid compact-status-grid">
+        <StatusMini label="auth" value={motionAuthorization?.state ?? "—"} />
+        <StatusMini label="standing" value={motionAuthorization ? String(motionAuthorization.standing) : "—"} />
+        <StatusMini label="motion" value={motionAuthorization ? String(motionAuthorization.motion_authorized) : "—"} />
+      </div>
       <div className="manual-control-grid">
         <div />
         {commandButton("forward", "↑", "manual-control-forward", "前进")}
@@ -413,7 +558,7 @@ export function ManualControlSection({
         {commandButton("backward", "↓", "manual-control-backward", "后退")}
         <div />
       </div>
-      <p className="panel-message">{formatNullable(disabledReason ?? lastMessage, "点击方向键发布 /cmd_vel_safe")}</p>
+      <p className="panel-message">{formatNullable(disabledReason ?? lastMessage, `按住方向键持续发布 ${topicLabel}，松开发送停止`)}</p>
     </section>
   );
 }

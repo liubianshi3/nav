@@ -421,6 +421,16 @@ button:disabled {
   background: rgba(204, 251, 241, 0.9);
 }
 
+.websocket-reconnect-notice {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 70;
+  max-width: min(620px, calc(100% - 220px));
+  transform: translateX(-50%);
+  box-shadow: 0 14px 28px rgba(153, 27, 27, 0.16);
+}
+
 .status-row {
   display: flex;
   justify-content: space-between;
@@ -525,6 +535,7 @@ button:disabled {
   font-size: 24px;
   line-height: 1;
   box-shadow: 0 10px 22px rgba(14, 116, 144, 0.14);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 
 .manual-control-forward,
@@ -538,6 +549,13 @@ button:disabled {
 .manual-control-stop {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.manual-control-button:active,
+.manual-control-button-active {
+  transform: translateY(2px) scale(0.97);
+  box-shadow: inset 0 2px 8px rgba(15, 23, 42, 0.2), 0 4px 10px rgba(14, 116, 144, 0.12);
+  filter: saturate(1.25);
 }
 
 .form-label {

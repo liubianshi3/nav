@@ -8,6 +8,7 @@ import type {
   ManualControlResponse,
   ManualVelocityCommand,
   MapMediaListing,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   SavedMapInfo,
@@ -69,6 +70,18 @@ export async function sendManualVelocityCommand(command: ManualVelocityCommand):
   });
   const payload = await handleJson<{ ok: boolean; manual_control: ManualControlResponse }>(response);
   return payload.manual_control;
+}
+
+export async function fetchMotionAuthorization(): Promise<MotionAuthorizationStatus> {
+  const response = await fetch("/api/manual-control/motion-authorization");
+  const payload = await handleJson<{ ok: boolean; motion_authorization: MotionAuthorizationStatus }>(response);
+  return payload.motion_authorization;
+}
+
+export async function authorizeMotion(): Promise<MotionAuthorizationStatus> {
+  const response = await fetch("/api/manual-control/motion-authorization/authorize", { method: "POST" });
+  const payload = await handleJson<{ ok: boolean; motion_authorization: MotionAuthorizationStatus }>(response);
+  return payload.motion_authorization;
 }
 
 export async function sendGaitControlCommand(command: GaitControlCommand): Promise<GaitControlResponse> {
