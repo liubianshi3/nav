@@ -15,7 +15,12 @@ from tf2_ros import TransformBroadcaster
 from autoware_map_msgs.srv import GetDifferentialPointCloudMap
 from autoware_map_msgs.msg import PointCloudMapCellWithID, PointCloudMapCellMetaData
 from autoware_internal_debug_msgs.msg import Float32Stamped
-from .pose_math import compose_map_pose_from_odom, seeded_odom_tracking_status
+from .pose_math import (
+    compose_map_pose_from_odom,
+    choose_periodic_initial_guess_stamp,
+    seeded_odom_tracking_status,
+    should_feed_ndt_pose_buffer,
+)
 
 def normalize_quaternion(q: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(q))
@@ -158,6 +163,7 @@ class A2NdtAdapter(Node):
         self.declare_parameter('map_service_max_points', 60000)
         self.declare_parameter('map_cell_id_prefix', 'a2_map_cell')
         self.declare_parameter('align_initial_pose_stamp_to_cloud', True)
+        self.declare_parameter('align_periodic_initial_guess_to_cloud', False)
         self.declare_parameter('cache_static_map_once', True)
         self.declare_parameter('ndt_initial_guess_publish_period_sec', 0.10)
         self.declare_parameter('auto_activate_ndt', True)
@@ -241,7 +247,11 @@ class A2NdtAdapter(Node):
         self.publish_map_to_odom_tf()
         if self.has_seed:
             self.publish_tracking_pose_from_odom(msg)
-        if self.has_seed and self.awaiting_first_ndt_fix:
+        if should_feed_ndt_pose_buffer(
+            has_seed=self.has_seed,
+            odom_available=self.last_odom_to_base is not None,
+            awaiting_first_ndt_fix=self.awaiting_first_ndt_fix,
+        ):
             self.publish_ndt_initial_guess_from_odom(msg)
 
     def on_ndt_pose(self, msg: PoseWithCovarianceStamped):
@@ -361,7 +371,14 @@ class A2NdtAdapter(Node):
         map_to_base = self.map_to_odom @ self.last_odom_to_base
         guess = PoseWithCovarianceStamped()
         guess.header.frame_id = self.get_parameter('map_frame').value
-        guess.header.stamp = self.ndt_initial_stamp(msg.header.stamp)
+        align_periodic_to_cloud = bool(
+            self.get_parameter('align_periodic_initial_guess_to_cloud').value
+        )
+        guess.header.stamp = choose_periodic_initial_guess_stamp(
+            msg.header.stamp,
+            self.last_cloud_stamp,
+            align_periodic_to_cloud,
+        )
         guess.pose.pose.position.x = float(map_to_base[0, 3])
         guess.pose.pose.position.y = float(map_to_base[1, 3])
         guess.pose.pose.position.z = float(map_to_base[2, 3])
@@ -375,7 +392,11 @@ class A2NdtAdapter(Node):
         self.ndt_initial_pose_pub.publish(guess)
         self.last_initial_guess_publish_time = now
         self.initial_guess_publish_count += 1
-        self.last_initial_guess_reason = 'periodic_odom'
+        self.last_initial_guess_reason = (
+            'periodic_cloud_stamp'
+            if align_periodic_to_cloud and self.last_cloud_stamp is not None
+            else 'periodic_odom_stamp'
+        )
 
     def publish_tracking_pose_from_odom(self, msg: Odometry, force: bool = False):
         now = self.get_clock().now()
@@ -680,6 +701,7 @@ class A2NdtAdapter(Node):
             f"score_threshold={float(self.get_parameter('score_threshold').value):.3f}",
             f"last_score_age={self.age_sec(self.last_score_stamp):.3f}",
             f"last_pose_age={self.age_sec(self.last_pose_stamp):.3f}",
+            f"last_initial_guess_age={self.age_sec(self.last_initial_guess_publish_time):.3f}",
             f"last_score_pose_delta_sec={self.score_pose_delta_sec():.3f}",
             f"odom_receive_age={self.age_sec(self.last_odom_receive_time):.3f}",
             f"odom_stamp_skew_sec={self.odom_stamp_skew_sec():.3f}",

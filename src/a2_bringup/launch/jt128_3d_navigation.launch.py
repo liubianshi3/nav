@@ -322,6 +322,7 @@ def generate_launch_description():
                         "min_score": 2.3,
                         "consecutive_failures_threshold": 5,
                         "eval_frequency": 5.0,
+                        "initial_guess_timeout_sec": 1.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],

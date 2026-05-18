@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from a2_ndt_adapter.pose_math import (
+    choose_periodic_initial_guess_stamp,
     choose_ndt_initial_stamp,
     clamp_map_radius,
     compose_map_pose_from_odom,
@@ -13,6 +14,7 @@ from a2_ndt_adapter.pose_math import (
     score_is_acceptable,
     select_points_for_area,
     seeded_odom_tracking_status,
+    should_feed_ndt_pose_buffer,
     should_publish_periodic_guess,
 )
 
@@ -78,12 +80,43 @@ def test_ndt_initial_stamp_prefers_latest_cloud_when_enabled():
     assert choose_ndt_initial_stamp(candidate_stamp, None, True) is candidate_stamp
 
 
+def test_periodic_initial_guess_stamp_can_follow_odom_for_interpolation_buffer():
+    candidate_stamp = object()
+    cloud_stamp = object()
+
+    assert choose_periodic_initial_guess_stamp(candidate_stamp, cloud_stamp, False) is candidate_stamp
+    assert choose_periodic_initial_guess_stamp(candidate_stamp, cloud_stamp, True) is cloud_stamp
+
+
 def test_periodic_initial_guess_publish_gate():
     assert should_publish_periodic_guess(None, 0.1)
     assert should_publish_periodic_guess(0.05, 0.1, force=True)
     assert should_publish_periodic_guess(0.11, 0.1)
     assert not should_publish_periodic_guess(0.05, 0.1)
     assert should_publish_periodic_guess(0.0, 0.0)
+
+
+def test_ndt_pose_buffer_feed_continues_after_first_fix():
+    assert should_feed_ndt_pose_buffer(
+        has_seed=True,
+        odom_available=True,
+        awaiting_first_ndt_fix=True,
+    )
+    assert should_feed_ndt_pose_buffer(
+        has_seed=True,
+        odom_available=True,
+        awaiting_first_ndt_fix=False,
+    )
+    assert not should_feed_ndt_pose_buffer(
+        has_seed=False,
+        odom_available=True,
+        awaiting_first_ndt_fix=True,
+    )
+    assert not should_feed_ndt_pose_buffer(
+        has_seed=True,
+        odom_available=False,
+        awaiting_first_ndt_fix=False,
+    )
 
 
 def test_map_pose_from_odom_uses_current_map_to_odom_anchor():

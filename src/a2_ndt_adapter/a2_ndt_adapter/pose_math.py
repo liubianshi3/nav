@@ -111,12 +111,26 @@ def choose_ndt_initial_stamp(candidate_stamp, latest_cloud_stamp, align_to_cloud
     return candidate_stamp
 
 
+def choose_periodic_initial_guess_stamp(candidate_stamp, latest_cloud_stamp, align_to_cloud: bool):
+    return choose_ndt_initial_stamp(candidate_stamp, latest_cloud_stamp, align_to_cloud)
+
+
 def should_publish_periodic_guess(elapsed_sec: float | None, period_sec: float, force: bool = False) -> bool:
     if force or elapsed_sec is None:
         return True
     if not math.isfinite(period_sec) or period_sec <= 0.0:
         return True
     return elapsed_sec >= period_sec
+
+
+def should_feed_ndt_pose_buffer(
+    *,
+    has_seed: bool,
+    odom_available: bool,
+    awaiting_first_ndt_fix: bool,
+) -> bool:
+    del awaiting_first_ndt_fix
+    return bool(has_seed and odom_available)
 
 
 def compose_map_pose_from_odom(map_to_odom: np.ndarray, odom_to_base: np.ndarray) -> np.ndarray:
