@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
@@ -146,9 +147,10 @@ def _launch_setup(context, *args, **kwargs):
                         "odom_topic": "/jt128/dlio/odom",
                         "max_position_norm": 50.0,
                         "max_abs_z": 5.0,
-                        "max_linear_speed": 2.0,
+                        "max_linear_speed": 8.0,
+                        "fault_sample_count": 10,
                         "startup_grace_sec": 8.0,
-                        "stop_on_fault": True,
+                        "stop_on_fault": False,
                         "use_sim_time": use_sim_time,
                     }
                 ],
@@ -181,6 +183,7 @@ def _launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     bringup_share = get_package_share_directory("a2_bringup")
+    workspace = os.environ.get("A2_WORKSPACE", str(Path.home() / "ws" / "device-navigation"))
     return LaunchDescription(
         [
             DeclareLaunchArgument("start_driver", default_value="true"),
@@ -193,7 +196,8 @@ def generate_launch_description():
             DeclareLaunchArgument("raw_imu_topic", default_value="/jt128/front/imu"),
             DeclareLaunchArgument("imu_topic", default_value="/jt128/front/imu_si"),
             DeclareLaunchArgument("imu_acceleration_scale", default_value="9.80665"),
-            DeclareLaunchArgument("imu_angular_velocity_scale", default_value="1.0"),
+            # JT128 IMU reports gyro in degrees/sec; DLIO expects radians/sec.
+            DeclareLaunchArgument("imu_angular_velocity_scale", default_value="0.017453292519943295"),
             DeclareLaunchArgument(
                 "jt128_config",
                 default_value=f"{a2_system_share}/config/jt128_front_hesai.yaml",
@@ -203,7 +207,7 @@ def generate_launch_description():
                 default_value=f"{a2_system_share}/config/dlio_jt128.yaml",
             ),
             DeclareLaunchArgument(
-                "map_root", default_value=str(Path.home() / "a2_system_ws" / "runtime" / "maps")
+                "map_root", default_value=f"{workspace}/runtime/maps"
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(f"{bringup_share}/launch/jt128_driver.launch.py"),
