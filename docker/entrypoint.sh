@@ -19,6 +19,28 @@ log() {
   printf '[a2-docker] %s\n' "$*"
 }
 
+configure_cyclonedds_interface() {
+  if [[ "${RMW_IMPLEMENTATION:-}" != "rmw_cyclonedds_cpp" ]]; then
+    return 0
+  fi
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    log "CycloneDDS URI provided by environment"
+    return 0
+  fi
+
+  local iface="${A2_ROS_INTERFACE:-}"
+  if [[ -z "$iface" ]]; then
+    return 0
+  fi
+  if ! ip link show "$iface" >/dev/null 2>&1; then
+    log "CycloneDDS ROS interface skipped; interface not found: ${iface}"
+    return 0
+  fi
+
+  export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
+  log "CycloneDDS ROS traffic bound to iface=${iface}"
+}
+
 is_true() {
   [[ "${1:-}" == "true" || "${1:-}" == "1" || "${1:-}" == "yes" || "${1:-}" == "on" ]]
 }
@@ -315,6 +337,7 @@ start_a2_stack() {
   return 0
 }
 
+configure_cyclonedds_interface
 start_standby_sdk_bridge
 start_standby_control_bridge
 start_standby_lidar_preview

@@ -232,6 +232,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
     assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}" in compose_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
+    assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
     assert "A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}" in compose_source
     assert "A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}" in compose_source
     assert "A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}" in compose_source
@@ -249,6 +250,8 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert 'ros2 launch a2_bringup jt128_driver.launch.py' in entrypoint_source
     assert 'ros2 run a2_system pointcloud_preview_node.py' in entrypoint_source
     assert 'start_standby_lidar_preview' in entrypoint_source.split("start_a2_stack")[0]
+    assert "configure_cyclonedds_interface" in entrypoint_source
+    assert 'local iface="${A2_ROS_INTERFACE:-}"' in entrypoint_source
 
 
 def test_unitree_bridge_nodes_use_fastrtps_rmw():
