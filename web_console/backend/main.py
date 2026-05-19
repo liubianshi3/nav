@@ -56,9 +56,9 @@ def _pcd_to_2d_map_args(tool_path: Path, pcd_path: Path, map_dir: Path) -> list[
     * ``--dilate 0``: do not double-inflate against Nav2 global/local costmap
       inflation. The static map only expresses true occupancy; safety margin
       is the costmap's job.
-    * ``--ignore-obstacles-within-radius 0.45``: drop near-origin self-shell /
+    * ``--ignore-obstacles-within-radius 0.85``: drop near-origin self-shell /
       legs / near-field noise the SLAM build kept around the start pose.
-    * ``--clear-radius-around-origin 0.45``: force a real free patch around
+    * ``--clear-radius-around-origin 0.85``: force a real free patch around
       the build origin so the corridor gate does not fail on
       ``static_clearance_low`` at startup.
     """
@@ -71,8 +71,8 @@ def _pcd_to_2d_map_args(tool_path: Path, pcd_path: Path, map_dir: Path) -> list[
         "--min-obstacle-points", "2",
         "--min-ground-points", "1",
         "--dilate", "0",
-        "--ignore-obstacles-within-radius", "0.45",
-        "--clear-radius-around-origin", "0.45",
+        "--ignore-obstacles-within-radius", "0.85",
+        "--clear-radius-around-origin", "0.85",
     ]
 
 
