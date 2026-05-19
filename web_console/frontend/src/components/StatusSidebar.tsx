@@ -97,6 +97,7 @@ export function SystemStatusSection({
       <StatusRow label="lidar" value={formatStatusSummary(status?.lidar_status)} />
       <StatusRow label="camera" value={formatStatusSummary(status?.camera_status)} />
       <StatusRow label="SDK" value={formatStatusSummary(status?.sdk_status)} />
+      <StatusRow label="control" value={formatStatusSummary(status?.control_status)} />
       <StatusRow label="task mgr" value={formatStatusSummary(status?.task_manager_status)} />
     </section>
   );
@@ -129,10 +130,12 @@ export function RuntimeInfoSection({ status, stack }: Pick<StatusSidebarProps, "
       <StatusRow label="角速度 z" value={`${formatNumber(status?.velocity_angular_z, 3)} rad/s`} />
       <StatusRow label="active_map" value={formatNullable(status?.active_map)} />
       <StatusRow label="Nav2 3D" value={stack?.enable_nav2_3d == null ? "—" : String(stack.enable_nav2_3d)} />
-      <StatusRow label="motion" value={stack?.live_motion ? "live" : stack?.enable_motion ? "dry-run" : "planning-only"} />
+      <StatusRow label="motion" value={stack?.live_motion ? "live" : "planning-only"} />
       <StatusRow label="collision cfg" value={formatNullable(stack?.collision_monitor_config)} />
       <StatusRow label="规划器" value={formatNullable(status?.planner_type)} />
       <StatusRow label="行为树" value={formatNullable(status?.bt_filename)} />
+      <StatusRow label="gait" value={formatNullable(status?.control_status?.fields?.gait_type)} />
+      <StatusRow label="gait state" value={formatNullable(status?.control_status?.fields?.gait_state)} />
       <StatusRow label="map manager" value={formatStatusSummary(status?.map_manager_status)} />
       <StatusRow label="score/pose Δ" value={formatNullable(status?.relocalization_status?.fields?.last_score_pose_delta_sec)} />
       <StatusRow label="odom age" value={formatNullable(status?.relocalization_status?.fields?.odom_receive_age)} />

@@ -81,6 +81,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && test "${ok}" = "1" \
     && rm -rf /var/lib/apt/lists/*
 
+ARG TARGETARCH
+
 # Use the bundled Unitree SDK so the image can build on hosts without buildx.
 COPY docker/unitree_sdk/ /opt/unitree_robotics/
 RUN test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake
@@ -110,9 +112,18 @@ RUN set -euo pipefail; \
       fix_so_link "${d}" libddsc.so.0 libddsc.so; \
     done
 COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
+RUN if [[ "${TARGETARCH:-}" == "amd64" ]]; then \
+      test -f /opt/unitree_robotics/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake; \
+    else \
+      rm -rf /opt/unitree_robotics/lib/cmake/unitree_sdk2 \
+        /opt/unitree_robotics/lib/x86_64 \
+        /opt/unitree_robotics/lib/*.so* \
+        /opt/unitree_robotics/lib/*.a; \
+    fi
 
 WORKDIR /opt/a2_system_ws
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG A2_REQUIRE_UNITREE_SDK=OFF
 
 COPY web_console/backend/requirements.txt ./web_console/backend/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -134,6 +145,7 @@ RUN --mount=type=cache,target=/root/.ccache,sharing=locked \
     && colcon build --event-handlers console_direct+ --packages-select ${OUR_PACKAGES} --cmake-args \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DA2_REQUIRE_UNITREE_SDK=${A2_REQUIRE_UNITREE_SDK} \
     && rm -rf build log
 
 COPY web_console/backend ./web_console/backend
@@ -146,6 +158,7 @@ RUN sed -i 's/\r$//' /usr/local/bin/a2-web-entrypoint \
     && find /opt/a2_system_ws/web_console/scripts /opt/a2_system_ws/src/a2_system/tools -type f -name "*.sh" -print0 | xargs -0 sed -i 's/\r$//' \
     && chmod +x /usr/local/bin/a2-web-entrypoint \
     && chmod +x web_console/scripts/*.sh src/a2_system/tools/*.sh \
+    && chmod +x src/a2_system/scripts/*.py \
     && mkdir -p runtime/maps runtime/logs
 RUN printf '%s\n' \
     'source /opt/ros/humble/setup.bash' \

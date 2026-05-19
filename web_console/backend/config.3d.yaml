@@ -1,8 +1,17 @@
 
+grpc:
+  enabled: true
+  host: 0.0.0.0
+  port: 50051
+
 ros:
   map_topic: /map
-  pointcloud_topic: /jt128/front/points
-  pointcloud_fallback_topic: /a2/map/pointcloud_3d
+  pointcloud_topic: /jt128/dlio/map_points_preview
+  pointcloud_fallback_topic: ""
+  pointcloud_map_topics:
+    - /jt128/dlio/map_points_preview
+  pointcloud_preview_max_points: 60000
+  websocket_pointcloud_max_points: 48000
   localization_pose_topic: /a2/relocalization/pose
   localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
   odom_topic: /jt128/dlio/odom
@@ -20,9 +29,18 @@ navigation:
   require_localization_ready: true
   require_map_for_goal: true
 
+manual_control:
+  enabled: true
+  cmd_topic: /cmd_vel_safe
+  max_linear_x: 0.4
+  max_linear_y: 0.25
+  max_angular_z: 0.8
+  publish_burst_count: 3
+  publish_burst_interval_sec: 0.05
+
 stack:
-  workspace: /opt/a2_system_ws
+  workspace: /home/unitree/ws/device-navigation
   network_interface: net1
-  map_root: /opt/a2_system_ws/runtime/maps
-  start_script: /opt/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
-  stop_script: /opt/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh
+  map_root: /home/unitree/ws/device-navigation/runtime/maps
+  start_script: /home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh
+  stop_script: /home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh

@@ -22,8 +22,10 @@ from .config import load_config
 from .grpc_server import GrpcServer
 from .models import (
     DashboardSnapshot,
+    GaitControlCommand,
     InitialPoseRequest,
     LightStatusPayload,
+    ManualVelocityCommand,
     MapMediaListing,
     NavigationGoalRequest,
     RunTaskRouteRequest,
@@ -37,6 +39,7 @@ from .models import (
     VirtualObstacleListing,
     VirtualObstacleUpsertRequest,
 )
+from .motion_control import ensure_manual_motion_authorized, get_manual_motion_authorization
 from .ros_bridge import RosBridgeError, RosRuntime
 from .stack_control import StackControlError, StackController
 from .utils import is_lan_or_loopback
@@ -316,6 +319,58 @@ def create_app(config_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, "navigation": jsonable_encoder(state)}
 
+    @app.post("/api/manual-control/cmd_vel")
+    async def publish_manual_cmd_vel(request: ManualVelocityCommand):
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        try:
+            if any(abs(value) > 1e-6 for value in (request.linear_x, request.linear_y, request.angular_z)):
+                await asyncio.to_thread(stack_controller.ensure_manual_control_standby)
+                await asyncio.to_thread(ensure_manual_motion_authorized, node)
+            result = await asyncio.to_thread(node.publish_manual_velocity, request)
+        except RosBridgeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, "manual_control": jsonable_encoder(result)}
+
+    @app.get("/api/manual-control/motion-authorization")
+    async def get_manual_motion_authorization_status():
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        return {"ok": True, "motion_authorization": jsonable_encoder(get_manual_motion_authorization(node))}
+
+    @app.post("/api/manual-control/motion-authorization/authorize")
+    async def authorize_manual_motion():
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        try:
+            await asyncio.to_thread(stack_controller.ensure_manual_control_standby)
+            result = await asyncio.to_thread(ensure_manual_motion_authorized, node)
+        except RosBridgeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            **jsonable_encoder(result),
+            "motion_authorization": jsonable_encoder(get_manual_motion_authorization(node)),
+        }
+
+    @app.post("/api/gait-control")
+    async def publish_gait_control(request: GaitControlCommand):
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        try:
+            result = await asyncio.to_thread(node.publish_gait_control, request)
+        except RosBridgeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"ok": True, "gait_control": jsonable_encoder(result)}
+
     @app.post("/api/localization/initialpose")
     async def set_initial_pose(request: InitialPoseRequest):
         node = ros_runtime.node
@@ -387,7 +442,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
 
     @app.get("/api/maps")
     async def list_maps():
-        return {"maps": jsonable_encoder(stack_controller.list_maps())}
+        return {"maps": jsonable_encoder(stack_controller.list_maps(include_incompatible=True))}
 
     @app.get("/api/maps/{map_id}/media", response_model=MapMediaListing)
     async def list_map_media(map_id: str):
@@ -609,7 +664,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
         return {
             "ok": True,
             "map": jsonable_encoder(saved),
-            "maps": jsonable_encoder(stack_controller.list_maps()),
+            "maps": jsonable_encoder(stack_controller.list_maps(include_incompatible=True)),
             "native_slam_save": jsonable_encoder(native_save) if native_save is not None else None,
         }
 
@@ -806,6 +861,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             if node is not None:
                 ros_thread_alive = bool(ros_runtime.thread and ros_runtime.thread.is_alive())
                 snapshot = node.build_snapshot(ros_thread_alive=ros_thread_alive)
+                snapshot.pointcloud = node._websocket_pointcloud_snapshot(snapshot.pointcloud)
                 await websocket.send_json({"type": "snapshot", "payload": jsonable_encoder(snapshot)})
             while True:
                 await websocket.receive_text()

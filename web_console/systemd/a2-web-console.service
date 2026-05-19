@@ -6,10 +6,13 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=unitree
-WorkingDirectory=/home/unitree/a2_system_ws/web_console
+WorkingDirectory=/home/unitree/ws/device-navigation/web_console
 Environment=PYTHONUNBUFFERED=1
-Environment=CONFIG_PATH=/home/unitree/a2_system_ws/web_console/backend/config.example.yaml
-ExecStart=/bin/bash -lc '/home/unitree/a2_system_ws/web_console/scripts/run_backend.sh'
+Environment=A2_WORKSPACE=/home/unitree/ws/device-navigation
+Environment=A2_NETWORK_INTERFACE=net1
+Environment=RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+Environment=CONFIG_PATH=/home/unitree/ws/device-navigation/web_console/backend/config.3d.yaml
+ExecStart=/bin/bash -lc '/home/unitree/ws/device-navigation/web_console/scripts/run_backend.sh'
 Restart=on-failure
 RestartSec=3
 

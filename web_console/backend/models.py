@@ -14,6 +14,24 @@ class TextStatus(BaseModel):
     fields: dict[str, str] = Field(default_factory=dict)
 
 
+class ControlStateSnapshot(BaseModel):
+    stamp: str | None = None
+    runtime_mode: str = ""
+    state: str = ""
+    ready: bool = False
+    reason: str = ""
+    interface_name: str = ""
+    gait_control_enabled: bool = False
+    gait_type: int = 0
+    speed_level: int = 0
+    body_height: float = 0.0
+    auto_recovery: bool = False
+    last_command: str = ""
+    last_sdk_code: int = 0
+    last_error_code: str = ""
+    last_error_reason: str = ""
+
+
 class Pose2D(BaseModel):
     x: float = 0.0
     y: float = 0.0
@@ -85,6 +103,7 @@ class RobotStatus(BaseModel):
     map_manager_status: TextStatus = Field(default_factory=TextStatus)
     task_manager_status: TextStatus = Field(default_factory=TextStatus)
     sdk_status: TextStatus = Field(default_factory=TextStatus)
+    control_status: TextStatus = Field(default_factory=TextStatus)
     active_map: str | None = None
     velocity_linear_x: float | None = None
     velocity_angular_z: float | None = None
@@ -116,8 +135,9 @@ class InitialPoseRequest(BaseModel):
 class StartNavigationRequest(BaseModel):
     map_id: str
     localization_mode: str = "ndt"
-    motion_mode: str = "dry_run"
+    motion_mode: str = "live_motion"
     enable_nav2_3d: bool = True
+    enable_global_traversability_layer: bool = True
     collision_monitor_profile: str = "strict"
 
 
@@ -199,6 +219,50 @@ class NavigationTaskState(BaseModel):
     goal: NavigationGoal | None = None
     feedback: dict[str, Any] = Field(default_factory=dict)
     updated_at: str | None = None
+
+
+class ManualVelocityCommand(BaseModel):
+    linear_x: float = Field(default=0.0, ge=-1.0, le=1.0)
+    linear_y: float = Field(default=0.0, ge=-1.0, le=1.0)
+    angular_z: float = Field(default=0.0, ge=-2.0, le=2.0)
+
+
+class ManualVelocityResponse(BaseModel):
+    topic: str
+    command: ManualVelocityCommand
+    burst_count: int
+    message: str
+
+
+class ManualControlSnapshot(BaseModel):
+    enabled: bool = False
+    cmd_topic: str = ""
+    max_linear_x: float = 0.0
+    max_linear_y: float = 0.0
+    max_angular_z: float = 0.0
+
+
+class GaitControlCommand(BaseModel):
+    gait_type: int | None = Field(default=None, ge=0, le=7)
+    speed_level: int | None = Field(default=None, ge=0, le=3)
+    body_height: float | None = Field(default=None, ge=-0.10, le=0.10)
+
+
+class GaitControlResponse(BaseModel):
+    gait_type_topic: str
+    speed_level_topic: str
+    body_height_topic: str
+    command: GaitControlCommand
+    message: str
+
+
+class MotionCommandResult(BaseModel):
+    success: bool
+    message: str = ""
+    sdk_code: int = 0
+    error_code: str = ""
+    runtime_mode: str = ""
+    state: str = ""
 
 
 class CameraFrame(BaseModel):
@@ -353,6 +417,8 @@ class DashboardSnapshot(BaseModel):
     pointcloud: PointCloudSnapshot = Field(default_factory=PointCloudSnapshot)
     pose: RobotPose = Field(default_factory=RobotPose)
     status: RobotStatus = Field(default_factory=RobotStatus)
+    control_state: ControlStateSnapshot = Field(default_factory=ControlStateSnapshot)
+    manual_control: ManualControlSnapshot = Field(default_factory=ManualControlSnapshot)
     navigation: NavigationTaskState = Field(default_factory=NavigationTaskState)
     camera: CameraFrame = Field(default_factory=CameraFrame)
     health: SystemHealth = Field(default_factory=SystemHealth)

@@ -5,3 +5,5 @@ numpy>=1.21,<3.0
 Pillow>=10.0,<12.0
 grpcio>=1.60,<2.0
 grpcio-tools>=1.60,<2.0
+packaging>=24.0,<25.0
+setuptools>=77.0.1,<80.0

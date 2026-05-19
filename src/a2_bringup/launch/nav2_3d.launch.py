@@ -36,6 +36,20 @@ def generate_launch_description():
                 "the NDT adapter owns /a2/ndt/open_loop_pose initial guesses."
             ),
         ),
+        DeclareLaunchArgument(
+            "enable_global_traversability_layer",
+            default_value="true",
+            description=(
+                "When true, launch global_traversability_integrator to feed "
+                "stable 2.5D traversability obstacles into global_costmap. "
+                "Default true; set false for field rollback."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "global_traversability_config",
+            default_value=f"{a2_system_share}/config/global_traversability_integrator.yaml",
+            description="Path to global_traversability_integrator YAML config.",
+        ),
 
         LogInfo(
             msg=(
@@ -69,7 +83,7 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("enable_global_ekf_debug")),
         ),
 
-        # Traversability grid → obstacle pointcloud bridge
+        # Traversability grid → obstacle pointcloud bridge (local costmap feed)
         Node(
             package="a2_system",
             executable="traversability_to_obstacle_cloud.py",
@@ -80,10 +94,29 @@ def generate_launch_description():
                 "obstacle_z": 0.15,
                 "traversability_topic": "/a2/traversability",
                 "output_topic": "/a2/traversability/obstacle_points",
-                "output_frame": "map",
+                "output_frame": "base_link",
                 "treat_unknown_as_obstacle": False,
+                "local_window_enabled": True,
+                "local_min_x": -1.0,
+                "local_max_x": 6.0,
+                "local_min_y": -4.0,
+                "local_max_y": 4.0,
+                "max_output_points": 20000,
                 "use_sim_time": use_sim_time,
             }],
+            output="screen",
+        ),
+
+        # Stable global traversability integrator → global_costmap feed (opt-in)
+        Node(
+            package="a2_system",
+            executable="global_traversability_integrator.py",
+            name="global_traversability_integrator",
+            condition=IfCondition(LaunchConfiguration("enable_global_traversability_layer")),
+            parameters=[
+                LaunchConfiguration("global_traversability_config"),
+                {"use_sim_time": use_sim_time},
+            ],
             output="screen",
         ),
 

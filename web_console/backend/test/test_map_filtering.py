@@ -79,6 +79,40 @@ def test_list_maps_hides_legacy_2d_maps_when_navigation_requires_3d(tmp_path):
     assert legacy.navigation_compatibility_reason is not None
 
 
+def test_status_keeps_incompatible_maps_visible_for_web_ui(tmp_path):
+    controller = _build_controller(tmp_path)
+    controller._process_records = lambda: []  # type: ignore[method-assign]
+    legacy_dir = controller.map_root / "legacy_2d"
+    modern_dir = controller.map_root / "modern_3d"
+    legacy_dir.mkdir(parents=True, exist_ok=True)
+    modern_dir.mkdir(parents=True, exist_ok=True)
+
+    (legacy_dir / "map.yaml").write_text("image: map.pgm\nresolution: 0.1\n", encoding="utf-8")
+    (legacy_dir / "metadata.yaml").write_text(
+        yaml.safe_dump({"created_at": "2026-04-20T00:00:00", "mode": "mapping"}, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    (modern_dir / "metadata.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "created_at": "2026-04-29T00:00:00",
+                "representation": "pointcloud_map_3d",
+                "artifacts": [{"kind": "native_pointcloud_map_3d", "path": "native_map.pcd"}],
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+
+    status_maps = controller.status().maps
+
+    assert sorted(item.map_id for item in status_maps) == ["legacy_2d", "modern_3d"]
+    legacy = next(item for item in status_maps if item.map_id == "legacy_2d")
+    assert legacy.navigation_compatible is False
+    assert legacy.navigation_compatibility_reason is not None
+
+
 def test_start_navigation_rejects_incompatible_legacy_2d_map(tmp_path):
     controller = _build_controller(tmp_path)
     legacy_dir = controller.map_root / "legacy_2d"
@@ -95,3 +129,12 @@ def test_start_navigation_rejects_incompatible_legacy_2d_map(tmp_path):
         assert "3D 点云地图" in str(exc)
     else:
         raise AssertionError("legacy 2D map should be rejected for 3D-only navigation")
+
+
+def test_expected_navigation_nodes_respects_explicit_3d_flag(tmp_path):
+    controller = _build_controller(tmp_path)
+
+    nodes = controller._expected_nodes_for_mode("navigation", use_3d_navigation=True)
+
+    assert any(pattern == "planner_server" for _, _, pattern in nodes)
+    assert any(pattern == "bt_navigator" for _, _, pattern in nodes)

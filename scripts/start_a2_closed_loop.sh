@@ -3,24 +3,24 @@ set -euo pipefail
 
 REMOTE_USER_HOST="${REMOTE_USER_HOST:-a2}"
 REMOTE_WS="${REMOTE_WS:-/home/unitree/a2_system_ws}"
-MODE="standby"
+MODE="auto"
 MAP_ID=""
 LIDAR_IFACE="${A2_JT128_INTERFACE:-net1}"
 SDK_IFACE="${A2_SDK_INTERFACE:-eth0}"
 CONTROL_IFACE="${A2_CONTROL_INTERFACE:-$SDK_IFACE}"
-ENABLE_MOTION=0
-LIVE_MOTION=0
+ENABLE_MOTION=1
+LIVE_MOTION=1
 SSH_TTY=0
 
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--host a2] [--mode standby] [--lidar-iface net1]
+  $(basename "$0") [--host a2] [--mode auto] [--lidar-iface net1]
   $(basename "$0") --mode mapping
   $(basename "$0") --mode navigation --map-id MAP_ID [--enable-motion] [--live-motion]
 
 Default:
-  SSH to the robot and bring the Web console to stopped/standby state.
+  SSH to the robot and start the real A2 stack. Latest map starts navigation; no map starts mapping.
 
 Examples:
   $(basename "$0")

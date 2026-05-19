@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 LIDAR_IFACE="${A2_JT128_INTERFACE:-net1}"
 SDK_IFACE="${A2_SDK_INTERFACE:-eth0}"
 CONTROL_IFACE="${A2_CONTROL_INTERFACE:-$SDK_IFACE}"
 MODE="mapping"
 MAP_ID=""
 START_WEB=1
-ENABLE_MOTION=false
-DRY_RUN=true
+ENABLE_MOTION=true
+DRY_RUN=false
 ENABLE_NAV2_3D=true
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"
 NAV2_3D_MAP=""
+LOCALIZATION_MODE="${A2_REAL_LOCALIZATION_MODE:-ndt}"
+COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
+COLLISION_MONITOR_CONFIG=""
 START_ROBOT_STATE=true
 START_SAFETY=true
 LOG_DIR="${WORKSPACE}/runtime/logs"
@@ -27,7 +31,7 @@ usage() {
   cat <<EOF
 Usage:
   $(basename "$0") --mode mapping [--lidar-iface net1] [--no-web]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-motion] [--live-motion]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-global-traversability-layer|--no-global-traversability-layer]
 
 Starts the 3D-first JT128 stack:
   mapping:
@@ -41,11 +45,18 @@ Starts the 3D-first JT128 stack:
     pointcloud_map_loader -> /a2/map/pointcloud_3d
     Autoware NDT adapter -> /a2/relocalization/pose + map->odom
     Nav2 3D global/local navigation -> collision_monitor -> /cmd_vel_safe
-    optional a2_control_bridge -> Unitree motion
+    a2_control_bridge -> Unitree motion
 
-Safety defaults:
-  - --enable-motion starts a2_control_bridge.
-  - without --enable-motion, navigation remains a dry-run/control-disabled stack.
+Default:
+  Navigation starts the real Unitree control chain. Keep the robot supervised.
+
+Global traversability feedback:
+  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
+  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+
+Global traversability feedback:
+  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
+  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
 
 EOF
 }
@@ -61,6 +72,15 @@ warn() {
 die() {
   printf '[ERROR] %s\n' "$*" >&2
   exit 1
+}
+
+normalize_bool() {
+  lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    1|true|yes|on) echo true ;;
+    0|false|no|off) echo false ;;
+    *) return 1 ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -95,8 +115,17 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --live-motion)
+      ENABLE_MOTION=true
       DRY_RUN=false
       shift
+      ;;
+    --localization-mode)
+      LOCALIZATION_MODE="$2"
+      shift 2
+      ;;
+    --collision-profile)
+      COLLISION_MONITOR_PROFILE="$2"
+      shift 2
       ;;
     --enable-nav2-3d)
       ENABLE_NAV2_3D=true
@@ -105,6 +134,14 @@ while [[ $# -gt 0 ]]; do
 
     --no-nav2-3d)
       ENABLE_NAV2_3D=false
+      shift
+      ;;
+    --enable-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true
+      shift
+      ;;
+    --no-global-traversability-layer)
+      ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false
       shift
       ;;
     --nav2-map)
@@ -130,6 +167,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="$(normalize_bool "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER")" || die "A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER must be true/false"
+
 [[ "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be mapping or navigation"
 [[ "$LOCALIZATION_MODE" == "ndt" || "$LOCALIZATION_MODE" == "odom_only" ]] || die "localization mode must be ndt or odom_only"
 [[ "$COLLISION_MONITOR_PROFILE" == "strict" || "$COLLISION_MONITOR_PROFILE" == "live-validation" ]] || die "collision profile must be strict or live-validation"
@@ -138,6 +177,19 @@ if [[ "$MODE" == "navigation" && -z "$MAP_ID" ]]; then
 fi
 if [[ "$DRY_RUN" == "false" && "$ENABLE_MOTION" != "true" ]]; then
   die "--live-motion requires --enable-motion"
+fi
+if [[ "$MODE" == "navigation" ]]; then
+  case "$COLLISION_MONITOR_PROFILE" in
+    strict)
+      COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor.yaml"
+      [[ -f "$COLLISION_MONITOR_CONFIG" ]] || COLLISION_MONITOR_CONFIG="${WORKSPACE}/src/a2_system/config/collision_monitor.yaml"
+      ;;
+    live-validation)
+      COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor_live_validation.yaml"
+      [[ -f "$COLLISION_MONITOR_CONFIG" ]] || COLLISION_MONITOR_CONFIG="${WORKSPACE}/src/a2_system/config/collision_monitor_live_validation.yaml"
+      ;;
+  esac
+  [[ -f "$COLLISION_MONITOR_CONFIG" ]] || die "collision monitor config not found: ${COLLISION_MONITOR_CONFIG}"
 fi
 if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP" ]]; then
   candidate_map="${WORKSPACE}/runtime/maps/${MAP_ID}/map.yaml"
@@ -184,6 +236,7 @@ stop_navigation_components() {
   local navigation_patterns=(
     "jt128_3d_navigation.launch.py"
     "pointcloud_guard"
+    "pointcloud_preview_node.py"
     "pointcloud_map_loader"
     "pcd_relocalizer_3d"
     "ndt_scan_matcher"
@@ -198,6 +251,8 @@ stop_navigation_components() {
     "pose_goal_controller_3d"
     "ground_segmentation_cpp_node"
     "traversability_to_obstacle_cloud.py"
+    "global_traversability_integrator.py"
+    "global_traversability_integrator"
     "collision_monitor"
     "controller_server"
     "planner_server"
@@ -257,6 +312,9 @@ configure_ros_transport
 command -v ros2 >/dev/null 2>&1 || die "ros2 not found after sourcing workspace"
 require_a2_system_executable "traversability_to_obstacle_cloud.py"
 require_a2_system_executable "octomap_mapping_node.py"
+if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
+  require_a2_system_executable "global_traversability_integrator.py"
+fi
 
 log "Starting JT128 DLIO mapping base stack"
 DLIO_MAPPING_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/start_jt128_dlio_mapping.sh"
@@ -266,7 +324,8 @@ fi
 [[ -x "$DLIO_MAPPING_SCRIPT" ]] || die "DLIO mapping script not found: ${DLIO_MAPPING_SCRIPT}"
 "$DLIO_MAPPING_SCRIPT" \
   --iface "$LIDAR_IFACE" \
-  --no-web
+  --no-web \
+  --no-octomap
 
 start_web
 
@@ -279,7 +338,7 @@ fi
 
 stop_navigation_components
 NAV_LOG="${LOG_DIR}/jt128_3d_navigation_$(date +%Y%m%d_%H%M%S).log"
-log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} enable_nav2_3d=${ENABLE_NAV2_3D}"
+log "Starting JT128 3D navigation components map_id=${MAP_ID} dry_run=${DRY_RUN} enable_motion=${ENABLE_MOTION} localization=${LOCALIZATION_MODE} collision_profile=${COLLISION_MONITOR_PROFILE} enable_nav2_3d=${ENABLE_NAV2_3D} global_traversability=${ENABLE_GLOBAL_TRAVERSABILITY_LAYER}"
 setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
@@ -292,8 +351,11 @@ setsid bash -lc "
     start_safety:=${START_SAFETY} \
     enable_nav2_3d:=${ENABLE_NAV2_3D} \
     nav2_3d_map:='${NAV2_3D_MAP}' \
+    localization_mode:='${LOCALIZATION_MODE}' \
+    collision_monitor_config:='${COLLISION_MONITOR_CONFIG}' \
     enable_motion:=${ENABLE_MOTION} \
     dry_run:=${DRY_RUN} \
+    enable_global_traversability_layer:=${ENABLE_GLOBAL_TRAVERSABILITY_LAYER} \
     sdk_interface:='${SDK_IFACE}' \
     control_interface:='${CONTROL_IFACE}'
 " </dev/null >"$NAV_LOG" 2>&1 &
@@ -309,7 +371,11 @@ sdk_interface: ${SDK_IFACE}
 control_interface: ${CONTROL_IFACE}
 enable_motion: ${ENABLE_MOTION}
 dry_run: ${DRY_RUN}
+localization_mode: ${LOCALIZATION_MODE}
+collision_monitor_profile: ${COLLISION_MONITOR_PROFILE}
+collision_monitor_config: ${COLLISION_MONITOR_CONFIG}
 enable_nav2_3d: ${ENABLE_NAV2_3D}
+enable_global_traversability_layer: ${ENABLE_GLOBAL_TRAVERSABILITY_LAYER}
 nav2_3d_map: ${NAV2_3D_MAP}
 started_at: $(date --iso-8601=seconds)
 EOF

@@ -5,3 +5,11 @@ static_tf_manager:
 a2_sdk_bridge:
   ros__parameters:
     robot_model: unitree_a2
+
+a2_control_bridge:
+  ros__parameters:
+    gait_control_enabled: true
+    gait_type: 1
+    apply_speed_level: true
+    speed_level: 1
+    apply_body_height: false

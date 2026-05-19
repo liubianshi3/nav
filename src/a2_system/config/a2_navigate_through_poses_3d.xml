@@ -2,8 +2,8 @@
   A2 3D NavigateThroughPoses behavior tree.
 
   This mirrors the single-goal tree but computes a path through a goal list.
-  It intentionally does not include BackUp so recovery never commands reverse
-  motion during industrial acceptance tests.
+  Real-robot recovery is intentionally non-motion-only: clear costmaps and wait,
+  then retry or abort. It must not spin, strafe, or back up on planner failure.
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -23,12 +23,10 @@
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <RoundRobin name="RecoveryActions">
-          <DriveOnHeading time_allowance="3.0" speed="0.08"/>
           <Sequence name="ClearingActions">
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
           </Sequence>
-          <Spin spin_dist="1.57"/>
           <Wait wait_duration="5"/>
         </RoundRobin>
       </ReactiveFallback>

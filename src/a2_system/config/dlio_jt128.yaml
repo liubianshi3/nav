@@ -45,11 +45,13 @@
                                 1.0, 0.0, 0.0,
                                 0.0, 1.0, 0.0]
     extrinsics/baselink2lidar/t: [0.33767, 0.0, 0.08134]
-    # DLIO multiplies T_world_base * baselink2lidar_T to place lidar points,
-    # so this matrix must also be the lidar frame expressed in base_link.
+    # The JT128 point cloud axes differ from the internal IMU axes:
+    # point cloud raw Z is robot forward, raw X is robot left, raw -Y is up.
+    # Do not reuse the JT128 IMU matrix here; mapping raw Z to base Z turns
+    # forward range into vertical height and creates a chimney-shaped map.
     extrinsics/baselink2lidar/R: [0.0, 0.0, 1.0,
                                   1.0, 0.0, 0.0,
-                                  0.0, 1.0, 0.0]
+                                  0.0, -1.0, 0.0]
 
     odom/preprocessing/cropBoxFilter/size: 1.0
     odom/preprocessing/voxelFilter/res: 0.25

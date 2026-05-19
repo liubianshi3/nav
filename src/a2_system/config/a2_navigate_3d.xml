@@ -1,19 +1,14 @@
 <!--
   A2 3D Navigation Behavior Tree
 
-  Extends Nav2's default navigate-to-pose with A2-specific recovery strategies:
-    1. Lateral strafe  (DriveOnHeading side-step — A2 is omnidirectional)
-    2. Clear costmaps   (allow replanning around obstacles)
-    3. Spin             (rotate to find clear path)
-    4. Wait             (pause and retry)
+  A2 real-robot navigation recovery is intentionally non-motion-only:
+    1. Clear costmaps   (allow replanning around obstacles)
+    2. Wait             (pause and retry)
 
   The outer RecoveryNode retries the full navigation pipeline up to 6 times.
-  When the path follower detects a failure (stuck, invalid path, etc.), the
-  ReactiveFallback triggers the RoundRobin recovery sequence.
-
-  A2 body: ~1.1m long × ~0.45m wide. Strafing sideways uses the robot's unique
-  lateral mobility to escape narrow corridors that a differential-drive robot
-  cannot exit via spin-only recovery.
+  When planning fails before a valid path exists, recovery must not produce
+  Twist commands on a real A2. In-place Spin/DriveOnHeading recoveries can move
+  the robot even when the failure is a map/TF/costmap issue.
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -33,12 +28,10 @@
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>
         <RoundRobin name="RecoveryActions">
-          <DriveOnHeading time_allowance="3.0" speed="0.08"/>
           <Sequence name="ClearingActions">
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
           </Sequence>
-          <Spin spin_dist="1.57"/>
           <Wait wait_duration="5"/>
         </RoundRobin>
       </ReactiveFallback>

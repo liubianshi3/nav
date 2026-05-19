@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 BAG_ROOT="${A2_BAG_ROOT:-${WORKSPACE}/runtime/bags}"
 TOPICS_FILE="${A2_JT128_BAG_TOPICS:-${WORKSPACE}/install/a2_system/share/a2_system/config/jt128_rosbag_topics.txt}"
 if [[ ! -f "$TOPICS_FILE" ]]; then

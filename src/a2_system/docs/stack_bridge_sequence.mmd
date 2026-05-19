@@ -1,0 +1,38 @@
+sequenceDiagram
+    autonumber
+    actor Operator as Operator/Web UI
+    participant API as FastAPI + gRPC
+    participant Ros as RosBridgeNode
+    participant Stack as StackController
+    participant Scripts as A2 stack scripts
+    participant Launch as ROS launch
+    participant Bridges as ROS bridges/adapters
+    participant Nav2 as Nav2 + Safety
+    participant Robot as Unitree A2
+
+    Operator->>API: Start mapping/navigation or send command
+    API->>Stack: start_mapping()/start_navigation()
+    Stack->>Scripts: start_jt128_3d_stack.sh or start_jt128_dlio_mapping.sh
+    Scripts->>Scripts: stop interference, validate network, source ROS
+    Scripts->>Launch: ros2 launch dlio_mapping.launch.py
+    Launch->>Bridges: Hesai driver, IMU converter, DLIO, map_manager
+    Bridges-->>Ros: map/pointcloud/odom/status topics
+    Ros-->>API: WebSocket status snapshots
+    API-->>Operator: readiness and map/navigation state
+
+    alt navigation mode
+        Scripts->>Launch: ros2 launch jt128_3d_navigation.launch.py
+        Launch->>Bridges: sdk_bridge, state_publisher, NDT adapter, goal_bridge
+        Launch->>Nav2: nav2_3d.launch.py + collision_monitor
+        Operator->>API: Send goal/manual command
+        API->>Ros: publish goal/cmd or call ROS service
+        Ros->>Bridges: /a2/exploration/goal, /cmd_vel, /a2/control/*
+        Bridges->>Nav2: NavigateToPose goal or sanitized pose goal
+        Nav2->>Bridges: /cmd_vel -> /cmd_vel_safe
+        Bridges->>Robot: Unitree SportClient Move()/gait/posture
+        Robot-->>Bridges: sport/low/BMS state
+        Bridges-->>Ros: /a2/raw_state, /robot_state, /a2/control/status
+        Ros-->>API: live status/camera/map/pointcloud
+        API-->>Operator: dashboard update
+    end
+

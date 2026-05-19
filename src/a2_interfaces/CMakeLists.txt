@@ -8,8 +8,10 @@ find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RobotState.msg"
+  "msg/ControlState.msg"
   "msg/LightCommand.msg"
   "srv/ManageMap.srv"
+  "srv/MotionCommand.srv"
   "srv/NavCommand.srv"
   "srv/SetMode.srv"
   "action/RunMission.action"

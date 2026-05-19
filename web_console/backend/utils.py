@@ -60,6 +60,28 @@ def quaternion_to_yaw(x: float, y: float, z: float, w: float) -> float:
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def normalize_angle(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def extrapolate_pose2d_from_odom(
+    *,
+    anchor_pose: tuple[float, float, float],
+    anchor_odom: tuple[float, float, float],
+    current_odom: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    dx = current_odom[0] - anchor_odom[0]
+    dy = current_odom[1] - anchor_odom[1]
+    yaw_offset = anchor_pose[2] - anchor_odom[2]
+    cos_yaw = math.cos(yaw_offset)
+    sin_yaw = math.sin(yaw_offset)
+    return (
+        anchor_pose[0] + cos_yaw * dx - sin_yaw * dy,
+        anchor_pose[1] + sin_yaw * dx + cos_yaw * dy,
+        normalize_angle(anchor_pose[2] + current_odom[2] - anchor_odom[2]),
+    )
+
+
 def is_lan_or_loopback(host: str | None) -> bool:
     if not host:
         return False

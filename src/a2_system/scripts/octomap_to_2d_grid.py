@@ -15,23 +15,41 @@ import sys
 from pathlib import Path
 
 
-def _find_helper() -> str:
+def _workspace_root_from_script(script_path: Path) -> Path | None:
+    path = script_path.absolute()
+    if len(path.parents) >= 4 and path.parents[1].name == "a2_system" and path.parents[2].name == "src":
+        return path.parents[3]
+    if len(path.parents) >= 5 and path.parents[1].name == "lib" and path.parents[3].name == "install":
+        return path.parents[4]
+    return None
+
+
+def _helper_candidates(script_path: Path, env_helper: str | None, path_helper: str | None) -> list[str]:
     candidates = []
-    env_helper = os.environ.get("A2_OCTOMAP_TO_2D_HELPER")
     if env_helper:
         candidates.append(env_helper)
 
-    # Installed ROS layout.
-    candidates.extend(
-        [
-            "/opt/a2_system_ws/install/a2_system/lib/a2_system/octomap_to_2d_grid_cpp",
-            str(Path(__file__).resolve().parents[2] / "build" / "a2_system" / "octomap_to_2d_grid_cpp"),
-        ]
-    )
+    candidates.append(str(script_path.absolute().with_name("octomap_to_2d_grid_cpp")))
+    workspace_root = _workspace_root_from_script(script_path)
+    if workspace_root is not None:
+        candidates.extend(
+            [
+                str(workspace_root / "install" / "a2_system" / "lib" / "a2_system" / "octomap_to_2d_grid_cpp"),
+                str(workspace_root / "build" / "a2_system" / "octomap_to_2d_grid_cpp"),
+            ]
+        )
 
-    path_helper = shutil.which("octomap_to_2d_grid_cpp")
+    candidates.append("/opt/a2_system_ws/install/a2_system/lib/a2_system/octomap_to_2d_grid_cpp")
     if path_helper:
         candidates.append(path_helper)
+
+    return candidates
+
+
+def _find_helper() -> str:
+    env_helper = os.environ.get("A2_OCTOMAP_TO_2D_HELPER")
+    path_helper = shutil.which("octomap_to_2d_grid_cpp")
+    candidates = _helper_candidates(Path(__file__), env_helper, path_helper)
 
     for candidate in candidates:
         if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
@@ -70,13 +88,18 @@ def _args() -> argparse.Namespace:
         default="",
         help="Optional output path for an occupied-voxel ASCII PCD export",
     )
+    parser.add_argument(
+        "--clear-world-point",
+        action="append",
+        default=[],
+        metavar="X,Y,RADIUS",
+        help="Clear a disk in projected map coordinates before writing map.pgm; may be repeated",
+    )
     parser.add_argument("--border-padding", type=float, default=1.0, help="Map border padding in meters")
     return parser.parse_args()
 
 
-def main() -> int:
-    args = _args()
-    helper = _find_helper()
+def _build_command(args: argparse.Namespace, helper: str) -> list[str]:
     cmd = [
         helper,
         args.octomap_path,
@@ -95,6 +118,15 @@ def main() -> int:
     ]
     if args.pcd_output:
         cmd.extend(["--pcd-output", args.pcd_output])
+    for clear_point in args.clear_world_point:
+        cmd.extend(["--clear-world-point", clear_point])
+    return cmd
+
+
+def main() -> int:
+    args = _args()
+    helper = _find_helper()
+    cmd = _build_command(args, helper)
     return subprocess.call(cmd)
 
 

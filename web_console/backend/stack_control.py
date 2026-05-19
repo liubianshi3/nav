@@ -42,8 +42,9 @@ START_STABILITY_POLLS = 3
 LOG_TAIL_LINE_LIMIT = 80
 LOG_HIGHLIGHT_LIMIT = 12
 LOG_TEXT_LIMIT = 1800
-# Legacy 2D AMCL removed from primary lifecycle nodes; 3D NDT adapter is not lifecycle-managed
+# Legacy 2D AMCL removed from primary lifecycle nodes; 3D NDT adapter is not lifecycle-managed.
 NAV_LIFECYCLE_NODES = ("map_server",)
+THREE_D_NAVIGATION_REPRESENTATIONS = {"pointcloud_map_3d", "nav2_3d_projected_2d_costmap"}
 LOG_HIGHLIGHT_MARKERS = (
     "[error]",
     "traceback",
@@ -61,6 +62,9 @@ MAPPING_NODES: list[tuple[str, str, PatternSpec]] = [
     ("driver", "JT128 Hesai driver", ("jt128_hesai_driver", "hesai_ros_driver_node")),
     ("dlio_odom", "JT128 DLIO odom", ("jt128_dlio_odom", "dlio_odom_node")),
     ("dlio_map", "JT128 DLIO map", ("jt128_dlio_map", "dlio_map_node")),
+    ("pointcloud_preview", "JT128 pointcloud preview", "pointcloud_preview_node.py"),
+    ("octomap_gate", "OctoMap cloud gate", "octomap_mapping_node.py"),
+    ("octomap_server", "OctoMap server", "octomap_server_node"),
     ("map_manager", "map_manager", "map_manager_node"),
 ]
 
@@ -85,15 +89,21 @@ NAVIGATION_NODES_3D: list[tuple[str, str, PatternSpec]] = [
     ("sdk", "a2_sdk_bridge", "a2_sdk_bridge_node"),
     ("control", "a2_control_bridge", "a2_control_bridge_node"),
     ("map_loader", "3D pointcloud map loader", "pointcloud_map_loader"),
-    ("relocalizer", "3D PCD relocalizer", "pcd_relocalizer_3d"),
+    ("ndt_scan_matcher", "Autoware NDT scan matcher", ("ndt_scan_matcher", "autoware_ndt_scan_matcher_node")),
+    ("ndt_adapter", "A2 NDT adapter", "ndt_adapter"),
     ("localization", "3D localization gate", "localization_gate"),
     ("goal_bridge", "3D goal bridge", "goal_bridge"),
-    ("goal_controller", "3D pose goal controller", "pose_goal_controller_3d"),
+    ("map_server", "Nav2 3D map server", "map_server"),
+    ("planner", "SmacPlanner2D planner server", "planner_server"),
+    ("controller", "DWB local controller server", "controller_server"),
+    ("bt_navigator", "Nav2 3D BT navigator", "bt_navigator"),
+    ("velocity", "Nav2 3D velocity smoother", "velocity_smoother"),
+    ("lifecycle", "Nav2 3D lifecycle manager", "lifecycle_manager"),
     ("map_manager", "3D map manager", "map_manager_node"),
 ]
 
 NAVIGATION_LOCALIZATION_MODES = {"ndt", "odom_only"}
-NAVIGATION_MOTION_MODES = {"planning_only", "dry_run", "live_motion"}
+NAVIGATION_MOTION_MODES = {"planning_only", "live_motion"}
 NAVIGATION_COLLISION_MONITOR_PROFILES = {"strict", "live-validation"}
 
 STACK_CLEANUP_PATTERNS = [
@@ -109,7 +119,10 @@ STACK_CLEANUP_PATTERNS = [
     "static_tf_manager",
     "sync_monitor",
     "pointcloud_guard",
+    "pointcloud_preview_node.py",
     "pointcloud_map_loader",
+    "autoware_ndt_scan_matcher_node",
+    "ndt_adapter_node",
     "mid360_driver_guard",
     "pointcloud_relay",
     "pointcloud_accumulator",
@@ -118,6 +131,9 @@ STACK_CLEANUP_PATTERNS = [
     "jt128_dlio_map",
     "dlio_odom_node",
     "dlio_map_node",
+    "octomap_mapping_node.py",
+    "octomap_server_node",
+    "octomap_saver_node",
     # Legacy 2D nodes — kept in cleanup for process kill safety, not in primary validation:
     "pointcloud_to_laserscan",
     "slam_toolbox",
@@ -202,6 +218,153 @@ class StackController:
             raise StackControlError(detail or f"命令失败: {' '.join(command)}")
         return result
 
+    def ensure_manual_control_standby(self) -> dict[str, Any]:
+        sdk_iface = self._standby_sdk_interface()
+        control_iface = self._standby_control_interface()
+        records = self._process_records()
+        mismatched = self._manual_control_standby_mismatches(records, sdk_iface, control_iface)
+        if mismatched:
+            self._signal_pids({proc.pid for proc in mismatched}, signal.SIGTERM)
+            time.sleep(1.0)
+            records = self._process_records()
+        started: list[str] = []
+        if not any("a2_sdk_bridge_node" in proc.args for proc in records):
+            self._start_standby_sdk_bridge()
+            started.append("sdk")
+        if not any("a2_control_bridge_node" in proc.args for proc in records):
+            self._start_standby_control_bridge()
+            started.append("control")
+        self._wait_for_manual_control_standby()
+        return {
+            "ok": True,
+            "started": started,
+            "message": "手动控制 standby bridge 已就绪" if started else "手动控制 standby bridge 已在运行",
+        }
+
+    def _standby_sdk_interface(self) -> str:
+        return os.environ.get("A2_SDK_INTERFACE") or "eth0"
+
+    def _standby_control_interface(self) -> str:
+        return os.environ.get("A2_CONTROL_INTERFACE") or self._standby_sdk_interface()
+
+    def _manual_control_standby_mismatches(
+        self,
+        records: list[ProcessInfo],
+        sdk_iface: str,
+        control_iface: str,
+    ) -> list[ProcessInfo]:
+        mismatched: list[ProcessInfo] = []
+        for proc in records:
+            if "a2_sdk_bridge_node" in proc.args and f"network_interface:={sdk_iface}" not in proc.args:
+                mismatched.append(proc)
+            elif "a2_control_bridge_node" in proc.args and f"network_interface:={control_iface}" not in proc.args:
+                mismatched.append(proc)
+        return mismatched
+
+    def _start_standby_sdk_bridge(self) -> None:
+        sdk_iface = self._standby_sdk_interface()
+        self._start_standby_ros_process(
+            label="start_standby_sdk_bridge",
+            log_name="a2_sdk_bridge_standby.log",
+            body=[
+                "exec ros2 run a2_sdk_bridge a2_sdk_bridge_node",
+                "--ros-args",
+                "-p use_mock:=false",
+                "-p auto_detect_interface:=false",
+                "-p allow_loopback:=false",
+                f"-p network_interface:={shlex.quote(sdk_iface)}",
+                f"-p state_topic:={shlex.quote(os.environ.get('A2_SDK_STATE_TOPIC', '/a2/raw_state'))}",
+                f"-p sport_state_topic:={shlex.quote(os.environ.get('A2_SDK_SPORT_STATE_TOPIC', 'rt/lf/sportmodestate'))}",
+                f"-p timer_hz:={shlex.quote(os.environ.get('A2_SDK_TIMER_HZ', '50.0'))}",
+                f"-p stale_timeout_sec:={shlex.quote(os.environ.get('A2_SDK_STALE_TIMEOUT_SEC', '0.5'))}",
+            ],
+        )
+
+    def _start_standby_control_bridge(self) -> None:
+        params_file = self.workspace / "install" / "a2_system" / "share" / "a2_system" / "config" / "motion_limits.yaml"
+        if not params_file.exists():
+            params_file = self.workspace / "src" / "a2_system" / "config" / "motion_limits.yaml"
+        if not params_file.exists():
+            raise StackControlError("手动控制 standby 拉起失败: motion_limits.yaml 不存在")
+
+        control_iface = self._standby_control_interface()
+        self._start_standby_ros_process(
+            label="start_standby_control_bridge",
+            log_name="a2_control_bridge_standby.log",
+            body=[
+                "exec ros2 run a2_control_bridge a2_control_bridge_node",
+                "--ros-args",
+                f"--params-file {shlex.quote(str(params_file))}",
+                "-p use_mock:=false",
+                "-p runtime_mode:=real",
+                "-p allow_loopback:=false",
+                f"-p network_interface:={shlex.quote(control_iface)}",
+                f"-p cmd_topic:={shlex.quote(os.environ.get('A2_CONTROL_CMD_TOPIC', '/cmd_vel_safe'))}",
+                f"-p allow_motion_without_map:={self._env_bool_text('A2_CONTROL_ALLOW_WITHOUT_MAP', 'true')}",
+                f"-p allow_motion_without_localization:={self._env_bool_text('A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION', 'true')}",
+                f"-p max_linear_x:={shlex.quote(os.environ.get('A2_CONTROL_MAX_LINEAR_X', '0.35'))}",
+                f"-p max_linear_y:={shlex.quote(os.environ.get('A2_CONTROL_MAX_LINEAR_Y', '0.18'))}",
+                f"-p max_yaw_rate:={shlex.quote(os.environ.get('A2_CONTROL_MAX_YAW_RATE', '0.45'))}",
+                f"-p cmd_timeout_sec:={shlex.quote(os.environ.get('A2_CONTROL_CMD_TIMEOUT_SEC', '0.30'))}",
+            ],
+        )
+
+    def _start_standby_ros_process(self, *, label: str, log_name: str, body: list[str]) -> None:
+        log_dir = self.workspace / "runtime" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / log_name
+        env = os.environ.copy()
+        env["A2_WORKSPACE"] = str(self.workspace)
+        env["RMW_IMPLEMENTATION"] = os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
+        ld_preload = os.environ.get("A2_CONTROL_BRIDGE_LD_PRELOAD", "")
+        if not ld_preload:
+            candidate = Path("/opt/unitree_robotics/lib/x86_64/libddsc.so.0")
+            if candidate.exists():
+                ld_preload = str(candidate)
+        if ld_preload:
+            env["LD_PRELOAD"] = ld_preload
+
+        shell = "\n".join(
+            [
+                "set -e",
+                "source /opt/ros/humble/setup.bash",
+                f"source {shlex.quote(str(self.workspace / 'install' / 'setup.bash'))}",
+                f"export A2_WORKSPACE={shlex.quote(str(self.workspace))}",
+                " ".join(body),
+            ]
+        )
+        with log_path.open("ab") as log_handle:
+            try:
+                subprocess.Popen(
+                    ["bash", "-lc", shell],
+                    cwd=str(self.workspace),
+                    env=env,
+                    stdout=log_handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                raise StackControlError(f"{label} 启动失败: {exc}") from exc
+
+    def _wait_for_manual_control_standby(self) -> None:
+        deadline = time.monotonic() + min(max(self.start_timeout, 5.0), 15.0)
+        missing = ["a2_sdk_bridge_node", "a2_control_bridge_node"]
+        while time.monotonic() < deadline:
+            records = self._process_records()
+            missing = [
+                pattern
+                for pattern in ("a2_sdk_bridge_node", "a2_control_bridge_node")
+                if not any(pattern in proc.args for proc in records)
+            ]
+            if not missing:
+                return
+            time.sleep(POLL_INTERVAL_SEC)
+        raise StackControlError(f"手动控制 standby 拉起失败，缺少进程: {', '.join(missing)}")
+
+    def _env_bool_text(self, name: str, default: str) -> str:
+        value = os.environ.get(name, default).strip().lower()
+        return "true" if value in {"1", "true", "t", "yes", "y", "on"} else "false"
+
     def _write_runtime_state(self, **state: Any) -> None:
         self.runtime_state_file.parent.mkdir(parents=True, exist_ok=True)
         existing = self._read_runtime_state()
@@ -223,8 +386,9 @@ class StackController:
         map_id: str | None = None,
         *,
         localization_mode: str = "ndt",
-        motion_mode: str = "dry_run",
+        motion_mode: str = "live_motion",
         enable_nav2_3d: bool = True,
+        enable_global_traversability_layer: bool = True,
         collision_monitor_profile: str = "strict",
     ) -> list[str]:
         if self.start_script.name == "start_jt128_3d_stack.sh":
@@ -248,7 +412,8 @@ class StackController:
                     collision_monitor_profile,
                 ])
                 command.append("--enable-nav2-3d" if enable_nav2_3d else "--no-nav2-3d")
-                if motion_mode in {"dry_run", "live_motion"}:
+                command.append("--enable-global-traversability-layer" if enable_global_traversability_layer else "--no-global-traversability-layer")
+                if motion_mode == "live_motion":
                     command.append("--enable-motion")
                 if motion_mode == "live_motion":
                     command.append("--live-motion")
@@ -271,7 +436,7 @@ class StackController:
                         collision_monitor_profile,
                         "--no-web",
                     ]
-                    if motion_mode in {"dry_run", "live_motion"}:
+                    if motion_mode == "live_motion":
                         command.append("--enable-motion")
                     if motion_mode == "live_motion":
                         command.append("--live-motion")
@@ -352,8 +517,9 @@ class StackController:
         map_id: str,
         *,
         localization_mode: str = "ndt",
-        motion_mode: str = "dry_run",
+        motion_mode: str = "live_motion",
         enable_nav2_3d: bool = True,
+        enable_global_traversability_layer: bool = True,
         collision_monitor_profile: str = "strict",
     ) -> dict[str, str]:
         if not self.start_script.exists():
@@ -379,7 +545,7 @@ class StackController:
             selected_map_yaml=map_info.map_yaml,
             localization_mode=localization_mode,
             motion_mode=motion_mode,
-            enable_motion=motion_mode in {"dry_run", "live_motion"},
+            enable_motion=motion_mode == "live_motion",
             live_motion=motion_mode == "live_motion",
             dry_run=motion_mode != "live_motion",
             enable_nav2_3d=enable_nav2_3d,
@@ -396,6 +562,7 @@ class StackController:
                     localization_mode=localization_mode,
                     motion_mode=motion_mode,
                     enable_nav2_3d=enable_nav2_3d,
+                    enable_global_traversability_layer=enable_global_traversability_layer,
                     collision_monitor_profile=collision_monitor_profile,
                 ),
                 env={
@@ -425,7 +592,7 @@ class StackController:
             selected_map_yaml=map_info.map_yaml,
             localization_mode=localization_mode,
             motion_mode=motion_mode,
-            enable_motion=motion_mode in {"dry_run", "live_motion"},
+            enable_motion=motion_mode == "live_motion",
             live_motion=motion_mode == "live_motion",
             dry_run=motion_mode != "live_motion",
             enable_nav2_3d=enable_nav2_3d,
@@ -440,6 +607,7 @@ class StackController:
             localization_mode=request.localization_mode,
             motion_mode=request.motion_mode,
             enable_nav2_3d=bool(request.enable_nav2_3d),
+            enable_global_traversability_layer=bool(request.enable_global_traversability_layer),
             collision_monitor_profile=request.collision_monitor_profile,
         )
 
@@ -450,7 +618,7 @@ class StackController:
         return mode
 
     def _normalize_motion_mode(self, value: str) -> str:
-        mode = (value or "dry_run").strip()
+        mode = (value or "live_motion").strip()
         if mode not in NAVIGATION_MOTION_MODES:
             raise StackControlError(f"不支持的运动模式: {value}")
         return mode
@@ -466,25 +634,28 @@ class StackController:
             self.stop()
 
     def mapping_source_profile(self) -> str:
-        slam_cfg = self._read_yaml(self.a2_system_config_dir / "slam.yaml")
+        slam_cfg = self._read_slam_config()
         params = slam_cfg.get("slam_manager", {}).get("ros__parameters", {}) or {}
         profile = str(params.get("mapping_stack_profile", "") or "").strip()
         return profile or "front_lidar_pointcloud_3d"  # legacy default "slam_toolbox" removed
 
     def navigation_representation(self) -> str:
-        slam_cfg = self._read_yaml(self.a2_system_config_dir / "slam.yaml")
+        slam_cfg = self._read_slam_config()
         params = slam_cfg.get("slam_manager", {}).get("ros__parameters", {}) or {}
         return str(params.get("navigation_representation", "") or "").strip()
 
+    def _navigation_requires_3d_map(self) -> bool:
+        return self.navigation_representation() in THREE_D_NAVIGATION_REPRESENTATIONS
+
     def _is_3d_navigation_map(self, map_info: SavedMapInfo | None = None) -> bool:
-        if self.navigation_representation() == "pointcloud_map_3d":
+        if self._navigation_requires_3d_map():
             return bool(map_info and map_info.navigation_compatible)
         if map_info is None:
             return False
         return bool(map_info.has_pointcloud_3d or map_info.representation == "pointcloud_map_3d")
 
     def _navigation_compatibility_for_map(self, map_info: SavedMapInfo) -> tuple[bool, str | None]:
-        if self.navigation_representation() != "pointcloud_map_3d":
+        if not self._navigation_requires_3d_map():
             return True, None
         if map_info.has_pointcloud_3d or map_info.representation == "pointcloud_map_3d":
             return True, None
@@ -507,7 +678,7 @@ class StackController:
                 if map_info is not None:
                     use_3d_navigation = self._is_3d_navigation_map(map_info)
                 else:
-                    use_3d_navigation = self.navigation_representation() == "pointcloud_map_3d"
+                    use_3d_navigation = self._navigation_requires_3d_map()
             if use_3d_navigation:
                 return NAVIGATION_NODES_3D
             return NAVIGATION_NODES
@@ -1193,7 +1364,7 @@ class StackController:
             collision_monitor_profile=runtime_state.get("collision_monitor_profile"),
             collision_monitor_config=runtime_state.get("collision_monitor_config"),
             nodes=nodes,
-            maps=self.list_maps(),
+            maps=self.list_maps(include_incompatible=True),
             message=runtime_state.get("message"),
         )
 
@@ -1364,6 +1535,14 @@ class StackController:
             return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception:
             return {}
+
+    def _read_slam_config(self) -> dict[str, Any]:
+        if self.start_script.name == "start_jt128_3d_stack.sh":
+            slam_3d_path = self.a2_system_config_dir / "slam_3d.yaml"
+            slam_3d = self._read_yaml(slam_3d_path)
+            if slam_3d:
+                return slam_3d
+        return self._read_yaml(self.a2_system_config_dir / "slam.yaml")
 
     def _resolve_a2_system_config_dir(self) -> Path:
         candidates = [

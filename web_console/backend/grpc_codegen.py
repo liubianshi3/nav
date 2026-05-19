@@ -28,7 +28,7 @@ def generate_proto_stubs(*, repo_root: Path, out_root: Path) -> Path:
     if not proto_root.exists():
         raise RuntimeError(f"proto directory not found: {proto_root}")
 
-    proto_files = sorted(proto_root.rglob("*.proto"))
+    proto_files = _find_proto_files(proto_root)
     if not proto_files:
         raise RuntimeError(f"no proto files found under: {proto_root}")
 
@@ -61,7 +61,7 @@ def ensure_grpc_generated() -> Path:
     out_root = here.parent / "grpc_gen"
     marker = out_root / ".generated"
     proto_root = repo_root / "proto"
-    proto_files = sorted(proto_root.rglob("*.proto")) if proto_root.exists() else []
+    proto_files = _find_proto_files(proto_root) if proto_root.exists() else []
     latest_proto_mtime = max((path.stat().st_mtime for path in proto_files), default=0.0)
     expected = [
         out_root / "common" / "alarm_pb2.py",
@@ -92,3 +92,11 @@ def ensure_grpc_generated() -> Path:
     generated_root = generate_proto_stubs(repo_root=repo_root, out_root=out_root)
     marker.write_text(str(latest_proto_mtime), encoding="utf-8")
     return generated_root
+
+
+def _find_proto_files(proto_root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in proto_root.rglob("*.proto")
+        if not any(part.startswith(".") for part in path.relative_to(proto_root).parts)
+    )

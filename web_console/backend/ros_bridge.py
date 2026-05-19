@@ -4,9 +4,11 @@ import threading
 import base64
 import io
 import json
+import logging
 import math
 import struct
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, Float32, Int32, String
 from tf2_msgs.msg import TFMessage
 from sensor_msgs.msg import BatteryState, CompressedImage, Image, PointCloud2
 
@@ -27,10 +29,18 @@ try:
 except ImportError:  # pragma: no cover - optional runtime dependency
     PilImage = None
 
+
+logger = logging.getLogger(__name__)
+
 try:
     from a2_interfaces.msg import RobotState
 except ImportError:  # pragma: no cover - runtime environment fallback
     RobotState = None
+
+try:
+    from a2_interfaces.msg import ControlState
+except ImportError:  # pragma: no cover - runtime environment fallback
+    ControlState = None
 
 try:
     from a2_interfaces.msg import LightCommand
@@ -38,10 +48,19 @@ except ImportError:  # pragma: no cover - runtime environment fallback
     LightCommand = None
 
 try:
-    from a2_interfaces.srv import ManageMap, NavCommand
+    from a2_interfaces.srv import ManageMap
 except ImportError:  # pragma: no cover - runtime environment fallback
     ManageMap = None
+
+try:
+    from a2_interfaces.srv import NavCommand
+except ImportError:  # pragma: no cover - runtime environment fallback
     NavCommand = None
+
+try:
+    from a2_interfaces.srv import MotionCommand
+except ImportError:  # pragma: no cover - runtime environment fallback
+    MotionCommand = None
 
 try:
     from nav2_msgs.action import NavigateToPose
@@ -66,12 +85,20 @@ except ImportError:  # pragma: no cover - runtime environment fallback
     Response = None
 
 from .config import AppConfig
+from .direct_navigation import compute_direct_velocity_command
 from .models import (
     BatterySnapshot,
+    ControlStateSnapshot,
     RecoveryStatus,
     DashboardSnapshot,
     CameraFrame,
     InitialPoseRequest,
+    GaitControlCommand,
+    GaitControlResponse,
+    ManualControlSnapshot,
+    ManualVelocityCommand,
+    ManualVelocityResponse,
+    MotionCommandResult,
     MapSnapshot,
     PointCloudSnapshot,
     NavigationGoal,
@@ -85,7 +112,15 @@ from .models import (
     TaskRouteStatus,
     TextStatus,
 )
-from .utils import deep_copy_model, dump_model, now_iso, parse_optional_bool, parse_status_string, quaternion_to_yaw
+from .utils import (
+    deep_copy_model,
+    dump_model,
+    extrapolate_pose2d_from_odom,
+    now_iso,
+    parse_optional_bool,
+    parse_status_string,
+    quaternion_to_yaw,
+)
 from .ws import WebSocketManager
 
 
@@ -139,6 +174,36 @@ def _grid_value(map_snapshot: MapSnapshot, grid_x: int, grid_y: int) -> int:
     if index < 0 or index >= len(map_snapshot.data):
         return 100
     return int(map_snapshot.data[index])
+
+
+def _localization_pose_update_seen(current_stamp: str | None, previous_stamp: str | None) -> bool:
+    return current_stamp is not None and current_stamp != previous_stamp
+
+
+def _preview_sample_indices(total_points: int, max_points: int) -> range | list[int]:
+    if total_points <= 0:
+        return range(0)
+    if max_points <= 0 or total_points <= max_points:
+        return range(total_points)
+
+    stride = _coprime_preview_stride(total_points)
+    indices = [(sample_index * stride) % total_points for sample_index in range(max_points)]
+    indices.sort()
+    return indices
+
+
+def _coprime_preview_stride(total_points: int) -> int:
+    if total_points <= 2:
+        return 1
+
+    candidate = max(1, min(total_points - 1, int(total_points * 0.61803398875)))
+    for _ in range(total_points):
+        if math.gcd(candidate, total_points) == 1:
+            return candidate
+        candidate += 1
+        if candidate >= total_points:
+            candidate = 1
+    return 1
 
 
 def _cell_has_clearance(
@@ -219,6 +284,7 @@ class RosBridgeNode(Node):
 
         self.map_snapshot = MapSnapshot()
         self.pointcloud_snapshot = PointCloudSnapshot()
+        self.pointcloud_snapshots_by_topic: dict[str, PointCloudSnapshot] = {}
         self.pose = RobotPose()
         self.status = RobotStatus(
             planner_type="SmacPlannerHybrid",
@@ -227,6 +293,7 @@ class RosBridgeNode(Node):
         self.navigation = NavigationTaskState(updated_at=now_iso())
         self.camera = CameraFrame()
         self.battery = BatterySnapshot()
+        self.control_state = ControlStateSnapshot()
         self.recovery_status = RecoveryStatus()
         self.health = SystemHealth(ros_connected=True)
         self._last_tf_frame: str | None = None
@@ -234,14 +301,22 @@ class RosBridgeNode(Node):
         self._last_primary_pointcloud_monotonic = 0.0
         self._last_fallback_pointcloud_monotonic = 0.0
         self._last_pose_monotonic = 0.0
+        self._last_websocket_publish_monotonic: dict[str, float] = {}
+        self._last_localization_pose_stamp: str | None = None
+        self._last_odom_pose: RobotPose | None = None
+        self._localization_anchor_pose: RobotPose | None = None
+        self._localization_anchor_odom_pose: RobotPose | None = None
         self._last_battery_monotonic = 0.0
         self._last_battery_warn_monotonic = 0.0
         self._active_pose_goal: NavigationGoal | None = None
         self._active_pose_goal_started_at: float | None = None
+        self._direct_nav_cancel = threading.Event()
+        self._direct_nav_thread: threading.Thread | None = None
         self._native_slam_response_cv = threading.Condition()
         self._native_slam_responses: dict[int, dict[str, Any]] = {}
         self.manage_map_client = None
         self.task_command_client = None
+        self.motion_command_client = None
 
         self._setup_subscriptions()
         if ManageMap is not None:
@@ -260,6 +335,14 @@ class RosBridgeNode(Node):
             self.get_logger().warning(
                 "a2_interfaces.srv.NavCommand is unavailable. Task manager bridge will be disabled."
             )
+        if MotionCommand is not None:
+            self.motion_command_client = self.create_client(
+                MotionCommand, self.config.ros.motion_command_service
+            )
+        else:
+            self.get_logger().warning(
+                "a2_interfaces.srv.MotionCommand is unavailable. A2 motion command bridge will be disabled."
+            )
         self.initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
             self.config.navigation.initial_pose_topic,
@@ -273,6 +356,31 @@ class RosBridgeNode(Node):
         self.cancel_stop_publisher = self.create_publisher(
             Twist,
             self.config.navigation.cancel_stop_topic,
+            10,
+        )
+        self.direct_cmd_publisher = self.create_publisher(
+            Twist,
+            self.config.navigation.direct_cmd_topic,
+            10,
+        )
+        self.manual_control_publisher = self.create_publisher(
+            Twist,
+            self.config.manual_control.cmd_topic,
+            10,
+        )
+        self.gait_type_publisher = self.create_publisher(
+            Int32,
+            self.config.gait_control.gait_type_topic,
+            10,
+        )
+        self.speed_level_publisher = self.create_publisher(
+            Int32,
+            self.config.gait_control.speed_level_topic,
+            10,
+        )
+        self.body_height_publisher = self.create_publisher(
+            Float32,
+            self.config.gait_control.body_height_topic,
             10,
         )
         self.light_command_publisher = None
@@ -315,21 +423,35 @@ class RosBridgeNode(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
+        pointcloud_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, latched_qos)
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, 10)
-        self.create_subscription(
-            PointCloud2,
-            ros.pointcloud_topic,
-            lambda msg: self._on_pointcloud(msg, ros.pointcloud_topic, primary=True),
-            10,
-        )
-        if ros.pointcloud_fallback_topic and ros.pointcloud_fallback_topic != ros.pointcloud_topic:
+        pointcloud_topics: set[str] = set()
+
+        def subscribe_pointcloud(topic: str, *, primary: bool) -> None:
+            topic = str(topic or "").strip()
+            if not topic or topic in pointcloud_topics:
+                return
+            pointcloud_topics.add(topic)
             self.create_subscription(
                 PointCloud2,
-                ros.pointcloud_fallback_topic,
-                lambda msg: self._on_pointcloud(msg, ros.pointcloud_fallback_topic, primary=False),
-                10,
+                topic,
+                lambda msg, subscribed_topic=topic, is_primary=primary: self._on_pointcloud(
+                    msg,
+                    subscribed_topic,
+                    primary=is_primary,
+                ),
+                pointcloud_qos,
             )
+
+        subscribe_pointcloud(ros.pointcloud_topic, primary=True)
+        subscribe_pointcloud(ros.pointcloud_fallback_topic, primary=False)
+        for topic in ros.pointcloud_map_topics or []:
+            subscribe_pointcloud(topic, primary=False)
         if ros.localization_pose_msg_type == "nav_msgs/msg/Odometry":
             self.create_subscription(Odometry, ros.localization_pose_topic, self._on_localization_odom, 20)
         else:
@@ -353,6 +475,13 @@ class RosBridgeNode(Node):
         self.create_subscription(String, ros.task_manager_status_topic, self._on_task_manager_status, 10)
         self.create_subscription(String, ros.pose_goal_status_topic, self._on_pose_goal_status, 10)
         self.create_subscription(String, ros.sdk_status_topic, self._on_sdk_status, 10)
+        self.create_subscription(String, ros.control_status_topic, self._on_control_status, 10)
+        if ControlState is not None:
+            self.create_subscription(ControlState, ros.control_state_topic, self._on_control_state, 10)
+        else:
+            self.get_logger().warning(
+                "a2_interfaces.msg.ControlState is unavailable. /a2/control/state will be skipped."
+            )
         if RobotState is not None:
             self.create_subscription(RobotState, ros.raw_state_topic, self._on_raw_state, 10)
         else:
@@ -383,6 +512,44 @@ class RosBridgeNode(Node):
 
     def _publish(self, event_type: str, payload: Any) -> None:
         self.ws_manager.broadcast_threadsafe({"type": event_type, "payload": payload})
+
+    def _publish_rate_limited(
+        self,
+        event_type: str,
+        payload: Any,
+        max_hz: float,
+        *,
+        key: str | None = None,
+        now: float | None = None,
+    ) -> bool:
+        if not math.isfinite(max_hz) or max_hz <= 0.0:
+            return False
+        current = time.monotonic() if now is None else now
+        bucket = key or event_type
+        last = self._last_websocket_publish_monotonic.get(bucket, 0.0)
+        if current - last < 1.0 / max_hz:
+            return False
+        self._last_websocket_publish_monotonic[bucket] = current
+        self._publish(event_type, payload)
+        return True
+
+    def _publish_status(self, *, now: float | None = None) -> bool:
+        return self._publish_rate_limited(
+            "status",
+            dump_model(self.status),
+            float(self.config.health.websocket_status_hz),
+            key="status",
+            now=now,
+        )
+
+    def _publish_battery(self, *, now: float | None = None) -> bool:
+        return self._publish_rate_limited(
+            "battery",
+            dump_model(self.battery),
+            float(self.config.health.websocket_battery_hz),
+            key="battery",
+            now=now,
+        )
 
     def _camera_throttle_ready(self) -> bool:
         max_hz = max(0.1, float(self.config.camera.max_broadcast_hz))
@@ -543,35 +710,78 @@ class RosBridgeNode(Node):
     ) -> Any:
         if self.task_command_client is None or NavCommand is None:
             raise RosBridgeError("task_manager service client 不可用")
-        if not self.task_command_client.wait_for_service(timeout_sec=2.0):
-            raise RosBridgeError("task_manager service 不可用")
+        try:
+            if not self.task_command_client.wait_for_service(timeout_sec=2.0):
+                raise RosBridgeError("task_manager service 不可用")
 
-        request = NavCommand.Request()
-        request.command = command
-        request.map_id = map_id
-        request.route_id = route_id
-        request.mode = mode
-        request.mission_name = mission_name
-        request.route_yaml = route_yaml
-        request.waypoints_file = waypoints_file
-        request.dry_run = bool(dry_run)
-        request.stop_on_failure = bool(stop_on_failure)
-        request.save_map_on_finish = bool(save_map_on_finish)
-        request.save_map_on_failure = bool(save_map_on_failure)
-        if pose is not None:
-            request.pose = pose
+            request = NavCommand.Request()
+            request.command = command
+            request.map_id = map_id
+            request.route_id = route_id
+            request.mode = mode
+            request.mission_name = mission_name
+            request.route_yaml = route_yaml
+            request.waypoints_file = waypoints_file
+            request.dry_run = bool(dry_run)
+            request.stop_on_failure = bool(stop_on_failure)
+            request.save_map_on_finish = bool(save_map_on_finish)
+            request.save_map_on_failure = bool(save_map_on_failure)
+            if pose is not None:
+                request.pose = pose
 
-        future = self.task_command_client.call_async(request)
-        done = threading.Event()
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout=8.0):
-            raise RosBridgeError(f"task_manager {command} 超时")
-        response = future.result()
+            future = self.task_command_client.call_async(request)
+            done = threading.Event()
+            future.add_done_callback(lambda _: done.set())
+            if not done.wait(timeout=8.0):
+                raise RosBridgeError(f"task_manager {command} 超时")
+            response = future.result()
+        except RosBridgeError:
+            raise
+        except Exception as exc:
+            raise RosBridgeError(f"task_manager {command} 调用失败: {exc}") from exc
         if response is None:
             raise RosBridgeError(f"task_manager {command} 未返回结果")
         if not response.success:
             raise RosBridgeError(response.message or f"task_manager {command} 失败")
         return response
+
+    def call_motion_command(
+        self,
+        command: str,
+        int_value: int = 0,
+        float_value: float = 0.0,
+        bool_value: bool = False,
+    ) -> MotionCommandResult:
+        if self.motion_command_client is None or MotionCommand is None:
+            raise RosBridgeError("a2 motion command service client 不可用")
+        if not self.motion_command_client.wait_for_service(timeout_sec=2.0):
+            raise RosBridgeError("a2 motion command service 不可用")
+
+        request = MotionCommand.Request()
+        request.command = str(command)
+        request.int_value = int(int_value)
+        request.float_value = float(float_value)
+        request.bool_value = bool(bool_value)
+
+        future = self.motion_command_client.call_async(request)
+        done = threading.Event()
+        future.add_done_callback(lambda _: done.set())
+        if not done.wait(timeout=4.0):
+            raise RosBridgeError(f"a2 motion command {command} 超时")
+        try:
+            response = future.result()
+        except Exception as exc:
+            raise RosBridgeError(f"a2 motion command {command} 调用失败: {exc}") from exc
+        if response is None:
+            raise RosBridgeError(f"a2 motion command {command} 未返回结果")
+        return MotionCommandResult(
+            success=bool(response.success),
+            message=str(response.message or ""),
+            sdk_code=int(getattr(response, "sdk_code", 0)),
+            error_code=str(getattr(response, "error_code", "")),
+            runtime_mode=str(getattr(response, "runtime_mode", "")),
+            state=str(getattr(response, "state", "")),
+        )
 
     def _task_route_status_from_text_status(self) -> TaskRouteStatus:
         with self._lock:
@@ -707,6 +917,7 @@ class RosBridgeNode(Node):
         now = time.monotonic()
         should_publish = False
         with self._lock:
+            self.pointcloud_snapshots_by_topic[topic] = pointcloud_snapshot
             if primary:
                 self._last_primary_pointcloud_monotonic = now
                 self.pointcloud_snapshot = pointcloud_snapshot
@@ -734,8 +945,25 @@ class RosBridgeNode(Node):
         return False
 
     def _publish_current_pointcloud_snapshot(self) -> None:
-        self._publish("pointcloud", dump_model(self.pointcloud_snapshot))
+        self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))
         self._publish("health", self.get_health_dict())
+
+    def get_navigation_pointcloud_snapshot(self) -> PointCloudSnapshot:
+        topics = [
+            str(topic or "").strip()
+            for topic in self.config.ros.pointcloud_map_topics or []
+            if str(topic or "").strip()
+        ]
+        fallback_topic = str(self.config.ros.pointcloud_fallback_topic or "").strip()
+        if fallback_topic and fallback_topic not in topics:
+            topics.append(fallback_topic)
+
+        with self._lock:
+            for topic in topics:
+                snapshot = self.pointcloud_snapshots_by_topic.get(topic)
+                if snapshot is not None and snapshot.loaded:
+                    return deep_copy_model(snapshot)
+            return deep_copy_model(self.pointcloud_snapshot)
 
     def _on_localization_pose(self, msg: PoseWithCovarianceStamped) -> None:
         pose = msg.pose.pose
@@ -759,14 +987,30 @@ class RosBridgeNode(Node):
             self.health.pose_received = True
             self.health.last_pose_update = robot_pose.stamp
             self._last_pose_monotonic = time.monotonic()
+            self._last_localization_pose_stamp = robot_pose.stamp
+            self._localization_anchor_pose = robot_pose
+            self._localization_anchor_odom_pose = self._last_odom_pose
         self._publish("pose", dump_model(robot_pose))
         self._publish("health", self.get_health_dict())
 
     def _on_localization_odom(self, msg: Odometry) -> None:
+        robot_pose = self._pose_from_odom(msg, source=self.config.ros.localization_pose_topic)
+        with self._lock:
+            self.pose = robot_pose
+            self.health.pose_received = True
+            self.health.last_pose_update = robot_pose.stamp
+            self._last_pose_monotonic = time.monotonic()
+            self._last_localization_pose_stamp = robot_pose.stamp
+            self._localization_anchor_pose = robot_pose
+            self._localization_anchor_odom_pose = self._last_odom_pose
+        self._publish("pose", dump_model(robot_pose))
+        self._publish("health", self.get_health_dict())
+
+    def _pose_from_odom(self, msg: Odometry, *, source: str) -> RobotPose:
         pose = msg.pose.pose
-        robot_pose = RobotPose(
+        return RobotPose(
             available=True,
-            source=self.config.ros.localization_pose_topic,
+            source=source,
             frame_id=msg.header.frame_id,
             stamp=now_iso(),
             x=pose.position.x,
@@ -779,19 +1023,75 @@ class RosBridgeNode(Node):
             ),
             stale=False,
         )
-        with self._lock:
-            self.pose = robot_pose
-            self.health.pose_received = True
-            self.health.last_pose_update = robot_pose.stamp
-            self._last_pose_monotonic = time.monotonic()
-        self._publish("pose", dump_model(robot_pose))
-        self._publish("health", self.get_health_dict())
+
+    def _should_use_odom_pose_fallback(self, now: float | None = None) -> bool:
+        current = time.monotonic() if now is None else now
+        if self.pose.source in {self.config.ros.odom_topic, self._anchored_odom_source()}:
+            return True
+        if self._last_pose_monotonic <= 0.0:
+            return True
+        return current - self._last_pose_monotonic > self.config.health.pose_stale_sec
+
+    def _anchored_odom_source(self) -> str:
+        return f"{self.config.ros.localization_pose_topic}+{self.config.ros.odom_topic}"
+
+    def _pose_from_anchored_odom(self, odom_pose: RobotPose) -> RobotPose | None:
+        anchor_pose = self._localization_anchor_pose
+        anchor_odom = self._localization_anchor_odom_pose
+        if anchor_pose is None or anchor_odom is None:
+            return None
+        if (
+            anchor_pose.x is None
+            or anchor_pose.y is None
+            or anchor_pose.yaw is None
+            or anchor_odom.x is None
+            or anchor_odom.y is None
+            or anchor_odom.yaw is None
+            or odom_pose.x is None
+            or odom_pose.y is None
+            or odom_pose.yaw is None
+        ):
+            return None
+        x, y, yaw = extrapolate_pose2d_from_odom(
+            anchor_pose=(float(anchor_pose.x), float(anchor_pose.y), float(anchor_pose.yaw)),
+            anchor_odom=(float(anchor_odom.x), float(anchor_odom.y), float(anchor_odom.yaw)),
+            current_odom=(float(odom_pose.x), float(odom_pose.y), float(odom_pose.yaw)),
+        )
+        return odom_pose.model_copy(
+            update={
+                "source": self._anchored_odom_source(),
+                "frame_id": anchor_pose.frame_id,
+                "x": x,
+                "y": y,
+                "yaw": yaw,
+            }
+        )
 
     def _on_odom(self, msg: Odometry) -> None:
+        now = time.monotonic()
+        odom_pose = self._pose_from_odom(msg, source=self.config.ros.odom_topic)
+        fallback_pose: RobotPose | None = None
         with self._lock:
+            self._last_odom_pose = odom_pose
+            if self._localization_anchor_pose is not None and self._localization_anchor_odom_pose is None:
+                self._localization_anchor_odom_pose = odom_pose
             self.status.velocity_linear_x = msg.twist.twist.linear.x
             self.status.velocity_angular_z = msg.twist.twist.angular.z
-        self._publish("status", dump_model(self.status))
+            if self._should_use_odom_pose_fallback(now):
+                fallback_pose = self._pose_from_anchored_odom(odom_pose) or odom_pose
+                self.pose = fallback_pose
+                self.health.pose_received = True
+                self.health.last_pose_update = fallback_pose.stamp
+                self._last_pose_monotonic = now
+        self._publish_status(now=now)
+        if fallback_pose is not None:
+            self._publish_rate_limited(
+                "pose",
+                dump_model(fallback_pose),
+                float(self.config.health.websocket_pose_hz),
+                key="odom_pose",
+                now=now,
+            )
 
     def _on_tf(self, msg: TFMessage) -> None:
         if not msg.transforms:
@@ -805,27 +1105,27 @@ class RosBridgeNode(Node):
         with self._lock:
             self.status.real_report = parsed
             self.status.system_ready = parsed.ready
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_lidar_status(self, msg: String) -> None:
         with self._lock:
             self.status.lidar_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_camera_status(self, msg: String) -> None:
         with self._lock:
             self.status.camera_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_localization_ok(self, msg: Bool) -> None:
         with self._lock:
             self.status.localization_ok = msg.data
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_localization_status(self, msg: String) -> None:
         with self._lock:
             self.status.localization_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_relocalization_status(self, msg: String) -> None:
         """Parse NDT score from relocalization status string.
@@ -847,27 +1147,27 @@ class RosBridgeNode(Node):
             self.status.relocalization_status = self._status_from_string(msg.data)
             self.status.ndt_score = score_val
             self.status.ndt_healthy = healthy_val
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_safety_status(self, msg: String) -> None:
         with self._lock:
             self.status.safety_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_map_manager_status(self, msg: String) -> None:
         with self._lock:
             self.status.map_manager_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_active_map(self, msg: String) -> None:
         with self._lock:
             self.status.active_map = msg.data or None
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_task_manager_status(self, msg: String) -> None:
         with self._lock:
             self.status.task_manager_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_pose_goal_status(self, msg: String) -> None:
         status = self._status_from_string(msg.data)
@@ -948,7 +1248,39 @@ class RosBridgeNode(Node):
     def _on_sdk_status(self, msg: String) -> None:
         with self._lock:
             self.status.sdk_status = self._status_from_string(msg.data)
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
+
+    def _on_control_status(self, msg: String) -> None:
+        with self._lock:
+            self.status.control_status = self._status_from_string(msg.data)
+        self._publish_status()
+
+    def _on_control_state(self, msg: ControlState) -> None:
+        stamp = now_iso()
+        msg_stamp = getattr(msg, "stamp", None)
+        sec = int(getattr(msg_stamp, "sec", 0) or 0)
+        nanosec = int(getattr(msg_stamp, "nanosec", 0) or 0)
+        if sec > 0:
+            stamp = datetime.fromtimestamp(sec + nanosec / 1_000_000_000.0, timezone.utc).isoformat()
+        with self._lock:
+            self.control_state = ControlStateSnapshot(
+                stamp=stamp,
+                runtime_mode=str(getattr(msg, "runtime_mode", "")),
+                state=str(getattr(msg, "state", "")),
+                ready=bool(getattr(msg, "ready", False)),
+                reason=str(getattr(msg, "reason", "")),
+                interface_name=str(getattr(msg, "interface_name", "")),
+                gait_control_enabled=bool(getattr(msg, "gait_control_enabled", False)),
+                gait_type=int(getattr(msg, "gait_type", 0)),
+                speed_level=int(getattr(msg, "speed_level", 0)),
+                body_height=float(getattr(msg, "body_height", 0.0)),
+                auto_recovery=bool(getattr(msg, "auto_recovery", False)),
+                last_command=str(getattr(msg, "last_command", "")),
+                last_sdk_code=int(getattr(msg, "last_sdk_code", 0)),
+                last_error_code=str(getattr(msg, "last_error_code", "")),
+                last_error_reason=str(getattr(msg, "last_error_reason", "")),
+            )
+        self._publish("control_state", dump_model(self.control_state))
 
     def _on_raw_state(self, msg: RobotState) -> None:
         raw_state = RawStateSummary(
@@ -970,7 +1302,7 @@ class RosBridgeNode(Node):
         )
         with self._lock:
             self.status.raw_state = raw_state
-        self._publish("status", dump_model(self.status))
+        self._publish_status()
 
     def _on_battery(self, msg: BatteryState) -> None:
         stamp = now_iso()
@@ -1013,7 +1345,7 @@ class RosBridgeNode(Node):
                 self.get_logger().warning(
                     f"battery update incomplete: available={str(available).lower()} percentage={str(pct)} voltage={str(voltage)} charging={str(charging)} raw_percentage={str(getattr(msg, 'percentage', None))} raw_voltage={str(getattr(msg, 'voltage', None))} status={str(int(getattr(msg, 'power_supply_status', 0) or 0))} topic={str(self.config.ros.battery_topic)}"
                 )
-        self._publish("battery", dump_model(self.battery))
+        self._publish_battery()
 
     def _on_scan_mission_status(self, msg: String) -> None:
         """Parse recovery_* fields from scan mission status."""
@@ -1131,9 +1463,9 @@ class RosBridgeNode(Node):
     def _publish_health(self) -> None:
         self._update_pose_topic_goal()
         with self._lock:
-            if self.config.navigation.backend == "pose_topic_3d":
+            if self.config.navigation.backend in {"pose_topic_3d", "cmd_vel_direct"}:
                 self.health.action_server_ready = True
-                self.navigation.backend = "pose_topic_3d"
+                self.navigation.backend = self.config.navigation.backend
                 self.navigation.action_server_ready = True
             else:
                 self.health.action_server_ready = bool(self.action_client and self.action_client.server_is_ready())
@@ -1227,11 +1559,20 @@ class RosBridgeNode(Node):
             if health.ros_thread_alive:
                 battery_age = time.monotonic() - self._last_battery_monotonic if self._last_battery_monotonic > 0.0 else math.inf
                 battery.stale = battery_age > float(self.config.health.battery_stale_sec)
+            manual_control = ManualControlSnapshot(
+                enabled=bool(self.config.manual_control.enabled),
+                cmd_topic=str(self.config.manual_control.cmd_topic),
+                max_linear_x=float(self.config.manual_control.max_linear_x),
+                max_linear_y=float(self.config.manual_control.max_linear_y),
+                max_angular_z=float(self.config.manual_control.max_angular_z),
+            )
             return DashboardSnapshot(
                 map=deep_copy_model(self.map_snapshot),
                 pointcloud=deep_copy_model(self.pointcloud_snapshot),
                 pose=pose,
                 status=status,
+                control_state=deep_copy_model(self.control_state),
+                manual_control=manual_control,
                 navigation=navigation,
                 camera=deep_copy_model(self.camera),
                 health=health,
@@ -1242,6 +1583,21 @@ class RosBridgeNode(Node):
     def get_map_snapshot(self) -> MapSnapshot:
         with self._lock:
             return deep_copy_model(self.map_snapshot)
+
+    def _websocket_pointcloud_snapshot(self, snapshot: PointCloudSnapshot) -> PointCloudSnapshot:
+        max_points = max(100, int(self.config.ros.websocket_pointcloud_max_points))
+        stride = max(1, int(math.ceil(len(snapshot.points) / max_points)))
+        points: list[list[float]] = []
+        for point_index in _preview_sample_indices(len(snapshot.points), max_points):
+            point = snapshot.points[point_index]
+            points.append([round(float(point[0]), 3), round(float(point[1]), 3), round(float(point[2]), 3)])
+        return snapshot.model_copy(
+            update={
+                "points": points,
+                "points_sampled": len(points),
+                "sample_stride": max(1, int(snapshot.sample_stride) * stride),
+            }
+        )
 
     def _pointcloud_snapshot_from_msg(self, msg: PointCloud2, source_topic: str) -> PointCloudSnapshot:
         x_field = next((field for field in msg.fields if field.name == "x"), None)
@@ -1271,7 +1627,7 @@ class RosBridgeNode(Node):
         unpack_float = struct.Struct(f"{endian}f").unpack_from
         raw = memoryview(msg.data)
         points: list[list[float]] = []
-        for point_index in range(0, total_points, sample_stride):
+        for point_index in _preview_sample_indices(total_points, max_points):
             base = point_index * msg.point_step
             x = unpack_float(raw, base + x_field.offset)[0]
             y = unpack_float(raw, base + y_field.offset)[0]
@@ -1301,6 +1657,8 @@ class RosBridgeNode(Node):
                 raise RosBridgeError("地图尚未加载完成")
             if self._active_goal_handle is not None or self._active_pose_goal is not None:
                 raise RosBridgeError("已有导航任务正在执行")
+            if self.config.navigation.backend == "cmd_vel_direct":
+                return self._start_direct_cmd_vel_goal(request.goal)
             if self.config.navigation.backend == "pose_topic_3d":
                 return self._send_pose_topic_goal(request.goal)
             if self.action_client is None or NavigateToPose is None:
@@ -1381,6 +1739,124 @@ class RosBridgeNode(Node):
                 raise RosBridgeError(str(result_box["error"]))
             return deep_copy_model(self.navigation)
 
+    def _publish_direct_cmd_stop(self) -> None:
+        self.direct_cmd_publisher.publish(Twist())
+
+    def _start_direct_cmd_vel_goal(self, requested_goal: NavigationGoal) -> NavigationTaskState:
+        with self._lock:
+            pose = deep_copy_model(self.pose)
+        if not pose.available or pose.x is None or pose.y is None:
+            raise RosBridgeError("机器人当前位姿不可用，不能启动仿真直控导航")
+
+        goal = requested_goal.model_copy(update={"frame_id": self.config.navigation.goal_frame})
+        cancel_event = threading.Event()
+        self._direct_nav_cancel = cancel_event
+        with self._lock:
+            self._active_pose_goal = goal
+            self._active_pose_goal_started_at = time.monotonic()
+            self.navigation = NavigationTaskState(
+                state="navigating",
+                message=f"仿真直控导航已启动，速度发布到 {self.config.navigation.direct_cmd_topic}",
+                backend="cmd_vel_direct",
+                action_server_ready=True,
+                goal=goal,
+                feedback={},
+                updated_at=now_iso(),
+            )
+        self._publish("navigation", dump_model(self.navigation))
+        self._direct_nav_thread = threading.Thread(
+            target=self._run_direct_cmd_vel_goal,
+            args=(goal, cancel_event),
+            daemon=True,
+        )
+        self._direct_nav_thread.start()
+        return deep_copy_model(self.navigation)
+
+    def _run_direct_cmd_vel_goal(self, goal: NavigationGoal, cancel_event: threading.Event) -> None:
+        nav = self.config.navigation
+        period = 1.0 / max(float(nav.direct_control_hz), 1.0)
+        started_at = time.monotonic()
+
+        while not cancel_event.is_set():
+            with self._lock:
+                if self._direct_nav_cancel is not cancel_event or self._active_pose_goal is None:
+                    return
+                pose = deep_copy_model(self.pose)
+
+            elapsed = time.monotonic() - started_at
+            if elapsed > float(nav.goal_timeout_sec):
+                self._publish_direct_cmd_stop()
+                with self._lock:
+                    if self._direct_nav_cancel is cancel_event:
+                        self._active_pose_goal = None
+                        self._active_pose_goal_started_at = None
+                        self.navigation.state = "failed"
+                        self.navigation.message = "仿真直控导航超时"
+                        self.navigation.updated_at = now_iso()
+                self._publish("navigation", dump_model(self.navigation))
+                return
+
+            if not pose.available or pose.x is None or pose.y is None:
+                self._publish_direct_cmd_stop()
+                with self._lock:
+                    self.navigation.feedback = {"reason": "pose_unavailable", "elapsed_sec": elapsed}
+                    self.navigation.message = "仿真直控导航等待位姿"
+                    self.navigation.updated_at = now_iso()
+                self._publish("navigation", dump_model(self.navigation))
+                time.sleep(period)
+                continue
+
+            command = compute_direct_velocity_command(
+                current_x=float(pose.x),
+                current_y=float(pose.y),
+                current_yaw=float(pose.yaw or 0.0),
+                goal_x=goal.x,
+                goal_y=goal.y,
+                goal_yaw=goal.yaw,
+                max_linear_x=nav.direct_max_linear_x,
+                max_angular_z=nav.direct_max_angular_z,
+                slow_radius_m=nav.direct_slow_radius_m,
+                heading_deadband_rad=nav.direct_heading_deadband_rad,
+                goal_tolerance_m=nav.direct_goal_tolerance_m,
+                yaw_tolerance_rad=nav.direct_yaw_tolerance_rad,
+            )
+            feedback = {
+                "distance_remaining": command.distance_remaining,
+                "heading_error_rad": command.heading_error_rad,
+                "yaw_error_rad": command.yaw_error_rad,
+                "vx": command.linear_x,
+                "wz": command.angular_z,
+                "elapsed_sec": elapsed,
+                "backend": "cmd_vel_direct",
+            }
+
+            if command.reached:
+                self._publish_direct_cmd_stop()
+                with self._lock:
+                    if self._direct_nav_cancel is cancel_event:
+                        self._active_pose_goal = None
+                        self._active_pose_goal_started_at = None
+                        self.navigation.state = "succeeded"
+                        self.navigation.message = "仿真直控导航已到达目标点"
+                        self.navigation.feedback = feedback
+                        self.navigation.updated_at = now_iso()
+                self._publish("navigation", dump_model(self.navigation))
+                return
+
+            twist = Twist()
+            twist.linear.x = command.linear_x
+            twist.angular.z = command.angular_z
+            self.direct_cmd_publisher.publish(twist)
+            with self._lock:
+                self.navigation.state = "navigating"
+                self.navigation.message = "仿真直控导航进行中"
+                self.navigation.feedback = feedback
+                self.navigation.updated_at = now_iso()
+            self._publish("navigation", dump_model(self.navigation))
+            time.sleep(period)
+
+        self._publish_direct_cmd_stop()
+
     def _send_pose_topic_goal(self, requested_goal: NavigationGoal) -> NavigationTaskState:
         goal = requested_goal.model_copy(update={"frame_id": self.config.navigation.goal_frame})
         msg = PoseStamped()
@@ -1432,6 +1908,69 @@ class RosBridgeNode(Node):
             f"stop_topic={self.config.navigation.cancel_stop_topic} burst={burst_count}"
         )
 
+    def publish_manual_velocity(self, command: ManualVelocityCommand) -> ManualVelocityResponse:
+        manual = self.config.manual_control
+        if not manual.enabled:
+            raise RosBridgeError("手动控制未启用")
+
+        linear_x = max(-manual.max_linear_x, min(manual.max_linear_x, float(command.linear_x)))
+        linear_y = max(-manual.max_linear_y, min(manual.max_linear_y, float(command.linear_y)))
+        angular_z = max(-manual.max_angular_z, min(manual.max_angular_z, float(command.angular_z)))
+
+        msg = Twist()
+        msg.linear.x = linear_x
+        msg.linear.y = linear_y
+        msg.angular.z = angular_z
+
+        burst_count = max(1, int(manual.publish_burst_count))
+        interval = max(0.0, float(manual.publish_burst_interval_sec))
+        for _ in range(burst_count):
+            self.manual_control_publisher.publish(msg)
+            if interval > 0.0:
+                time.sleep(interval)
+
+        clipped_command = ManualVelocityCommand(
+            linear_x=linear_x,
+            linear_y=linear_y,
+            angular_z=angular_z,
+        )
+        return ManualVelocityResponse(
+            topic=manual.cmd_topic,
+            command=clipped_command,
+            burst_count=burst_count,
+            message=f"已发布手动速度到 {manual.cmd_topic}",
+        )
+
+    def publish_gait_control(self, command: GaitControlCommand) -> GaitControlResponse:
+        gait = self.config.gait_control
+        if not gait.enabled:
+            raise RosBridgeError("步态控制未启用")
+        published: list[str] = []
+        if command.gait_type is not None:
+            msg = Int32()
+            msg.data = max(gait.gait_type_min, min(gait.gait_type_max, int(command.gait_type)))
+            self.gait_type_publisher.publish(msg)
+            published.append(f"gait_type={msg.data}")
+        if command.speed_level is not None:
+            msg = Int32()
+            msg.data = max(gait.speed_level_min, min(gait.speed_level_max, int(command.speed_level)))
+            self.speed_level_publisher.publish(msg)
+            published.append(f"speed_level={msg.data}")
+        if command.body_height is not None:
+            msg = Float32()
+            msg.data = float(max(gait.body_height_min, min(gait.body_height_max, float(command.body_height))))
+            self.body_height_publisher.publish(msg)
+            published.append(f"body_height={msg.data:.3f}")
+        if not published:
+            raise RosBridgeError("至少提供 gait_type、speed_level 或 body_height 之一")
+        return GaitControlResponse(
+            gait_type_topic=gait.gait_type_topic,
+            speed_level_topic=gait.speed_level_topic,
+            body_height_topic=gait.body_height_topic,
+            command=command,
+            message=f"已发布步态控制: {', '.join(published)}",
+        )
+
     def set_initial_pose(self, request: InitialPoseRequest) -> dict[str, Any]:
         with self._navigation_lock:
             uses_pose_topic_3d = self.config.navigation.backend == "pose_topic_3d"
@@ -1453,7 +1992,7 @@ class RosBridgeNode(Node):
             covariance[7] = float(self.config.navigation.initial_pose_covariance_xy)
             covariance[35] = float(self.config.navigation.initial_pose_covariance_yaw)
 
-            previous_pose_stamp = self.pose.stamp
+            previous_localization_pose_stamp = self._last_localization_pose_stamp
             deadline = time.monotonic() + self.config.navigation.initial_pose_wait_timeout_sec
             publish_interval = max(0.1, self.config.navigation.initial_pose_publish_interval_sec)
             attempts = 0
@@ -1471,7 +2010,7 @@ class RosBridgeNode(Node):
                     self.initial_pose_publisher.publish(msg)
                     attempts += 1
 
-                ready, localization_status = self._initial_pose_ready(previous_pose_stamp)
+                ready, localization_status = self._initial_pose_ready(previous_localization_pose_stamp)
                 if ready:
                     break
                 if time.monotonic() >= deadline:
@@ -1519,13 +2058,13 @@ class RosBridgeNode(Node):
         msg.stamp = self.get_clock().now().to_msg()
         self.light_command_publisher.publish(msg)
 
-    def _initial_pose_ready(self, previous_pose_stamp: str | None) -> tuple[bool, TextStatus]:
+    def _initial_pose_ready(self, previous_localization_pose_stamp: str | None) -> tuple[bool, TextStatus]:
         with self._lock:
-            pose = deep_copy_model(self.pose)
+            localization_pose_stamp = self._last_localization_pose_stamp
             localization_status = deep_copy_model(self.status.localization_status)
             localization_ok = bool(self.status.localization_ok)
 
-        pose_updated = pose.available and pose.stamp is not None and pose.stamp != previous_pose_stamp
+        pose_updated = _localization_pose_update_seen(localization_pose_stamp, previous_localization_pose_stamp)
         ready = (localization_ok or localization_status.ready is True) and pose_updated
         return ready, localization_status
 
@@ -1559,6 +2098,22 @@ class RosBridgeNode(Node):
 
     def cancel_navigation(self) -> NavigationTaskState:
         with self._navigation_lock:
+            if self.config.navigation.backend == "cmd_vel_direct":
+                self._direct_nav_cancel.set()
+                self._publish_direct_cmd_stop()
+                with self._lock:
+                    had_active_goal = self._active_pose_goal is not None
+                    self._active_pose_goal = None
+                    self._active_pose_goal_started_at = None
+                    self.navigation.state = "canceled" if had_active_goal else "idle"
+                    self.navigation.message = (
+                        "仿真直控导航已取消，并已发布停止信号"
+                        if had_active_goal
+                        else "当前没有活动仿真直控导航，已发布停止信号"
+                    )
+                    self.navigation.updated_at = now_iso()
+                self._publish("navigation", dump_model(self.navigation))
+                return deep_copy_model(self.navigation)
             if self.config.navigation.backend == "pose_topic_3d":
                 if self._active_pose_goal is None:
                     self._publish_pose_topic_stop("cancel_without_active_goal")
@@ -1666,5 +2221,8 @@ class RosRuntime:
             self.node.destroy_node()
         if self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout=2.0)
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception as exc:
+            logger.warning("rclpy shutdown skipped: %s", exc)
         self._started = False

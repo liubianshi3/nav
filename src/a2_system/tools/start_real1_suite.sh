@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 IFACE="${A2_NETWORK_INTERFACE:-eth0}"
 MAP_YAML="${A2_MAP_YAML:-${WORKSPACE}/runtime/maps/test_map_20260423_1059/map.yaml}"
 WEB_SERVICE="${A2_WEB_SERVICE:-a2-web-console.service}"
@@ -374,7 +374,7 @@ fi
 log "Stopping dockerized web stack if present"
 (
   cd "$WORKSPACE"
-  docker compose -f docker/docker-compose.a2.yml down
+  docker compose -f docker-compose.a2.yml down
 ) >/dev/null 2>&1 || true
 
 log "Stopping host web service"

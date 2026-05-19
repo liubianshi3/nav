@@ -45,8 +45,8 @@ start_a2_stack() {
   local lidar_iface="${A2_JT128_INTERFACE:-${A2_NETWORK_INTERFACE:-net1}}"
   local sdk_iface="${A2_SDK_INTERFACE:-eth0}"
   local control_iface="${A2_CONTROL_INTERFACE:-${sdk_iface}}"
-  local enable_motion="${A2_ENABLE_MOTION:-false}"
-  local live_motion="${A2_LIVE_MOTION:-false}"
+  local enable_motion="${A2_ENABLE_MOTION:-true}"
+  local live_motion="${A2_LIVE_MOTION:-true}"
   local stack_required="${A2_STACK_REQUIRED:-false}"
 
   if [[ "$mode" == "web" || "$mode" == "standby" || "$mode" == "none" ]]; then

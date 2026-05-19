@@ -19,7 +19,7 @@ pcd_relocalizer_3d:
     base_to_lidar_use_rotation_matrix: true
     base_to_lidar_rotation_matrix: [0.0, 0.0, 1.0,
                                     1.0, 0.0, 0.0,
-                                    0.0, 1.0, 0.0]
+                                    0.0, -1.0, 0.0]
     base_to_lidar_rpy: [0.0, 0.0, 0.0]
 
     publish_tf: true

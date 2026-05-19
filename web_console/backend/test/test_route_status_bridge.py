@@ -49,7 +49,7 @@ def _install_stub_modules() -> None:
     _register_message_module("action_msgs.msg", ["GoalStatus"])
     _register_message_module("geometry_msgs.msg", ["PoseStamped", "PoseWithCovarianceStamped", "Twist"])
     _register_message_module("nav_msgs.msg", ["OccupancyGrid", "Odometry"])
-    _register_message_module("std_msgs.msg", ["Bool", "String"])
+    _register_message_module("std_msgs.msg", ["Bool", "Float32", "Int32", "String"])
     _register_message_module("tf2_msgs.msg", ["TFMessage"])
     _register_message_module("sensor_msgs.msg", ["BatteryState", "CompressedImage", "Image", "PointCloud2"])
 

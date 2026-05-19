@@ -20,6 +20,14 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _unitree_ddsc_env():
+    env = {
+        # Unitree SDK2 creates its own CycloneDDS domain explicitly. If this
+        # bridge process also uses ROS 2 CycloneDDS, SDK2 throws
+        # PreconditionNotMetError("Failed to create domain explicitly").
+        # Keep this process isolated while the rest of the ROS graph stays on
+        # CycloneDDS.
+        "RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
+    }
     candidates = [
         "/opt/unitree_robotics/lib/x86_64/libddsc.so.0",
         "/unitree/opt/lib/libddsc.so.0",
@@ -29,8 +37,9 @@ def _unitree_ddsc_env():
             continue
         current = os.environ.get("LD_PRELOAD", "").strip()
         preload = candidate if not current else f"{candidate}:{current}"
-        return {"LD_PRELOAD": preload}
-    return {}
+        env["LD_PRELOAD"] = preload
+        return env
+    return env
 
 
 def _pointcloud_guard_action():
@@ -108,11 +117,11 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("map_id", default_value=""),
             DeclareLaunchArgument("pcd_path", default_value=""),
-            DeclareLaunchArgument("map_root", default_value=os.environ.get("A2_WORKSPACE", str(Path.home() / "a2_system_ws")) + "/runtime/maps"),
+            DeclareLaunchArgument("map_root", default_value=os.environ.get("A2_WORKSPACE", str(Path.home() / "ws/device-navigation")) + "/runtime/maps"),
             DeclareLaunchArgument("start_static_tf", default_value="true"),
             DeclareLaunchArgument("start_robot_state", default_value="true"),
-            DeclareLaunchArgument("start_task_manager", default_value="true"),
-            DeclareLaunchArgument("start_scan_mission", default_value="true"),
+            DeclareLaunchArgument("start_task_manager", default_value="false"),
+            DeclareLaunchArgument("start_scan_mission", default_value="false"),
             DeclareLaunchArgument("start_ekf_local", default_value="true"),
             DeclareLaunchArgument(
                 "localization_mode",
@@ -121,8 +130,8 @@ def generate_launch_description():
             ),
 
             DeclareLaunchArgument("start_safety", default_value="true"),
-            DeclareLaunchArgument("enable_motion", default_value="false"),
-            DeclareLaunchArgument("dry_run", default_value="true"),
+            DeclareLaunchArgument("enable_motion", default_value="true"),
+            DeclareLaunchArgument("dry_run", default_value="false"),
             DeclareLaunchArgument("sdk_interface", default_value="eth0"),
             DeclareLaunchArgument("control_interface", default_value="eth0"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
@@ -133,8 +142,16 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
+            DeclareLaunchArgument("enable_global_traversability_layer", default_value="true",
+                                  description="Feed stable 2.5D traversability obstacles into global_costmap. Default true; set false for field rollback."),
+            DeclareLaunchArgument("global_traversability_config", default_value=f"{a2_system_share}/config/global_traversability_integrator.yaml",
+                                  description="Path to global_traversability_integrator YAML"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
                                   description="Path to 2D projected map YAML for Nav2 3D mode"),
+            DeclareLaunchArgument("ndt_max_map_to_odom_translation_step", default_value="5.0",
+                                  description="Maximum accepted NDT map->odom correction step in meters for real A2 startup and map alignment"),
+            DeclareLaunchArgument("ndt_max_map_to_odom_rotation_step_deg", default_value="90.0",
+                                  description="Maximum accepted NDT map->odom correction step in degrees for real A2 startup and map alignment"),
             DeclareLaunchArgument(
                 "collision_monitor_config",
                 default_value=f"{a2_system_share}/config/collision_monitor.yaml",
@@ -152,7 +169,7 @@ def generate_launch_description():
             ),
             LogInfo(
                 msg=(
-                    "localization_mode=odom_only is for short-range dry-run/live-motion "
+                    "localization_mode=odom_only is for short-range live-motion "
                     "validation only; it is not a formal inspection localization mode."
                 ),
                 condition=IfCondition(is_odom_only_localization),
@@ -249,6 +266,8 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                     "odom_topic": LaunchConfiguration("ndt_odom_topic"),
+                    "max_map_to_odom_translation_step": LaunchConfiguration("ndt_max_map_to_odom_translation_step"),
+                    "max_map_to_odom_rotation_step_deg": LaunchConfiguration("ndt_max_map_to_odom_rotation_step_deg"),
                 }.items(),
                 condition=IfCondition(is_ndt_localization),
             ),
@@ -275,26 +294,21 @@ def generate_launch_description():
                 ],
                 output="screen",
             ),
+            # collision_monitor lifecycle: managed by lifecycle_manager_navigation when Nav2 3D
+            # is enabled; manually activated via TimerAction when enable_nav2_3d:=false.
             TimerAction(
-                period=18.0,
+                period=5.0,
                 actions=[
                     ExecuteProcess(
                         cmd=[
-                            "bash",
-                            "-lc",
-                            (
-                                "for i in $(seq 1 20); do "
-                                "ros2 lifecycle get /collision_monitor 2>/dev/null | grep -q '^active' && exit 0; "
-                                "ros2 lifecycle set /collision_monitor configure || true; "
-                                "ros2 lifecycle set /collision_monitor activate || true; "
-                                "sleep 1; "
-                                "done; "
-                                "ros2 lifecycle get /collision_monitor || true"
-                            ),
+                            "bash", "-lc",
+                            "ros2 lifecycle set /collision_monitor configure || true && "
+                            "ros2 lifecycle set /collision_monitor activate || true",
                         ],
                         output="screen",
-                    )
+                    ),
                 ],
+                condition=UnlessCondition(LaunchConfiguration("enable_nav2_3d")),
             ),
             # ── Battery publisher → /a2/battery ──
             Node(
@@ -316,7 +330,7 @@ def generate_launch_description():
                         "dry_run": ParameterValue(LaunchConfiguration("dry_run"), value_type=bool),
                         "waypoints_file": f"{a2_system_share}/config/scan_waypoints.example.yaml",
                         "reports_root": os.path.join(
-                            os.environ.get("A2_WORKSPACE", str(Path.home() / "a2_system_ws")),
+                            os.environ.get("A2_WORKSPACE", str(Path.home() / "ws/device-navigation")),
                             "runtime",
                             "reports",
                             "scan_mission",
@@ -370,6 +384,7 @@ def generate_launch_description():
                         "min_score": 3.0,
                         "consecutive_failures_threshold": 5,
                         "eval_frequency": 5.0,
+                        "initial_guess_timeout_sec": 1.0,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],
@@ -384,8 +399,10 @@ def generate_launch_description():
                     {
                         "runtime_mode": "",
                         "lidar_topic": "/jt128/front/points",
-                        "map_topic": "/a2/map/pointcloud_3d",
-                        "map_representation": "pointcloud_map_3d",
+                        "map_topic": "/map",
+                        "map_representation": "occupancy_grid_2d",
+                        "latch_map_ready": True,
+                        "map_transient_local": True,
                         "localization_mode": LaunchConfiguration("localization_mode"),
                         "require_map": ParameterValue(is_ndt_localization, value_type=bool),
                         "require_localization": ParameterValue(is_ndt_localization, value_type=bool),
@@ -425,6 +442,8 @@ def generate_launch_description():
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                     "map": LaunchConfiguration("nav2_3d_map"),
                     "enable_global_ekf_debug": "false",
+                    "enable_global_traversability_layer": LaunchConfiguration("enable_global_traversability_layer"),
+                    "global_traversability_config": LaunchConfiguration("global_traversability_config"),
                 }.items(),
             ),
             # Fallback when Nav2 3D is disabled: obstacle-aware DWA-Lite planner

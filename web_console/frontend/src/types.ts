@@ -80,6 +80,7 @@ export interface RobotStatus {
   map_manager_status: TextStatus;
   task_manager_status: TextStatus;
   sdk_status: TextStatus;
+  control_status: TextStatus;
   active_map: string | null;
   velocity_linear_x: number | null;
   velocity_angular_z: number | null;
@@ -105,6 +106,54 @@ export interface NavigationTaskState {
   goal: NavigationGoal | null;
   feedback: Record<string, unknown>;
   updated_at: string | null;
+}
+
+export interface ManualVelocityCommand {
+  linear_x: number;
+  linear_y: number;
+  angular_z: number;
+}
+
+export interface ManualControlResponse {
+  topic: string;
+  command: ManualVelocityCommand;
+  burst_count: number;
+  message: string;
+}
+
+export interface MotionAuthorizationStatus {
+  success: boolean;
+  message: string;
+  error_code: string;
+  state: string;
+  required_action: string;
+  standing: boolean;
+  motion_authorized: boolean;
+  manual_start_required: boolean;
+  motion_mode: number;
+  gait_type: number;
+}
+
+export interface ManualControlSnapshot {
+  enabled: boolean;
+  cmd_topic: string;
+  max_linear_x: number;
+  max_linear_y: number;
+  max_angular_z: number;
+}
+
+export interface GaitControlCommand {
+  gait_type?: number | null;
+  speed_level?: number | null;
+  body_height?: number | null;
+}
+
+export interface GaitControlResponse {
+  gait_type_topic: string;
+  speed_level_topic: string;
+  body_height_topic: string;
+  command: GaitControlCommand;
+  message: string;
 }
 
 export interface CameraFrame {
@@ -343,6 +392,7 @@ export interface DashboardSnapshot {
   pointcloud: PointCloudSnapshot;
   pose: RobotPose;
   status: RobotStatus;
+  manual_control: ManualControlSnapshot;
   navigation: NavigationTaskState;
   camera: CameraFrame;
   health: SystemHealth;

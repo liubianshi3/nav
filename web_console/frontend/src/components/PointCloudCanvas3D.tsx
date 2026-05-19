@@ -35,11 +35,13 @@ interface SceneContext {
   activeBounds: THREE.Box3 | null;
   preset: ViewPreset;
   savedAssetKey: string | null;
+  sceneOrigin: SceneOrigin | null;
   hasAutoFramed: boolean;
   animationFrame: number | null;
 }
 
 type ViewPreset = "iso" | "front" | "top";
+type SceneOrigin = { x: number; y: number };
 
 const SAVED_POINT_COLOR = new THREE.Color("#8ce7ff");
 const LIVE_POINT_COLOR = new THREE.Color("#f97316");
@@ -50,7 +52,9 @@ const ROBOT_OUTLINE_COLOR = new THREE.Color("#111827");
 const ROBOT_HEADING_COLOR = new THREE.Color("#ef4444");
 const GROUND_SEARCH_RADIUS_M = 0.85;
 const GROUND_HEIGHT_QUANTILE = 0.12;
+const DISPLAY_GROUND_HEIGHT_QUANTILE = 0.03;
 const GROUND_PICK_RADIUS_PX = 24;
+const ZERO_SCENE_ORIGIN: SceneOrigin = { x: 0, y: 0 };
 
 export function PointCloudCanvas3D({
   pointcloud,
@@ -73,6 +77,8 @@ export function PointCloudCanvas3D({
   const [showLiveOverlay, setShowLiveOverlay] = useState(false);
   const [renderStats, setRenderStats] = useState({ saved: 0, live: 0 });
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [sceneOriginVersion, setSceneOriginVersion] = useState(0);
+  const [sceneOriginLabel, setSceneOriginLabel] = useState("origin=等待定位");
 
   const selectedSnapshotArtifact = useMemo(
     () => selectedMap?.artifacts.find((artifact) => artifact.kind === "pointcloud_snapshot_3d") ?? null,
@@ -91,15 +97,11 @@ export function PointCloudCanvas3D({
   const livePointCount = pointcloud?.loaded ? pointcloud.points.length : 0;
   const hasSavedMap = renderStats.saved > 0;
   const sourceLabel = hasSavedMap ? activeSavedPointcloudPath ?? "saved pointcloud_map_3d" : pointcloud?.source_topic ?? "none";
-  const overlayLabel = hasSavedMap
-    ? showLiveOverlay
-      ? livePointCount > 0
-        ? `实时点云叠加 ${livePointCount} 点`
-        : "当前没有实时点云"
-      : "实时点云已隐藏"
-    : livePointCount > 0
-      ? "实时点云主视图"
-      : "暂无实时点云";
+  const compactPoseLabel =
+    pose?.available && pose.x !== null && pose.y !== null
+      ? `robot ${pose.x.toFixed(2)}, ${pose.y.toFixed(2)} yaw ${((pose.yaw ?? 0) * 180 / Math.PI).toFixed(0)}deg`
+      : "robot 暂无";
+  const compactPoseStampLabel = pose?.stamp ? `stamp ${pose.stamp.slice(11, 19)}` : "stamp 暂无";
 
   useEffect(() => {
     poseFrameRef.current = pose?.frame_id ?? null;
@@ -178,6 +180,7 @@ export function PointCloudCanvas3D({
       activeBounds: null,
       preset: "iso",
       savedAssetKey: null,
+      sceneOrigin: null,
       hasAutoFramed: false,
       animationFrame: null,
     };
@@ -227,7 +230,7 @@ export function PointCloudCanvas3D({
           hitPoint.y = surfaceY;
         }
       }
-      const world = threeToRos(hitPoint);
+      const world = threeToRos(hitPoint, current.sceneOrigin);
       onSelectGoalRef.current({
         x: world.x,
         y: world.y,
@@ -308,7 +311,7 @@ export function PointCloudCanvas3D({
         }
         const next = sceneRef.current;
         disposePointCloud(next.savedPoints);
-        next.savedPoints = normalizeLoadedPcd(points, SAVED_POINT_COLOR);
+        next.savedPoints = normalizeLoadedPcd(points, SAVED_POINT_COLOR, next.sceneOrigin);
         next.savedPoints.visible = showSavedMapRef.current;
         next.scene.add(next.savedPoints);
         next.savedCount = getPointCount(next.savedPoints);
@@ -343,7 +346,7 @@ export function PointCloudCanvas3D({
     return () => {
       cancelled = true;
     };
-  }, [activeSavedPointcloudPath, savedAssetKey, selectedMapId]);
+  }, [activeSavedPointcloudPath, savedAssetKey, sceneOriginVersion, selectedMapId]);
 
   useEffect(() => {
     const current = sceneRef.current;
@@ -355,7 +358,7 @@ export function PointCloudCanvas3D({
     current.liveCount = 0;
 
     if (pointcloud?.loaded && pointcloud.points.length > 0) {
-      current.livePoints = createLivePointCloud(pointcloud.points);
+      current.livePoints = createLivePointCloud(pointcloud.points, current.sceneOrigin);
       current.livePoints.visible = !hasSavedMap || showLiveOverlay;
       current.scene.add(current.livePoints);
       current.liveCount = pointcloud.points.length;
@@ -370,7 +373,7 @@ export function PointCloudCanvas3D({
     }
 
     setRenderStats({ saved: current.savedCount, live: current.liveCount });
-  }, [hasSavedMap, pointcloud, showLiveOverlay]);
+  }, [hasSavedMap, pointcloud, sceneOriginVersion, showLiveOverlay]);
 
   useEffect(() => {
     const current = sceneRef.current;
@@ -394,26 +397,39 @@ export function PointCloudCanvas3D({
 
   useEffect(() => {
     const current = sceneRef.current;
-    updateMarker(current?.robotMarker ?? null, pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }) : null, pose?.yaw ?? 0);
-  }, [pose]);
+    const hasPose = Boolean(pose?.available && pose.x !== null && pose.y !== null);
+    if (current && hasPose && pose) {
+      ensureSceneOriginFromPose(
+        current,
+        pose,
+        () => setSceneOriginVersion((value) => value + 1),
+        setSceneOriginLabel,
+      );
+    }
+    updateMarker(
+      current?.robotMarker ?? null,
+      hasPose && pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false) : null,
+      pose?.yaw ?? 0,
+    );
+  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw]);
 
   useEffect(() => {
     const current = sceneRef.current;
     updateMarker(
       current?.selectedGoalMarker ?? null,
-      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }) : null,
+      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true) : null,
       selectedGoal?.yaw ?? 0,
     );
-  }, [selectedGoal]);
+  }, [sceneOriginVersion, selectedGoal]);
 
   useEffect(() => {
     const current = sceneRef.current;
     updateMarker(
       current?.activeGoalMarker ?? null,
-      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }) : null,
+      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true) : null,
       activeGoal?.yaw ?? 0,
     );
-  }, [activeGoal]);
+  }, [activeGoal, sceneOriginVersion]);
 
   useEffect(() => {
     const current = sceneRef.current;
@@ -422,9 +438,9 @@ export function PointCloudCanvas3D({
     }
     disposeObstacleGroup(current.obstacleGroup);
     for (const obstacle of obstacles) {
-      current.obstacleGroup.add(createObstacleMarker(obstacle));
+      current.obstacleGroup.add(createObstacleMarker(obstacle, current.sceneOrigin));
     }
-  }, [obstacles]);
+  }, [obstacles, sceneOriginVersion]);
 
   const setPresetView = (preset: ViewPreset) => {
     const current = sceneRef.current;
@@ -433,6 +449,20 @@ export function PointCloudCanvas3D({
     }
     current.preset = preset;
     applyViewPreset(current, preset);
+  };
+
+  const recenterSceneOrigin = () => {
+    const current = sceneRef.current;
+    if (!current || !pose?.available || pose.x === null || pose.y === null) {
+      return;
+    }
+    setSceneOriginFromPose(
+      current,
+      pose,
+      () => setSceneOriginVersion((value) => value + 1),
+      setSceneOriginLabel,
+    );
+    updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }, false), pose.yaw ?? 0);
   };
 
   return (
@@ -470,16 +500,22 @@ export function PointCloudCanvas3D({
         >
           {showLiveOverlay ? "隐藏当前雷达" : "显示当前雷达"}
         </button>
+        <button
+          type="button"
+          className="hud-button hud-button-dark"
+          onClick={recenterSceneOrigin}
+          disabled={!pose?.available || pose.x === null || pose.y === null}
+        >
+          原点归位
+        </button>
       </div>
       <div className="map-overlay pointcloud-overlay">
-        <span>{`3D source: ${sourceLabel}`}</span>
-        <span>{artifactState}</span>
-        <span>{overlayLabel}</span>
-        <span>{selectedPointcloudPath ? "历史点云已接管主视图" : "默认地图点云主视图"}</span>
-        <span>左键旋转 / 滚轮缩放 / 按住滑轮或右键平移</span>
-        <span>{selectedGoal ? `双击选点 ${selectedGoal.x.toFixed(2)}, ${selectedGoal.y.toFixed(2)}` : "双击点云选导航目标"}</span>
-        <span>{`saved=${renderStats.saved} / live=${renderStats.live}`}</span>
-        <span>{renderError ?? "renderer=three.js"}</span>
+        <span className="pointcloud-status-source">{`3D ${sourceLabel}`}</span>
+        <span>{compactPoseLabel}</span>
+        <span>{compactPoseStampLabel}</span>
+        <span>{sceneOriginLabel}</span>
+        <span>{`saved ${renderStats.saved} / live ${renderStats.live}`}</span>
+        <span>{renderError ?? "three.js"}</span>
       </div>
     </div>
   );
@@ -538,7 +574,7 @@ function createGoalMarker(color: THREE.Color): THREE.Group {
   return group;
 }
 
-function createObstacleMarker(obstacle: VirtualObstacleZone): THREE.Group {
+function createObstacleMarker(obstacle: VirtualObstacleZone, origin: SceneOrigin | null): THREE.Group {
   const group = new THREE.Group();
   const base = new THREE.Mesh(
     new THREE.CylinderGeometry(obstacle.radius, obstacle.radius, 0.05, 48),
@@ -560,7 +596,7 @@ function createObstacleMarker(obstacle: VirtualObstacleZone): THREE.Group {
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.05;
   group.add(base, ring);
-  group.position.copy(rosToThree({ x: obstacle.x, y: obstacle.y, z: 0 }));
+  group.position.copy(rosToThree({ x: obstacle.x, y: obstacle.y, z: 0 }, origin));
   return group;
 }
 
@@ -577,9 +613,36 @@ function updateMarker(group: THREE.Group | null, position: THREE.Vector3 | null,
   group.rotation.set(0, -yaw, 0);
 }
 
-function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }) {
-  const position = rosToThree(point);
-  const surfaceY = context ? groundSurfaceY(context, position.x, position.z) : null;
+function ensureSceneOriginFromPose(
+  context: SceneContext,
+  pose: RobotPose,
+  bumpSceneOriginVersion: () => void,
+  setSceneOriginLabel: (label: string) => void,
+) {
+  if (context.sceneOrigin || pose.x === null || pose.y === null) {
+    return;
+  }
+  setSceneOriginFromPose(context, pose, bumpSceneOriginVersion, setSceneOriginLabel);
+}
+
+function setSceneOriginFromPose(
+  context: SceneContext,
+  pose: RobotPose,
+  bumpSceneOriginVersion: () => void,
+  setSceneOriginLabel: (label: string) => void,
+) {
+  if (pose.x === null || pose.y === null) {
+    return;
+  }
+  context.sceneOrigin = { x: pose.x, y: pose.y };
+  context.hasAutoFramed = false;
+  setSceneOriginLabel(`origin=${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}`);
+  bumpSceneOriginVersion();
+}
+
+function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }, snapToSurface: boolean) {
+  const position = rosToThree(point, context?.sceneOrigin ?? null);
+  const surfaceY = snapToSurface && context ? groundSurfaceY(context, position.x, position.z) : null;
   if (surfaceY !== null) {
     position.y = surfaceY;
   }
@@ -668,7 +731,7 @@ function quantile(values: number[], q: number): number | null {
   return sorted[index];
 }
 
-function normalizeLoadedPcd(points: THREE.Points, fallbackColor: THREE.Color): THREE.Points {
+function normalizeLoadedPcd(points: THREE.Points, fallbackColor: THREE.Color, origin: SceneOrigin | null): THREE.Points {
   const geometry = points.geometry;
   const hasColors = geometry.getAttribute("color") !== undefined;
   const material = new THREE.PointsMaterial({
@@ -682,22 +745,24 @@ function normalizeLoadedPcd(points: THREE.Points, fallbackColor: THREE.Color): T
   disposeObjectMaterial(points);
   points.material = material;
   points.rotateX(0);
-  remapGeometryToThreeGroundPlane(geometry);
+  remapGeometryToThreeGroundPlane(geometry, origin);
+  alignGeometryGroundToZero(geometry);
   geometry.computeBoundingSphere();
   return points;
 }
 
-function createLivePointCloud(points: number[][]): THREE.Points {
+function createLivePointCloud(points: number[][], origin: SceneOrigin | null): THREE.Points {
   const positions = new Float32Array(points.length * 3);
   for (let index = 0; index < points.length; index += 1) {
     const [x, y, z] = points[index];
-    const remapped = rosToThree({ x, y, z });
+    const remapped = rosToThree({ x, y, z }, origin);
     positions[index * 3] = remapped.x;
     positions[index * 3 + 1] = remapped.y;
     positions[index * 3 + 2] = remapped.z;
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  alignGeometryGroundToZero(geometry);
   geometry.computeBoundingSphere();
   const material = new THREE.PointsMaterial({
     size: 0.04,
@@ -709,16 +774,36 @@ function createLivePointCloud(points: number[][]): THREE.Points {
   return new THREE.Points(geometry, material);
 }
 
-function remapGeometryToThreeGroundPlane(geometry: THREE.BufferGeometry) {
+function remapGeometryToThreeGroundPlane(geometry: THREE.BufferGeometry, origin: SceneOrigin | null) {
   const attribute = geometry.getAttribute("position");
   if (!attribute || !(attribute instanceof THREE.BufferAttribute)) {
     return;
   }
+  const activeOrigin = origin ?? ZERO_SCENE_ORIGIN;
   for (let index = 0; index < attribute.count; index += 1) {
     const x = attribute.getX(index);
     const y = attribute.getY(index);
     const z = attribute.getZ(index);
-    attribute.setXYZ(index, x, z, y);
+    attribute.setXYZ(index, x - activeOrigin.x, z, y - activeOrigin.y);
+  }
+  attribute.needsUpdate = true;
+}
+
+function alignGeometryGroundToZero(geometry: THREE.BufferGeometry) {
+  const attribute = geometry.getAttribute("position");
+  if (!attribute || !(attribute instanceof THREE.BufferAttribute)) {
+    return;
+  }
+  const heights: number[] = [];
+  for (let index = 0; index < attribute.count; index += 1) {
+    heights.push(attribute.getY(index));
+  }
+  const groundY = quantile(heights, DISPLAY_GROUND_HEIGHT_QUANTILE);
+  if (groundY === null || Math.abs(groundY) <= 1.0e-4) {
+    return;
+  }
+  for (let index = 0; index < attribute.count; index += 1) {
+    attribute.setY(index, attribute.getY(index) - groundY);
   }
   attribute.needsUpdate = true;
 }
@@ -782,10 +867,12 @@ function disposeObjectMaterial(object: THREE.Object3D) {
   }
 }
 
-function rosToThree(point: { x: number; y: number; z: number }) {
-  return new THREE.Vector3(point.x, point.z, point.y);
+function rosToThree(point: { x: number; y: number; z: number }, origin: SceneOrigin | null = null) {
+  const activeOrigin = origin ?? ZERO_SCENE_ORIGIN;
+  return new THREE.Vector3(point.x - activeOrigin.x, point.z, point.y - activeOrigin.y);
 }
 
-function threeToRos(point: THREE.Vector3) {
-  return { x: point.x, y: point.z, z: point.y };
+function threeToRos(point: THREE.Vector3, origin: SceneOrigin | null = null) {
+  const activeOrigin = origin ?? ZERO_SCENE_ORIGIN;
+  return { x: point.x + activeOrigin.x, y: point.z + activeOrigin.y, z: point.y };
 }

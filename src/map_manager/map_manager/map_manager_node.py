@@ -14,11 +14,38 @@ import rclpy
 import yaml
 from a2_interfaces.srv import ManageMap, SetMode
 from nav_msgs.msg import OccupancyGrid
+from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import String
+from tf2_ros import Buffer, TransformException, TransformListener
+
+
+def _string_list(value) -> list[str]:
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _workspace_from_map_root(map_root: Path) -> str | None:
+    parts = map_root.parts
+    if len(parts) >= 2 and parts[-2:] == ("runtime", "maps"):
+        return str(map_root.parents[1])
+    return None
+
+
+def _expand_workspace_path(raw_path: str, map_root: Path) -> Path:
+    text = str(raw_path or "").strip()
+    workspace = os.environ.get("A2_WORKSPACE", "").strip()
+    if not workspace:
+        workspace = _workspace_from_map_root(map_root) or ""
+    if workspace:
+        text = text.replace("${A2_WORKSPACE}", workspace)
+        text = text.replace("$A2_WORKSPACE", workspace)
+    return Path(os.path.expandvars(os.path.expanduser(text)))
 
 
 class MapManagerNode(Node):
@@ -47,8 +74,9 @@ class MapManagerNode(Node):
             self.declare_parameter("pointcloud_max_points", 200000).value
         )
         raw_octomap_binary_path = self.declare_parameter("octomap_binary_path", "").value
-        self.octomap_binary_path = Path(
-            os.path.expandvars(os.path.expanduser(str(raw_octomap_binary_path or "").strip()))
+        self.octomap_binary_path = _expand_workspace_path(
+            str(raw_octomap_binary_path or "").strip(),
+            self.map_root,
         )
         if not str(self.octomap_binary_path):
             self.octomap_binary_path = self.map_root / "octomap_live.bt"
@@ -69,6 +97,21 @@ class MapManagerNode(Node):
         )
         self.octomap_border_padding = float(
             self.declare_parameter("octomap_border_padding", 1.0).value
+        )
+        self.octomap_clear_current_pose_enabled = bool(
+            self.declare_parameter("octomap_clear_current_pose_enabled", True).value
+        )
+        self.octomap_clear_current_pose_radius = float(
+            self.declare_parameter("octomap_clear_current_pose_radius", 0.85).value
+        )
+        self.octomap_clear_pose_frames = _string_list(
+            self.declare_parameter("octomap_clear_pose_frames", ["map", "odom"]).value
+        )
+        self.octomap_clear_base_frame = str(
+            self.declare_parameter("octomap_clear_base_frame", "base_link").value
+        )
+        self.octomap_clear_tf_timeout_sec = float(
+            self.declare_parameter("octomap_clear_tf_timeout_sec", 0.2).value
         )
         self.octomap_projection_timeout_sec = float(
             self.declare_parameter("octomap_projection_timeout_sec", 30.0).value
@@ -94,6 +137,12 @@ class MapManagerNode(Node):
         self.latest_pointcloud_fallback_monotonic = 0.0
         self.active_map_id = ""
         self.last_status = ""
+        self.tf_buffer = Buffer() if self.octomap_clear_current_pose_enabled else None
+        self.tf_listener = (
+            TransformListener(self.tf_buffer, self)
+            if self.tf_buffer is not None
+            else None
+        )
 
         self.map_root.mkdir(parents=True, exist_ok=True)
         self.active_pub = self.create_publisher(String, self.active_map_topic, 10)
@@ -300,6 +349,7 @@ class MapManagerNode(Node):
                 self.latest_map.info.resolution if self.latest_map is not None else None,
             ),
             "pointcloud_topic_3d": metadata_override.get("pointcloud_topic_3d", selected_topic),
+            "robot_clear_world_points": metadata_override.get("robot_clear_world_points", []),
             "artifacts": artifacts,
         }
         with (map_dir / "metadata.yaml").open("w", encoding="utf-8") as handle:
@@ -394,6 +444,9 @@ class MapManagerNode(Node):
             "--pcd-output",
             str(pcd_output),
         ]
+        clear_world_points = self.current_robot_clear_world_points()
+        for clear_point in clear_world_points:
+            cmd.extend(["--clear-world-point", clear_point])
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
@@ -437,8 +490,57 @@ class MapManagerNode(Node):
             "height": height,
             "resolution": float(map_yaml.get("resolution", self.octomap_projection_resolution)),
             "pointcloud_topic_3d": "/octomap_binary",
+            "robot_clear_world_points": clear_world_points,
         }
         return artifacts, metadata_override
+
+    def current_robot_clear_world_points(self) -> list[str]:
+        if (
+            not self.octomap_clear_current_pose_enabled
+            or self.tf_buffer is None
+            or self.octomap_clear_current_pose_radius <= 0.0
+        ):
+            return []
+
+        clear_points = []
+        seen = set()
+        timeout = Duration(seconds=max(0.0, self.octomap_clear_tf_timeout_sec))
+        for frame in self.octomap_clear_pose_frames:
+            frame = str(frame).strip()
+            if not frame:
+                continue
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    frame,
+                    self.octomap_clear_base_frame,
+                    Time(),
+                    timeout=timeout,
+                )
+            except TransformException as exc:
+                self.get_logger().warn(
+                    f"Robot footprint clear skipped for frame {frame}: {exc}",
+                    throttle_duration_sec=5.0,
+                )
+                continue
+
+            x = float(transform.transform.translation.x)
+            y = float(transform.transform.translation.y)
+            if not (math.isfinite(x) and math.isfinite(y)):
+                continue
+            key = (round(x, 2), round(y, 2), round(self.octomap_clear_current_pose_radius, 2))
+            if key in seen:
+                continue
+            seen.add(key)
+            clear_points.append(
+                f"{x:.3f},{y:.3f},{self.octomap_clear_current_pose_radius:.3f}"
+            )
+
+        if clear_points:
+            self.get_logger().info(
+                "Clearing robot footprint in projected map at %s"
+                % ", ".join(clear_points)
+            )
+        return clear_points
 
     def publish_status(self, state, reason):
         mode = self.runtime_mode

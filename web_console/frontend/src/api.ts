@@ -1,9 +1,14 @@
 import type {
   DashboardSnapshot,
+  GaitControlCommand,
+  GaitControlResponse,
   InitialPoseRequestPayload,
   InitialPoseResult,
   LightStatusPayload,
+  ManualControlResponse,
+  ManualVelocityCommand,
   MapMediaListing,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   SavedMapInfo,
@@ -55,6 +60,42 @@ export async function cancelNavigationGoal(): Promise<NavigationTaskState> {
   return payload.navigation;
 }
 
+export async function sendManualVelocityCommand(command: ManualVelocityCommand): Promise<ManualControlResponse> {
+  const response = await fetch("/api/manual-control/cmd_vel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(command),
+  });
+  const payload = await handleJson<{ ok: boolean; manual_control: ManualControlResponse }>(response);
+  return payload.manual_control;
+}
+
+export async function fetchMotionAuthorization(): Promise<MotionAuthorizationStatus> {
+  const response = await fetch("/api/manual-control/motion-authorization");
+  const payload = await handleJson<{ ok: boolean; motion_authorization: MotionAuthorizationStatus }>(response);
+  return payload.motion_authorization;
+}
+
+export async function authorizeMotion(): Promise<MotionAuthorizationStatus> {
+  const response = await fetch("/api/manual-control/motion-authorization/authorize", { method: "POST" });
+  const payload = await handleJson<{ ok: boolean; motion_authorization: MotionAuthorizationStatus }>(response);
+  return payload.motion_authorization;
+}
+
+export async function sendGaitControlCommand(command: GaitControlCommand): Promise<GaitControlResponse> {
+  const response = await fetch("/api/gait-control", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(command),
+  });
+  const payload = await handleJson<{ ok: boolean; gait_control: GaitControlResponse }>(response);
+  return payload.gait_control;
+}
+
 export async function sendInitialPose(payload: InitialPoseRequestPayload): Promise<InitialPoseResult> {
   const response = await fetch("/api/localization/initialpose", {
     method: "POST",
@@ -93,7 +134,7 @@ export async function startNavigationStack(
     body: JSON.stringify({
       map_id: mapId,
       localization_mode: options?.localization_mode ?? "ndt",
-      motion_mode: options?.motion_mode ?? "dry_run",
+      motion_mode: options?.motion_mode ?? "live_motion",
       enable_nav2_3d: options?.enable_nav2_3d ?? true,
       collision_monitor_profile: options?.collision_monitor_profile ?? "strict",
     }),

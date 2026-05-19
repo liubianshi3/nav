@@ -2,21 +2,25 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import {
+  authorizeMotion,
   cancelNavigationGoal,
   deleteMapObstacle,
   deleteTaskRoute,
   fetchHealth,
   fetchMapObstacles,
   fetchMaps,
+  fetchMotionAuthorization,
   fetchSnapshot,
   fetchStackStatus,
   fetchTaskRoute,
   fetchTaskRoutes,
+  sendGaitControlCommand,
   runTaskRoute,
   saveCurrentMap,
   projectPcdTo2d,
   saveMapObstacle,
   saveTaskRoute,
+  sendManualVelocityCommand,
   sendInitialPose,
   sendNavigationGoal,
   startMappingStack,
@@ -25,13 +29,16 @@ import {
   stopStack,
 } from "./api";
 import {
+  GaitControlSection,
   MapManagementSection,
+  ManualControlSection,
   ModeControlSection,
   NavigationTaskSection,
   ObstacleManagerSection,
   RecentNoticeSection,
   SelectedGoalSection,
   TaskRouteManagerSection,
+  StackModeChip,
   TaskStateChip,
 } from "./components/ControlSidebar";
 import { MapCanvas } from "./components/MapCanvas";
@@ -51,6 +58,9 @@ import { useBackendSocket } from "./hooks/useBackendSocket";
 import type {
   BackendEvent,
   DashboardSnapshot,
+  GaitControlCommand,
+  ManualVelocityCommand,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   SavedMapInfo,
@@ -113,6 +123,7 @@ function createEmptySnapshot(): DashboardSnapshot {
       map_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       task_manager_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       sdk_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
+      control_status: { raw: null, mode: null, state: null, ready: null, reason: null, fields: {} },
       active_map: null,
       velocity_linear_x: null,
       velocity_angular_z: null,
@@ -121,6 +132,13 @@ function createEmptySnapshot(): DashboardSnapshot {
       ndt_healthy: null,
       planner_type: null,
       bt_filename: null,
+    },
+    manual_control: {
+      enabled: false,
+      cmd_topic: "",
+      max_linear_x: 0,
+      max_linear_y: 0,
+      max_angular_z: 0,
     },
     navigation: {
       state: "idle",
@@ -256,7 +274,7 @@ export default function App() {
   const [activeDrawer, setActiveDrawer] = useState<DrawerKey>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("auto");
   const [localizationMode, setLocalizationMode] = useState("ndt");
-  const [motionMode, setMotionMode] = useState("dry_run");
+  const [motionMode, setMotionMode] = useState("live_motion");
   const [enableNav2_3d, setEnableNav2_3d] = useState(true);
   const [collisionMonitorProfile, setCollisionMonitorProfile] = useState("strict");
   const [showMediaDock, setShowMediaDock] = useState(true);
@@ -267,6 +285,15 @@ export default function App() {
   const [routeDraftId, setRouteDraftId] = useState("office_loop");
   const [routeYaml, setRouteYaml] = useState("mission_name: office_loop\nwaypoints:\n");
   const [routeBusy, setRouteBusy] = useState(false);
+  const [manualControlBusy, setManualControlBusy] = useState(false);
+  const [lastManualControlMessage, setLastManualControlMessage] = useState<string | null>(null);
+  const [motionAuthorizationBusy, setMotionAuthorizationBusy] = useState(false);
+  const [motionAuthorization, setMotionAuthorization] = useState<MotionAuthorizationStatus | null>(null);
+  const [gaitControlBusy, setGaitControlBusy] = useState(false);
+  const [lastGaitControlMessage, setLastGaitControlMessage] = useState<string | null>(null);
+  const [initialPoseBusy, setInitialPoseBusy] = useState(false);
+  const [lastInitialPoseMessage, setLastInitialPoseMessage] = useState<string | null>(null);
+  const [lastInitialPoseError, setLastInitialPoseError] = useState<string | null>(null);
   const [obstacles, setObstacles] = useState<VirtualObstacleZone[]>([]);
   const [obstacleBusy, setObstacleBusy] = useState(false);
   const [obstacleLabel, setObstacleLabel] = useState("");
@@ -497,8 +524,16 @@ export default function App() {
   }, [websocketError]);
 
   const selectedMap = maps.find((map) => map.map_id === selectedMapId) ?? null;
-  const has3DViewerData = snapshot.pointcloud.loaded || Boolean(selectedMap?.has_pointcloud_3d);
+  const selectedMapCompatibilityReason =
+    selectedMap?.navigation_compatible === false
+      ? selectedMap.navigation_compatibility_reason || "所选地图不兼容当前导航链"
+      : null;
+  const has3DViewerData =
+    snapshot.pointcloud.loaded || stack?.mode === "mapping" || Boolean(selectedMap?.has_pointcloud_3d);
+  const directNavigationBackend = snapshot.navigation.backend === "cmd_vel_direct";
   const navigationUses3D = snapshot.navigation.backend === "pose_topic_3d" || has3DViewerData;
+  const navigationModeReady = stack?.mode === "navigation" || directNavigationBackend;
+  const navigationGoalBackendReady = snapshot.health.action_server_ready || directNavigationBackend;
   const localizationReason =
     snapshot.status.localization_status.reason ?? snapshot.status.localization_status.state ?? null;
   const rosRuntimeHealthy = snapshot.health.ros_thread_alive && snapshot.health.ros_connected;
@@ -514,9 +549,9 @@ export default function App() {
     [navigationMessage, snapshot.navigation],
   );
   const canSendGoal =
-    stack?.mode === "navigation" &&
+    navigationModeReady &&
     localizationReady &&
-    snapshot.health.action_server_ready &&
+    navigationGoalBackendReady &&
     poseFresh &&
     (navigationUses3D ? snapshot.pose.available : snapshot.map.loaded);
   const canSetInitialPose =
@@ -536,6 +571,8 @@ export default function App() {
       ? "栈正在启动或停止，暂时不能切换模式"
       : !selectedMapId
         ? "请先选择一张导航地图"
+        : selectedMapCompatibilityReason
+          ? selectedMapCompatibilityReason
         : stack?.mode === "navigation"
           ? "当前已经在导航模式"
           : "会停止当前栈并加载所选地图进入导航";
@@ -574,11 +611,11 @@ export default function App() {
       ? "请先在 2D 或 3D 视图里选一个目标点"
       : !rosRuntimeHealthy
         ? "后端 ROS 线程未运行，页面状态已过期"
-      : stack?.mode !== "navigation"
+      : !navigationModeReady
         ? "当前不在导航模式，不能发送导航目标"
-        : !localizationReady
-          ? `定位未就绪${localizationReason ? `: ${localizationReason}` : ""}`
-          : !snapshot.health.action_server_ready
+      : !localizationReady
+        ? `定位未就绪${localizationReason ? `: ${localizationReason}` : ""}`
+          : !navigationGoalBackendReady
             ? "导航后端未就绪"
             : !poseFresh
               ? "机器人当前位姿未刷新或已过期"
@@ -637,12 +674,14 @@ export default function App() {
       setLastError("请先选择地图");
       return;
     }
+    if (selectedMapCompatibilityReason) {
+      setLastError(selectedMapCompatibilityReason);
+      return;
+    }
     const motionText =
       motionMode === "live_motion"
         ? "LIVE-MOTION 真机运动"
-        : motionMode === "dry_run"
-          ? "dry-run 控制桥验证"
-          : "只跑规划/定位";
+        : "只跑规划/定位";
     if (
       !window.confirm(
         `启动导航模式会停止当前栈并加载地图 ${selectedMapId}，模式=${localizationMode}/${motionText}，collision=${collisionMonitorProfile}。确认继续？`,
@@ -707,17 +746,32 @@ export default function App() {
 
   const handleSetInitialPose = async () => {
     if (!selectedGoal) {
-      setLastError("请先在地图上点击选点");
+      const message = "请先在地图上点击选点";
+      setLastInitialPoseMessage(null);
+      setLastInitialPoseError(message);
+      setLastError(message);
       return;
     }
+    setInitialPoseBusy(true);
+    setLastInitialPoseMessage("正在设置初始位姿，等待定位确认...");
+    setLastInitialPoseError(null);
+    setLastSuccess(null);
+    setLastError(null);
     try {
       const result = await sendInitialPose({ pose: selectedGoal, map_id: selectedMapId || null });
       setSelectedGoal(result.pose);
+      setLastInitialPoseMessage(result.message);
+      setLastInitialPoseError(null);
       setLastSuccess(result.message);
       setLastError(null);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "设置初始位姿失败";
+      setLastInitialPoseMessage(null);
+      setLastInitialPoseError(message);
       setLastSuccess(null);
-      setLastError(error instanceof Error ? error.message : "设置初始位姿失败");
+      setLastError(message);
+    } finally {
+      setInitialPoseBusy(false);
     }
   };
 
@@ -746,6 +800,71 @@ export default function App() {
     } catch (error) {
       setLastSuccess(null);
       setLastError(error instanceof Error ? error.message : "停止导航失败");
+    }
+  };
+
+  const handleManualVelocityCommand = async (command: ManualVelocityCommand) => {
+    setManualControlBusy(true);
+    try {
+      const result = await sendManualVelocityCommand(command);
+      const stamp = new Date().toLocaleTimeString();
+      setLastManualControlMessage(`${stamp} ${result.message}`);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastManualControlMessage(null);
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "手动控制失败");
+    } finally {
+      setManualControlBusy(false);
+    }
+  };
+
+  const handleQueryMotionAuthorization = async () => {
+    setMotionAuthorizationBusy(true);
+    try {
+      const result = await fetchMotionAuthorization();
+      setMotionAuthorization(result);
+      setLastManualControlMessage(result.message);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "查询运动授权失败");
+    } finally {
+      setMotionAuthorizationBusy(false);
+    }
+  };
+
+  const handleAuthorizeMotion = async () => {
+    setMotionAuthorizationBusy(true);
+    try {
+      const result = await authorizeMotion();
+      setMotionAuthorization(result);
+      setLastManualControlMessage(result.message);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "启动运动授权失败");
+    } finally {
+      setMotionAuthorizationBusy(false);
+    }
+  };
+
+  const handleGaitControlCommand = async (command: GaitControlCommand) => {
+    setGaitControlBusy(true);
+    try {
+      const result = await sendGaitControlCommand(command);
+      setLastGaitControlMessage(result.message);
+      setLastSuccess(result.message);
+      setLastError(null);
+    } catch (error) {
+      setLastGaitControlMessage(null);
+      setLastSuccess(null);
+      setLastError(error instanceof Error ? error.message : "步态控制失败");
+    } finally {
+      setGaitControlBusy(false);
     }
   };
 
@@ -986,11 +1105,16 @@ export default function App() {
             <span className={`indicator ${localizationReady ? "indicator-ok" : "indicator-warn"}`}>
               localization={String(localizationReady)}
             </span>
-            <TaskStateChip state={stack?.mode ?? "stopped"} />
+            <StackModeChip mode={stack?.mode ?? "stopped"} />
           </div>
         </header>
 
         <div className="legacy-console-stage">
+          {!websocketConnected ? (
+            <div className="notice notice-error websocket-reconnect-notice" role="status">
+              WebSocket 实时连接已断开，正在自动重连；位姿和点云显示会停留在最后一次实时数据。
+            </div>
+          ) : null}
           <button type="button" className="legacy-function-button" onClick={() => openDrawer("function")}>
             功能菜单
           </button>
@@ -1096,10 +1220,39 @@ export default function App() {
           </DrawerPanel>
 
           <DrawerPanel side="right" open={activeDrawer === "nav"}>
+            <ManualControlSection
+              disabled={!rosRuntimeHealthy || !snapshot.manual_control.enabled}
+              busy={manualControlBusy}
+              disabledReason={
+                rosRuntimeHealthy
+                  ? snapshot.manual_control.enabled
+                    ? null
+                    : "手动控制未启用"
+                  : "后端 ROS 线程未运行，不能手动控制"
+              }
+              lastMessage={lastManualControlMessage}
+              cmdTopic={snapshot.manual_control.cmd_topic}
+              motionAuthorization={motionAuthorization}
+              motionAuthorizationBusy={motionAuthorizationBusy}
+              onQueryMotionAuthorization={handleQueryMotionAuthorization}
+              onAuthorizeMotion={handleAuthorizeMotion}
+              onManualVelocityCommand={handleManualVelocityCommand}
+            />
+            <GaitControlSection
+              disabled={!rosRuntimeHealthy}
+              busy={gaitControlBusy}
+              lastMessage={lastGaitControlMessage}
+              controlFields={snapshot.status.control_status.fields}
+              rawGaitType={snapshot.status.raw_state?.gait_type}
+              onGaitControlCommand={handleGaitControlCommand}
+            />
             <SelectedGoalSection
               selectedGoal={selectedGoal}
               canSendGoal={canSendGoal}
               canSetInitialPose={canSetInitialPose}
+              initialPoseBusy={initialPoseBusy}
+              initialPoseMessage={lastInitialPoseMessage}
+              initialPoseError={lastInitialPoseError}
               sendGoalReason={sendGoalReason}
               setInitialPoseReason={setInitialPoseReason}
               onSetInitialPose={handleSetInitialPose}

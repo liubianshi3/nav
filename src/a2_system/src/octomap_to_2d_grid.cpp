@@ -2,6 +2,7 @@
 #include <octomap/OcTree.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -15,6 +16,12 @@
 
 namespace fs = std::filesystem;
 
+struct ClearWorldPoint {
+  double x = 0.0;
+  double y = 0.0;
+  double radius = 0.0;
+};
+
 struct Options {
   std::string input_path;
   std::string output_dir;
@@ -24,6 +31,7 @@ struct Options {
   double robot_height = 1.0;
   int min_obstacle_points = 2;
   double border_padding = 1.0;
+  std::vector<ClearWorldPoint> clear_world_points;
 };
 
 void usage(const char *argv0) {
@@ -35,7 +43,8 @@ void usage(const char *argv0) {
       << "  --robot-height <m>            Occupied voxels above this z are ignored (default: 1.0)\n"
       << "  --min-obstacle-points <n>     Occupied voxel count needed per 2D cell (default: 2)\n"
       << "  --pcd-output <path>           Optional PCD export of occupied voxels\n"
-      << "  --border-padding <m>          Padding around octree bounds (default: 1.0)\n";
+      << "  --border-padding <m>          Padding around octree bounds (default: 1.0)\n"
+      << "  --clear-world-point <x,y,r>   Clear disk in projected map coordinates; repeatable\n";
 }
 
 double parse_double(const std::string &s, const std::string &name) {
@@ -62,6 +71,27 @@ int parse_int(const std::string &s, const std::string &name) {
   } catch (const std::exception &) {
     throw std::runtime_error("Invalid " + name + ": " + s);
   }
+}
+
+ClearWorldPoint parse_clear_world_point(const std::string &s) {
+  std::vector<double> values;
+  std::size_t start = 0;
+  while (start <= s.size()) {
+    const std::size_t comma = s.find(',', start);
+    const std::string part = s.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+    values.push_back(parse_double(part, "--clear-world-point"));
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  if (values.size() != 3) {
+    throw std::runtime_error("Invalid --clear-world-point, expected x,y,radius: " + s);
+  }
+  if (values[2] <= 0.0) {
+    throw std::runtime_error("--clear-world-point radius must be > 0: " + s);
+  }
+  return ClearWorldPoint{values[0], values[1], values[2]};
 }
 
 Options parse_args(int argc, char **argv) {
@@ -96,6 +126,8 @@ Options parse_args(int argc, char **argv) {
       opts.pcd_output_path = need_value(arg);
     } else if (arg == "--border-padding") {
       opts.border_padding = parse_double(need_value(arg), arg);
+    } else if (arg == "--clear-world-point") {
+      opts.clear_world_points.push_back(parse_clear_world_point(need_value(arg)));
     } else if (arg == "--help" || arg == "-h") {
       usage(argv[0]);
       std::exit(0);
@@ -162,6 +194,42 @@ void fill_cell_range(
       }
     }
   }
+}
+
+int clear_disk_around_world_point(Grid &grid, const ClearWorldPoint &clear_point) {
+  const int min_col = std::max(
+      0,
+      static_cast<int>(std::floor((clear_point.x - clear_point.radius - grid.origin_x) / grid.resolution)));
+  const int max_col = std::min(
+      grid.width - 1,
+      static_cast<int>(std::floor((clear_point.x + clear_point.radius - grid.origin_x) / grid.resolution)));
+  const int min_row = std::max(
+      0,
+      static_cast<int>(std::floor((clear_point.y - clear_point.radius - grid.origin_y) / grid.resolution)));
+  const int max_row = std::min(
+      grid.height - 1,
+      static_cast<int>(std::floor((clear_point.y + clear_point.radius - grid.origin_y) / grid.resolution)));
+
+  int cleared = 0;
+  const double radius_sq = clear_point.radius * clear_point.radius;
+  for (int row = min_row; row <= max_row; ++row) {
+    const double y = grid.origin_y + (static_cast<double>(row) + 0.5) * grid.resolution;
+    for (int col = min_col; col <= max_col; ++col) {
+      const double x = grid.origin_x + (static_cast<double>(col) + 0.5) * grid.resolution;
+      const double dx = x - clear_point.x;
+      const double dy = y - clear_point.y;
+      if (dx * dx + dy * dy > radius_sq) {
+        continue;
+      }
+      const int idx = grid.index(row, col);
+      if (grid.obstacle_count[idx] > 0) {
+        ++cleared;
+      }
+      grid.obstacle_count[idx] = 0;
+      grid.free_count[idx] = std::max(grid.free_count[idx], 1);
+    }
+  }
+  return cleared;
 }
 
 void write_outputs(const Grid &grid, const Options &opts) {
@@ -321,6 +389,13 @@ int main(int argc, char **argv) {
       }
       const bool free_ground = occupied && z < opts.ground_threshold;
       fill_cell_range(grid, it.getX(), it.getY(), it.getSize(), occupied, free_ground);
+    }
+
+    for (const auto &clear_point : opts.clear_world_points) {
+      const int cleared = clear_disk_around_world_point(grid, clear_point);
+      std::cout << "[octomap_to_2d_grid] Cleared robot disk at x=" << clear_point.x
+                << ", y=" << clear_point.y << ", r=" << clear_point.radius
+                << "m cells=" << cleared << "\n";
     }
 
     std::cout << "[octomap_to_2d_grid] Read " << leaf_count << " leaves from " << opts.input_path

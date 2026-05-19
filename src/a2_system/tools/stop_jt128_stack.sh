@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 STATE_FILE="${WORKSPACE}/runtime/jt128_dlio_stack_state.yaml"
 
 kill_pattern() {
@@ -38,6 +38,7 @@ STACK_PATTERNS=(
   "octomap_saver_node"
   "map_manager_node"
   "pointcloud_guard"
+  "pointcloud_preview_node.py"
   "pointcloud_map_loader"
   "pcd_relocalizer_3d"
   "ndt_scan_matcher"
@@ -52,6 +53,8 @@ STACK_PATTERNS=(
   "pose_goal_controller_3d"
   "ground_segmentation_cpp_node"
   "traversability_to_obstacle_cloud.py"
+  "global_traversability_integrator.py"
+  "global_traversability_integrator"
   "collision_monitor"
   "controller_server"
   "planner_server"

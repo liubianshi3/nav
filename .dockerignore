@@ -1,4 +1,9 @@
 .git/
+.DS_Store
+._*
+**/.DS_Store
+**/._*
+
 build/
 install/
 log/

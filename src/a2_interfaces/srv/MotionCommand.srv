@@ -1,0 +1,22 @@
+string STOP=stop
+string BALANCE_STAND=balance_stand
+string STAND_UP=stand_up
+string STAND_DOWN=stand_down
+string RECOVERY_STAND=recovery_stand
+string DAMP=damp
+string SWITCH_GAIT=switch_gait
+string SPEED_LEVEL=speed_level
+string BODY_HEIGHT=body_height
+string SET_AUTO_RECOVERY=set_auto_recovery
+
+string command
+int32 int_value
+float32 float_value
+bool bool_value
+---
+bool success
+string message
+int32 sdk_code
+string error_code
+string runtime_mode
+string state

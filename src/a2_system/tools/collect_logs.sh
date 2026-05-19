@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="${WORKSPACE}/runtime/log_bundle_${STAMP}"
 mkdir -p "${OUT_DIR}"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE_NAME="${A2_DOCKER_IMAGE:-a2-system-ws:real}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMAGE_NAME="${A2_DOCKER_IMAGE:-a2-system-ws:dev}"
 NODE_IMAGE="${A2_NODE_IMAGE:-docker.m.daocloud.io/library/node:20-bookworm-slim}"
 ROS_IMAGE="${A2_ROS_IMAGE:-docker.m.daocloud.io/library/ros:humble-ros-base-jammy}"
 SDK_CONFIG_PATH="${REPO_ROOT}/docker/unitree_sdk/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake"

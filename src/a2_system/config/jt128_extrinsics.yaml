@@ -5,8 +5,8 @@ extrinsics:
     xyz: [0.33767, 0.0, 0.08134]
     rotation_matrix: [0.0, 0.0, 1.0,
                       1.0, 0.0, 0.0,
-                      0.0, 1.0, 0.0]
-    source: unitree_structural_design_reference_lidar_axes_in_base_frame_not_calibrated
+                      0.0, -1.0, 0.0]
+    source: hesai_jt128_pointcloud_axes_raw_z_forward_x_left_minus_y_up
   jt128_front_imu:
     parent: base_link
     child: jt128_front_imu_link

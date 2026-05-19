@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,10 +28,16 @@ class GrpcConfig:
 @dataclass
 class RosTopicConfig:
     map_topic: str = "/map"
-    pointcloud_topic: str = "/jt128/front/points"
-    pointcloud_fallback_topic: str = "/jt128/front/points"
+    pointcloud_topic: str = "/jt128/dlio/map_points_preview"
+    pointcloud_fallback_topic: str = ""
+    pointcloud_map_topics: list[str] = field(
+        default_factory=lambda: [
+            "/jt128/dlio/map_points_preview",
+        ]
+    )
     pointcloud_primary_stale_sec: float = 2.0
     pointcloud_preview_max_points: int = 20000
+    websocket_pointcloud_max_points: int = 16000
     manage_map_service: str = "/map_manager/manage_map"
     task_manager_service: str = "/a2/task_manager/command"
     localization_pose_topic: str = "/a2/relocalization/pose"  # legacy /amcl_pose → 3D NDT
@@ -50,6 +57,9 @@ class RosTopicConfig:
     task_manager_status_topic: str = "/a2/task_manager/status"
     pose_goal_status_topic: str = "/a2/nav2/status"
     sdk_status_topic: str = "/a2/sdk/status"
+    control_status_topic: str = "/a2/control/status"
+    control_state_topic: str = "/a2/control/state"
+    motion_command_service: str = "/a2/control/command"
     raw_state_topic: str = "/a2/raw_state"
     camera_image_topic: str = "/camera/image_raw"
     camera_compressed_topic: str = "/camera/image_raw/compressed"
@@ -72,6 +82,14 @@ class NavigationConfig:
     action_name: str = "/navigate_to_pose"
     goal_topic: str = "/goal_pose_"
     goal_frame: str = "map"
+    direct_cmd_topic: str = "/cmd_vel_safe"
+    direct_control_hz: float = 10.0
+    direct_max_linear_x: float = 0.3
+    direct_max_angular_z: float = 0.6
+    direct_slow_radius_m: float = 0.6
+    direct_heading_deadband_rad: float = 0.25
+    direct_goal_tolerance_m: float = 0.15
+    direct_yaw_tolerance_rad: float = 0.25
     cancel_stop_topic: str = "/cmd_vel"
     cancel_stop_burst_count: int = 5
     cancel_stop_burst_interval_sec: float = 0.05
@@ -98,10 +116,38 @@ class NavigationConfig:
 
 
 @dataclass
+class ManualControlConfig:
+    enabled: bool = False
+    cmd_topic: str = "/cmd_vel_safe"
+    max_linear_x: float = 0.4
+    max_linear_y: float = 0.25
+    max_angular_z: float = 0.8
+    publish_burst_count: int = 3
+    publish_burst_interval_sec: float = 0.05
+
+
+@dataclass
+class GaitControlConfig:
+    enabled: bool = True
+    gait_type_topic: str = "/a2/control/gait_type"
+    speed_level_topic: str = "/a2/control/speed_level"
+    body_height_topic: str = "/a2/control/body_height"
+    gait_type_min: int = 0
+    gait_type_max: int = 7
+    speed_level_min: int = 0
+    speed_level_max: int = 3
+    body_height_min: float = -0.10
+    body_height_max: float = 0.10
+
+
+@dataclass
 class HealthConfig:
     pose_stale_sec: float = 2.0
     battery_stale_sec: float = 5.0
     health_broadcast_hz: float = 1.0
+    websocket_pose_hz: float = 10.0
+    websocket_status_hz: float = 5.0
+    websocket_battery_hz: float = 2.0
 
 
 @dataclass
@@ -116,11 +162,11 @@ class NativeSlamConfig:
 
 @dataclass
 class StackConfig:
-    workspace: str = "~/a2_system_ws"
+    workspace: str = "/home/unitree/ws/device-navigation"
     network_interface: str = "net1"
-    map_root: str = "~/a2_system_ws/runtime/maps"
-    start_script: str = "~/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh"
-    stop_script: str = "~/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh"
+    map_root: str = "/home/unitree/ws/device-navigation/runtime/maps"
+    start_script: str = "/home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh"
+    stop_script: str = "/home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh"
     command_timeout_sec: float = 15.0
 
 
@@ -131,6 +177,8 @@ class AppConfig:
     ros: RosTopicConfig = field(default_factory=RosTopicConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
+    manual_control: ManualControlConfig = field(default_factory=ManualControlConfig)
+    gait_control: GaitControlConfig = field(default_factory=GaitControlConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
     native_slam: NativeSlamConfig = field(default_factory=NativeSlamConfig)
     stack: StackConfig = field(default_factory=StackConfig)
@@ -164,4 +212,24 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
             loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             _update_dataclass(config, loaded)
             config.config_path = path
+    _apply_environment_overrides(config)
     return config
+
+
+def _apply_environment_overrides(config: AppConfig) -> None:
+    workspace = os.environ.get("A2_WORKSPACE")
+    if workspace:
+        workspace = str(Path(workspace).expanduser())
+        config.stack.workspace = workspace
+        config.stack.map_root = os.environ.get("A2_MAP_ROOT", f"{workspace}/runtime/maps")
+        config.stack.start_script = os.environ.get(
+            "A2_STACK_START_SCRIPT",
+            f"{workspace}/src/a2_system/tools/start_jt128_3d_stack.sh",
+        )
+        config.stack.stop_script = os.environ.get(
+            "A2_STACK_STOP_SCRIPT",
+            f"{workspace}/src/a2_system/tools/stop_jt128_stack.sh",
+        )
+    stack_interface = os.environ.get("A2_JT128_INTERFACE") or os.environ.get("A2_NETWORK_INTERFACE")
+    if stack_interface:
+        config.stack.network_interface = stack_interface

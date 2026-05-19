@@ -12,9 +12,12 @@ service LaserNavigationService {
   rpc StopMapping(StopMappingRequest) returns (StopMappingResponse);
   rpc GetMap(GetMapRequest) returns (GetMapResponse);
   rpc SelectMap(SelectMapRequest) returns (SelectMapResponse);
+  rpc StartNavigation(StartNavigationRequest) returns (StartNavigationResponse);
+  rpc SetInitialPose(SetInitialPoseRequest) returns (SetInitialPoseResponse);
   rpc ListMaps(ListMapsRequest) returns (ListMapsResponse);
   rpc ListMapPresets(ListMapPresetsRequest) returns (ListMapPresetsResponse);
   rpc GetScanData(ScanDataRequest) returns (ScanDataResponse);
+  rpc WatchScanData(ScanDataRequest) returns (stream ScanDataResponse);
   rpc GetPath(GetPathRequest) returns (GetPathResponse);
   rpc WatchNavigationStatus(WatchNavigationStatusRequest) returns (stream NavigationStatus);
 }
@@ -164,6 +167,36 @@ message SelectMapResponse {
   string current_map_id = 3;
 }
 
+message StartNavigationRequest {
+  string device_id = 1;
+  string map_id = 2;
+  string localization_mode = 3;
+  string motion_mode = 4;
+  bool enable_nav2_3d = 5;
+  string collision_monitor_profile = 6;
+}
+
+message StartNavigationResponse {
+  bool success = 1;
+  string message = 2;
+  string current_map_id = 3;
+}
+
+message SetInitialPoseRequest {
+  string device_id = 1;
+  string map_id = 2;
+  float x = 3;
+  float y = 4;
+  float theta = 5;
+  string frame_id = 6;
+}
+
+message SetInitialPoseResponse {
+  bool success = 1;
+  string message = 2;
+  PositionResponse pose = 3;
+}
+
 message MapMetadata {
   float width = 1;
   float height = 2;
@@ -178,6 +211,8 @@ message ScanDataRequest {
   // When true, the response may include point cloud data in PCD file format.
   // For large point clouds, the server may return a download URL instead of inline bytes.
   bool include_pcd = 4;
+  // Preferred streaming interval in milliseconds for WatchScanData.
+  int32 interval_ms = 11;
 }
 
 message ScanDataResponse {

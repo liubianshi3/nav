@@ -13,8 +13,10 @@ grpc:
 
 ros:
   map_topic: /map
-  pointcloud_topic: /jt128/front/points
-  pointcloud_fallback_topic: /jt128/front/points
+  pointcloud_topic: /jt128/dlio/map_points_preview
+  pointcloud_fallback_topic: ""
+  pointcloud_map_topics:
+    - /jt128/dlio/map_points_preview
   pointcloud_primary_stale_sec: 2.0
   pointcloud_preview_max_points: 20000
   task_manager_service: /a2/task_manager/command
@@ -35,6 +37,9 @@ ros:
   task_manager_status_topic: /a2/task_manager/status
   pose_goal_status_topic: /a2/nav2/status
   sdk_status_topic: /a2/sdk/status
+  control_status_topic: /a2/control/status
+  control_state_topic: /a2/control/state
+  motion_command_service: /a2/control/command
   raw_state_topic: /a2/raw_state
   camera_image_topic: /camera/image_raw
   camera_compressed_topic: /camera/image_raw/compressed
@@ -50,6 +55,14 @@ navigation:
   action_name: /navigate_to_pose
   goal_topic: /goal_pose_
   goal_frame: map
+  direct_cmd_topic: /cmd_vel_safe
+  direct_control_hz: 10.0
+  direct_max_linear_x: 0.3
+  direct_max_angular_z: 0.6
+  direct_slow_radius_m: 0.6
+  direct_heading_deadband_rad: 0.25
+  direct_goal_tolerance_m: 0.15
+  direct_yaw_tolerance_rad: 0.25
   cancel_stop_topic: /cmd_vel
   cancel_stop_burst_count: 5
   cancel_stop_burst_interval_sec: 0.05
@@ -74,10 +87,34 @@ navigation:
   initial_pose_snap_radius_m: 1.0
   initial_pose_clearance_m: 0.18
 
+manual_control:
+  enabled: false
+  cmd_topic: /cmd_vel_safe
+  max_linear_x: 0.4
+  max_linear_y: 0.25
+  max_angular_z: 0.8
+  publish_burst_count: 3
+  publish_burst_interval_sec: 0.05
+
+gait_control:
+  enabled: true
+  gait_type_topic: /a2/control/gait_type
+  speed_level_topic: /a2/control/speed_level
+  body_height_topic: /a2/control/body_height
+  gait_type_min: 0
+  gait_type_max: 7
+  speed_level_min: 0
+  speed_level_max: 3
+  body_height_min: -0.10
+  body_height_max: 0.10
+
 health:
   pose_stale_sec: 2.0
   battery_stale_sec: 5.0
   health_broadcast_hz: 1.0
+  websocket_pose_hz: 10.0
+  websocket_status_hz: 5.0
+  websocket_battery_hz: 2.0
 
 native_slam:
   enabled: true
@@ -88,9 +125,9 @@ native_slam:
   save_root: /home/unitree/dist/maps
 
 stack:
-  workspace: /home/unitree/a2_system_ws
+  workspace: /home/unitree/ws/device-navigation
   network_interface: net1
-  map_root: /home/unitree/a2_system_ws/runtime/maps
-  start_script: /home/unitree/a2_system_ws/src/a2_system/tools/start_jt128_3d_stack.sh
-  stop_script: /home/unitree/a2_system_ws/src/a2_system/tools/stop_jt128_stack.sh
+  map_root: /home/unitree/ws/device-navigation/runtime/maps
+  start_script: /home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh
+  stop_script: /home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh
   command_timeout_sec: 15.0

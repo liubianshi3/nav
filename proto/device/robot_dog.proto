@@ -15,6 +15,19 @@ service RobotDogService {
   rpc SetMode(SetModeRequest) returns (SetModeResponse);
   rpc GetMode(GetModeRequest) returns (GetModeResponse);
   rpc WatchRobotDogStatus(WatchRobotDogStatusRequest) returns (stream RobotDogStatus);
+  rpc BalanceStand(BalanceStandRequest) returns (BalanceStandResponse);
+  rpc StandUp(StandUpRequest) returns (StandUpResponse);
+  rpc StandDown(StandDownRequest) returns (StandDownResponse);
+  rpc RecoveryStand(RecoveryStandRequest) returns (RecoveryStandResponse);
+  rpc Damp(DampRequest) returns (DampResponse);
+  rpc SetAutoRecovery(SetAutoRecoveryRequest) returns (SetAutoRecoveryResponse);
+  rpc SwitchGait(SwitchGaitRequest) returns (SwitchGaitResponse);
+  rpc SetSpeedLevel(SetSpeedLevelRequest) returns (SetSpeedLevelResponse);
+  rpc SetBodyHeight(SetBodyHeightRequest) returns (SetBodyHeightResponse);
+  rpc GetControlState(GetControlStateRequest) returns (GetControlStateResponse);
+  rpc AuthorizeMotion(AuthorizeMotionRequest) returns (AuthorizeMotionResponse);
+  rpc ReleaseMotionAuthorization(ReleaseMotionAuthorizationRequest) returns (ReleaseMotionAuthorizationResponse);
+  rpc GetMotionAuthorization(GetMotionAuthorizationRequest) returns (GetMotionAuthorizationResponse);
 }
 
 enum RobotDogMode {
@@ -179,4 +192,227 @@ enum RobotDogState {
   ROBOT_DOG_STATE_MOVING = 2;
   ROBOT_DOG_STATE_STOPPING = 3;
   ROBOT_DOG_STATE_CHARGING = 4;
+}
+
+enum MotionAuthorizationState {
+  MOTION_AUTHORIZATION_STATE_UNSPECIFIED = 0;
+  MOTION_AUTHORIZATION_STATE_UNKNOWN = 1;
+  MOTION_AUTHORIZATION_STATE_STAND_DOWN = 2;
+  MOTION_AUTHORIZATION_STATE_STANDING_NOT_AUTHORIZED = 3;
+  MOTION_AUTHORIZATION_STATE_MANUAL_START_REQUIRED = 4;
+  MOTION_AUTHORIZATION_STATE_AUTHORIZED = 5;
+  MOTION_AUTHORIZATION_STATE_MOVING = 6;
+  MOTION_AUTHORIZATION_STATE_ERROR = 7;
+}
+
+enum MotionAuthorizationAction {
+  MOTION_AUTHORIZATION_ACTION_UNSPECIFIED = 0;
+  MOTION_AUTHORIZATION_ACTION_NONE = 1;
+  MOTION_AUTHORIZATION_ACTION_STAND_UP = 2;
+  MOTION_AUTHORIZATION_ACTION_PRESS_REMOTE_START = 3;
+  MOTION_AUTHORIZATION_ACTION_STOP = 4;
+}
+
+message BalanceStandRequest {
+  string device_id = 1;
+}
+
+message BalanceStandResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message StandUpRequest {
+  string device_id = 1;
+}
+
+message StandUpResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message StandDownRequest {
+  string device_id = 1;
+}
+
+message StandDownResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message RecoveryStandRequest {
+  string device_id = 1;
+}
+
+message RecoveryStandResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message DampRequest {
+  string device_id = 1;
+}
+
+message DampResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message SetAutoRecoveryRequest {
+  string device_id = 1;
+  bool enabled = 2;
+}
+
+message SetAutoRecoveryResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message SwitchGaitRequest {
+  string device_id = 1;
+  int32 gait_type = 2;
+}
+
+message SwitchGaitResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message SetSpeedLevelRequest {
+  string device_id = 1;
+  int32 level = 2;
+}
+
+message SetSpeedLevelResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message SetBodyHeightRequest {
+  string device_id = 1;
+  float height = 2;
+}
+
+message SetBodyHeightResponse {
+  bool success = 1;
+  string message = 2;
+  int32 sdk_code = 3;
+  string error_code = 4;
+  string runtime_mode = 5;
+  string state = 6;
+}
+
+message GetControlStateRequest {
+  string device_id = 1;
+}
+
+message GetControlStateResponse {
+  string device_id = 1;
+  string runtime_mode = 2;
+  string state = 3;
+  bool ready = 4;
+  string reason = 5;
+  string interface_name = 6;
+  bool gait_control_enabled = 7;
+  int32 gait_type = 8;
+  int32 speed_level = 9;
+  float body_height = 10;
+  bool auto_recovery = 11;
+  string last_command = 12;
+  int32 last_sdk_code = 13;
+  string last_error_code = 14;
+  string last_error_reason = 15;
+  int64 timestamp = 16;
+}
+
+message AuthorizeMotionRequest {
+  string device_id = 1;
+}
+
+message AuthorizeMotionResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  MotionAuthorizationState state = 4;
+  MotionAuthorizationAction required_action = 5;
+  bool standing = 6;
+  bool motion_authorized = 7;
+  bool manual_start_required = 8;
+  int32 motion_mode = 9;
+  int32 gait_type = 10;
+  string runtime_mode = 11;
+  int64 timestamp = 12;
+  int32 sdk_code = 13;
+}
+
+message ReleaseMotionAuthorizationRequest {
+  string device_id = 1;
+}
+
+message ReleaseMotionAuthorizationResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  MotionAuthorizationState state = 4;
+  MotionAuthorizationAction required_action = 5;
+  bool standing = 6;
+  bool motion_authorized = 7;
+  bool manual_start_required = 8;
+  int32 motion_mode = 9;
+  int32 gait_type = 10;
+  string runtime_mode = 11;
+  int64 timestamp = 12;
+  int32 sdk_code = 13;
+}
+
+message GetMotionAuthorizationRequest {
+  string device_id = 1;
+}
+
+message GetMotionAuthorizationResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
+  MotionAuthorizationState state = 4;
+  MotionAuthorizationAction required_action = 5;
+  bool standing = 6;
+  bool motion_authorized = 7;
+  bool manual_start_required = 8;
+  int32 motion_mode = 9;
+  int32 gait_type = 10;
+  string runtime_mode = 11;
+  int64 timestamp = 12;
+  int32 sdk_code = 13;
 }

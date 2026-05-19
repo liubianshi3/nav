@@ -24,13 +24,28 @@ setup(
             "launch/ekf.launch.py",
             "launch/ekf_local.launch.py",
             "launch/octomap_mapping.launch.py",
+            "launch/a2_jt128_gazebo_rviz.launch.py",
+            "launch/simple_car_jt128_gazebo_rviz.launch.py",
         ]),
-        # Legacy 2D launch files moved to launch/legacy/ — available for fallback but not in default path
+        # Legacy 2D launch files moved to launch/legacy/
         ("share/" + package_name + "/launch/legacy", [
             "launch/legacy/slam.launch.py",
             "launch/legacy/mapping.launch.py",
             "launch/legacy/localization.launch.py",
             "launch/legacy/nav2.launch.py",
+        ]),
+        ("share/" + package_name + "/urdf", [
+            "urdf/a2_jt128_sim.urdf.xacro",
+            "urdf/simple_car_jt128_sim.urdf.xacro",
+        ]),
+        ("share/" + package_name + "/worlds", [
+            "worlds/a2_jt128_perception.world",
+            "worlds/simple_car_complex_perception.world",
+        ]),
+        ("share/" + package_name + "/rviz", [
+            "rviz/a2_jt128_perception.rviz",
+            "rviz/a2_bag_perception_validation.rviz",
+            "rviz/simple_car_jt128_perception.rviz",
         ]),
     ],
     install_requires=["setuptools"],

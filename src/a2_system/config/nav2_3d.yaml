@@ -64,7 +64,7 @@ controller_server:
       min_vel_y: -0.12
       max_vel_x: 0.30
       max_vel_y: 0.15
-      max_vel_theta: 0.60
+      max_vel_theta: 0.50
       min_speed_xy: 0.0
       max_speed_xy: 0.30
       min_speed_theta: 0.0
@@ -228,8 +228,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.30, 0.15, 0.60]
-    min_velocity: [0.0, -0.15, -0.60]
+    max_velocity: [0.30, 0.15, 0.50]
+    min_velocity: [0.0, -0.15, -0.50]
     max_accel: [0.8, 0.5, 1.2]
     max_decel: [-1.0, -0.6, -1.6]
     odom_topic: /odometry/local
@@ -249,10 +249,19 @@ global_costmap:
       robot_radius: 0.35
       transform_tolerance: 2.0
       track_unknown_space: true
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "global_traversability_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
+      global_traversability_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        enabled: true
+        map_subscribe_transient_local: true
+        subscribe_to_updates: true
+        topic: /a2/global_traversability/costmap
+        trinary_costmap: false
+        lethal_cost_threshold: 100
+        track_unknown_space: false
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -296,9 +305,11 @@ local_costmap:
           max_obstacle_height: 0.5
           min_obstacle_height: 0.0
           marking: true
-          clearing: false
-          obstacle_max_range: 6.0
-
+          clearing: true
+          obstacle_max_range: 4.0
+          raytrace_max_range: 5.0
+          raytrace_min_range: 0.0
+          observation_persistence: 0.0
           obstacle_min_range: 0.85
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"

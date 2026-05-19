@@ -1,31 +1,96 @@
 services:
   a2_sim:
-    #container_name: a2_sim
+    # container_name intentionally omitted so multiple compose projects can coexist.
     image: registry.cn-hangzhou.aliyuncs.com/linuxsuren/device-navigation-sim:dev
-    #image: a2-sim:dev
     init: true
     privileged: true
     restart: unless-stopped
     tty: true
     stdin_open: true
-    command: ${A2_SIM_MODE:-sim-full}
+    command: ${A2_SIM_MODE:-headless}
     environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
-      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       DISPLAY: ${DISPLAY:-}
       WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
       XDG_RUNTIME_DIR: ${XDG_RUNTIME_DIR:-}
       QT_X11_NO_MITSHM: "1"
       LIBGL_ALWAYS_SOFTWARE: "1"
       ALSOFT_DRIVERS: "null"
+      A2_SIM_FAKE_SOURCES: ${A2_SIM_FAKE_SOURCES:-false}
+      A2_SIM_FAKE_MAP_SOURCES: ${A2_SIM_FAKE_MAP_SOURCES:-true}
+      A2_SIM_FAKE_STATUS_SOURCES: ${A2_SIM_FAKE_STATUS_SOURCES:-true}
+      A2_SIM_DERIVE_IMU_FROM_ODOM: ${A2_SIM_DERIVE_IMU_FROM_ODOM:-false}
+      A2_SIM_FORWARD_SOURCE_IMU: ${A2_SIM_FORWARD_SOURCE_IMU:-true}
     volumes:
       - ${A2_SIM_X11_SOCKET:-/tmp/.X11-unix}:/tmp/.X11-unix:ro
-      - ${A2_SIM_WSLG_ROOT:-/mnt/wslg}:/mnt/wslg
+      - ${A2_SIM_WSLG_ROOT:-/tmp}:/mnt/wslg
+    networks:
+      - a2_ros2
+
+  a2_rviz:
+    container_name: a2_rviz
+    image: a2-sim:dev
+    build:
+      context: ../device-navigation-sim
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - a2_sim
+    command: rviz-vnc
+    ports:
+      - "${A2_RVIZ_WEB_PORT:-6080}:6080"
+      - "${A2_RVIZ_VNC_HOST_PORT:-5901}:5900"
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      A2_RVIZ_DISPLAY: ${A2_RVIZ_DISPLAY:-:99}
+      A2_RVIZ_GEOMETRY: ${A2_RVIZ_GEOMETRY:-1600x1000x24}
+      A2_RVIZ_WEB_PORT: "6080"
+      A2_RVIZ_VNC_PORT: "5900"
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      ALSOFT_DRIVERS: "null"
+    networks:
+      - a2_ros2
+
+  a2_gazebo:
+    container_name: a2_gazebo
+    image: a2-gazebo:dev
+    build:
+      context: ../device-navigation-sim
+      dockerfile: Dockerfile.gazebo
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - a2_sim
+    command: gazebo-vnc
+    ports:
+      - "${A2_GAZEBO_WEB_PORT:-6081}:6080"
+      - "${A2_GAZEBO_VNC_HOST_PORT:-5902}:5900"
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      A2_GAZEBO_WORLD: ${A2_GAZEBO_WORLD:-/opt/a2_system_ws/sim/worlds/empty_ground_gz.world}
+      A2_GAZEBO_DISPLAY: ${A2_GAZEBO_DISPLAY:-:99}
+      A2_GAZEBO_GEOMETRY: ${A2_GAZEBO_GEOMETRY:-1600x1000x24}
+      A2_GAZEBO_WEB_PORT: "6080"
+      A2_GAZEBO_VNC_PORT: "5900"
+      A2_GAZEBO_BRIDGE: ${A2_GAZEBO_BRIDGE:-true}
+      A2_GAZEBO_CMD_VEL_DRIVER: ${A2_GAZEBO_CMD_VEL_DRIVER:-true}
+      A2_GAZEBO_SERVICE_TIMEOUT_MS: ${A2_GAZEBO_SERVICE_TIMEOUT_MS:-1000}
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      ALSOFT_DRIVERS: "null"
     networks:
       - a2_ros2
 
   a2-system-ws:
     image: device-navigation:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
     init: true
     privileged: true
     restart: unless-stopped
@@ -38,10 +103,10 @@ services:
       - a2_ros2
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
-      CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
-      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
-      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}
+      CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.sim.yaml
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
       A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
       A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}

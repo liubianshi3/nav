@@ -1,31 +1,64 @@
 services:
   a2-system-ws:
-    image: ${A2_DOCKER_IMAGE:-a2-system-ws:real}
+    container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}
+    image: ${A2_DOCKER_IMAGE:-a2-nav:dev}
+    platform: ${A2_DOCKER_PLATFORM:-linux/amd64}
     init: true
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
+      args:
+        A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}
     network_mode: host
     privileged: true
     restart: unless-stopped
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
       CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
-      # auto: newest saved 3D map -> navigation dry-run; otherwise mapping.
-      # Use standby/web/none for Web-only, or mapping/navigation explicitly.
-      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+      # Default to real robot startup: latest map -> navigation, otherwise mapping.
+      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
-      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
+      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}
+      A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}
+      A2_ROS_PEERS: ${A2_ROS_PEERS:-}
       A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
       A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
       A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}
-      # Physical motion stays off unless both are explicitly enabled.
-      A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-false}
-      A2_LIVE_MOTION: ${A2_LIVE_MOTION:-false}
+      A2_ENABLE_NAV2_3D: ${A2_ENABLE_NAV2_3D:-true}
+      A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER: ${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}
+      A2_REQUIRE_NAV2_MAP: ${A2_REQUIRE_NAV2_MAP:-true}
+      A2_CONTROL_LINEAR_X_SIGN: ${A2_CONTROL_LINEAR_X_SIGN:-1.0}
+      A2_CONTROL_LINEAR_Y_SIGN: ${A2_CONTROL_LINEAR_Y_SIGN:-1.0}
+      A2_CONTROL_YAW_SIGN: ${A2_CONTROL_YAW_SIGN:-1.0}
+      A2_SDK_BRIDGE_AUTOSTART: ${A2_SDK_BRIDGE_AUTOSTART:-true}
+      A2_SDK_BRIDGE_LD_PRELOAD: ${A2_SDK_BRIDGE_LD_PRELOAD:-/opt/unitree_robotics/lib/x86_64/libddsc.so.0}
+      A2_SDK_STATE_TOPIC: ${A2_SDK_STATE_TOPIC:-/a2/raw_state}
+      A2_SDK_SPORT_STATE_TOPIC: ${A2_SDK_SPORT_STATE_TOPIC:-rt/lf/sportmodestate}
+      A2_SDK_TIMER_HZ: ${A2_SDK_TIMER_HZ:-50.0}
+      A2_SDK_STALE_TIMEOUT_SEC: ${A2_SDK_STALE_TIMEOUT_SEC:-0.5}
+      A2_CONTROL_BRIDGE_AUTOSTART: ${A2_CONTROL_BRIDGE_AUTOSTART:-true}
+      A2_CONTROL_BRIDGE_LD_PRELOAD: ${A2_CONTROL_BRIDGE_LD_PRELOAD:-/opt/unitree_robotics/lib/x86_64/libddsc.so.0}
+      A2_CONTROL_CMD_TOPIC: ${A2_CONTROL_CMD_TOPIC:-/cmd_vel_safe}
+      A2_STANDBY_LIDAR_AUTOSTART: ${A2_STANDBY_LIDAR_AUTOSTART:-true}
+      A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART: ${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}
+      A2_JT128_IP: ${A2_JT128_IP:-192.168.124.20}
+      A2_CONTROL_ALLOW_WITHOUT_MAP: ${A2_CONTROL_ALLOW_WITHOUT_MAP:-true}
+      A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION: ${A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION:-true}
+      A2_CONTROL_MAX_LINEAR_X: ${A2_CONTROL_MAX_LINEAR_X:-0.35}
+      A2_CONTROL_MAX_LINEAR_Y: ${A2_CONTROL_MAX_LINEAR_Y:-0.18}
+      A2_CONTROL_MAX_YAW_RATE: ${A2_CONTROL_MAX_YAW_RATE:-0.45}
+      A2_CONTROL_CMD_TIMEOUT_SEC: ${A2_CONTROL_CMD_TIMEOUT_SEC:-0.30}
+      A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-true}
+      A2_LIVE_MOTION: ${A2_LIVE_MOTION:-true}
       A2_STACK_REQUIRED: ${A2_STACK_REQUIRED:-false}
     volumes:
-      - ${A2_HOST_MAP_ROOT:-/home/unitree/a2_system_ws/runtime/maps}:/opt/a2_system_ws/runtime/maps
-      - ${A2_HOST_LOG_ROOT:-/home/unitree/a2_system_ws/runtime/logs}:/opt/a2_system_ws/runtime/logs
-      - ${A2_HOST_ROUTE_ROOT:-/home/unitree/a2_system_ws/runtime/routes}:/opt/a2_system_ws/runtime/routes
-      - ${A2_HOST_REPORT_ROOT:-/home/unitree/a2_system_ws/runtime/reports}:/opt/a2_system_ws/runtime/reports
-      - ${A2_HOST_TEST_RECORD_ROOT:-/home/unitree/a2_system_ws/runtime/test_records}:/opt/a2_system_ws/runtime/test_records
+      - ${A2_HOST_MAP_ROOT:-/home/unitree/ws/device-navigation/runtime/maps}:/opt/a2_system_ws/runtime/maps
+      - ${A2_HOST_LOG_ROOT:-/home/unitree/ws/device-navigation/runtime/logs}:/opt/a2_system_ws/runtime/logs
+      - ${A2_HOST_ROUTE_ROOT:-/home/unitree/ws/device-navigation/runtime/routes}:/opt/a2_system_ws/runtime/routes
+      - ${A2_HOST_REPORT_ROOT:-/home/unitree/ws/device-navigation/runtime/reports}:/opt/a2_system_ws/runtime/reports
+      - ${A2_HOST_TEST_RECORD_ROOT:-/home/unitree/ws/device-navigation/runtime/test_records}:/opt/a2_system_ws/runtime/test_records
+      # DLIO is a ROS2 feature-branch package installed on the A2 host.
+      - ${A2_HOST_DLIO_INSTALL:-/home/unitree/ws/device-navigation/install/direct_lidar_inertial_odometry}:/opt/a2_system_ws/install/direct_lidar_inertial_odometry:ro
+      - ${A2_HOST_DLIO_BUILD:-/home/unitree/ws/device-navigation/build/direct_lidar_inertial_odometry}:/home/unitree/ws/device-navigation/build/direct_lidar_inertial_odometry:ro

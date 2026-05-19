@@ -1,4 +1,4 @@
-ground_segmentation_cpp:
+/**:
   ros__parameters:
     # -- input -----------------------------------------------------------
     input_topic: /jt128/front/points
@@ -29,7 +29,53 @@ ground_segmentation_cpp:
     traversability_height_ema_alpha: 0.3
     traversability_min_count_known: 3
 
+    # -- V2 multi-metric traversability ----------------------------------
+    traversability_v2_enabled: true
+    traversability_cell_timeout_sec: 1.5
+    traversability_confidence_decay_per_sec: 0.8
+    traversability_min_confidence: 0.35
+    traversability_unknown_policy: "ignore"     # "ignore" | "lethal" | "soft_cost"
+    traversability_unknown_cost: 30
+    traversability_max_slope_deg: 18.0
+    traversability_max_roughness_m: 0.06
+    traversability_max_step_height_m: 0.10
+    traversability_obstacle_density_threshold: 0.25
+
+    # -- V2 debug layers (off by default — enable only for tuning) -------
+    traversability_debug_enabled: false
+    traversability_debug_publish_hz: 1.0
+    debug_topic_prefix: /a2/traversability/debug
+
     # -- misc ------------------------------------------------------------
-    frame_id: map
+    # Transform points into target_frame before classification/publishing.
+    # Keep legacy frame_id empty; if non-empty, it overrides target_frame.
+    target_frame: map
+    # The ray ground classifier must run in a robot-local frame. Publishing can
+    # remain in map for Nav2/map consumers, but slope/radius logic must not use
+    # map-origin coordinates.
+    classification_frame: base_link
+    # GroundSegmenter thresholds assume classifier z=0 is the local ground
+    # plane. JT128/A2 field data shows the front floor plane is tilted/offset in
+    # base_link, so classify on height residual to this calibrated plane while
+    # keeping published cloud coordinates physical.
+    classification_z_offset_m: 0.0
+    classification_ground_plane_enabled: true
+    classification_ground_plane_a: -0.1413
+    classification_ground_plane_b: 0.0850
+    classification_ground_plane_c: 0.7545
+    frame_id: ""
+    transform_timeout_sec: 0.2
+
+    # Drop JT128 near-origin/self returns before they can enter STOP polygons.
+    input_min_range_m: 0.15
+    self_filter_enabled: true
+    self_filter_frame: base_link
+    self_filter_min_x: -0.70
+    self_filter_max_x: 0.95
+    self_filter_min_y: -0.55
+    self_filter_max_y: 0.55
+    self_filter_min_z: -0.30
+    self_filter_max_z: 0.90
+
     process_every_n: 1
     max_consecutive_failures: 5

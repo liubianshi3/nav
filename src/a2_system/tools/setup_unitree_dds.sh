@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_ROOT="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE_ROOT="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/config/network.yaml"
 FALLBACK_CONFIG_FILE="${WORKSPACE_ROOT}/src/a2_system/config/network.yaml"
 CONFIG_FILE="${A2_NETWORK_CONFIG:-}"

@@ -163,7 +163,7 @@ def check_pose_goal_controller_3d(result: CheckResult) -> None:
     result.require(params.get("goal_topic") == "/a2/nav3/goal_pose", "3D pose controller goal_topic must remain /a2/nav3/goal_pose")
     result.require(params.get("pose_topic") == "/a2/relocalization/pose", "3D pose controller pose_topic must remain /a2/relocalization/pose")
     result.require(params.get("cmd_topic") == "/cmd_vel", "3D pose controller cmd_topic must remain /cmd_vel")
-    result.require(bool(params.get("dry_run", False)), "3D pose controller must default to dry_run")
+    result.require(not bool(params.get("dry_run", True)), "3D pose controller must default to live motion")
     result.require(bool(params.get("require_localization_ok", False)), "3D pose controller must require localization_ok")
     result.require(bool(params.get("require_obstacle_cloud", False)), "3D pose controller must require obstacle pointcloud")
     result.require(params.get("obstacle_cloud_topic") == "/jt128/front/points", "3D pose controller obstacle_cloud_topic must remain /jt128/front/points")

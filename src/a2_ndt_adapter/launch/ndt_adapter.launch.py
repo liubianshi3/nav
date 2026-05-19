@@ -62,8 +62,8 @@ def generate_launch_description():
             'auto_activate_ndt': ParameterValue(auto_activate_ndt, value_type=bool),
             'ndt_trigger_service': '/trigger_node_srv',
             'ndt_trigger_retry_sec': 1.0,
-            'ndt_initial_guess_publish_period_sec': 0.10,
-
+            'ndt_initial_guess_publish_period_sec': 0.02,
+            'align_periodic_initial_guess_to_cloud': False,
             'max_map_to_odom_translation_step': ParameterValue(max_map_to_odom_translation_step, value_type=float),
             'max_map_to_odom_rotation_step_deg': ParameterValue(max_map_to_odom_rotation_step_deg, value_type=float),
         }],

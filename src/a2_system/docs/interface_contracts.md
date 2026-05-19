@@ -22,6 +22,9 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/camera/image_raw/compressed` | `sensor_msgs/msg/CompressedImage` | A2 camera driver or image transport | web console | real | Preferred low-bandwidth camera stream |
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | Nav2 or `pose_goal_controller_3d` | `a2_control_bridge` | real | Canonical velocity command |
 | `/a2/command_limited` | `geometry_msgs/msg/TwistStamped` | `a2_control_bridge` | diagnostics | real | Saturated and gated command |
+| `/a2/control/gait_type` | `std_msgs/msg/Int32` | tools/UI | `a2_control_bridge` | real | Unitree A2 `SportClient::SwitchGait` request applied before `Move()` |
+| `/a2/control/speed_level` | `std_msgs/msg/Int32` | tools/UI | `a2_control_bridge` | real | Unitree A2 `SportClient::SpeedLevel` request applied with gait control |
+| `/a2/control/body_height` | `std_msgs/msg/Float32` | tools/UI | `a2_control_bridge` | real | Optional Unitree A2 `SportClient::BodyHeight` request when enabled |
 | `/a2/localization_ok` | `std_msgs/msg/Bool` | `localization_gate` | safety, control | real | Motion gate input |
 | `/a2/localization/status` | `std_msgs/msg/String` | `localization_gate` | tools/UI | real | `mode=...;state=...;ready=...;reason=...` |
 | `/a2/allow_motion` | `std_msgs/msg/Bool` | `safety_supervisor` | `a2_control_bridge` | real | Final motion allow bit |
@@ -52,6 +55,7 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/a2/scan_mission/goal` | `geometry_msgs/msg/PoseStamped` | `auto_scan_mission` | Nav2 diagnostics/UI | real | Current mission goal, frame `map` |
 | `/a2/sdk/status` | `std_msgs/msg/String` | `a2_sdk_bridge` | tools/UI | real | Unified SDK readiness report |
 | `/a2/control/status` | `std_msgs/msg/String` | `a2_control_bridge` | tools/UI | real | Unified control bridge readiness and motion gate report |
+| `/a2/control/state` | `a2_interfaces/msg/ControlState` | `a2_control_bridge` | platform, tools/UI | real/gazebo/mock | Structured control status, last high-level command, SDK return code, and normalized error code |
 | `/a2/real/report` | `std_msgs/msg/String` | `real_readiness_monitor` | tools/UI | real | Aggregate stack readiness report with flattened `slam_state/slam_ready/slam_reason` |
 | `/a2/ndt/healthy` | `std_msgs/msg/Bool` | `ndt_health_monitor` | `safety_supervisor` | real | NDT health gate (healthy=true) |
 | `/a2/ndt/health_status` | `std_msgs/msg/String` | `ndt_health_monitor` | tools/UI | real | `state={healthy|degrading|failed|ndt_not_ready};score=...;ndt_ready=...` |
@@ -73,6 +77,7 @@ This file locks the ROS 2 interfaces exposed by the host-side A2 stack.
 | `/map_manager/set_mode` | `a2_interfaces/srv/SetMode` | `map_manager` | Switch mapping, localization, navigation mode |
 | `/slam_manager/set_mode` | `a2_interfaces/srv/SetMode` | `slam_orchestrator` | Switch SLAM runtime mode |
 | `/a2/task_manager/command` | `a2_interfaces/srv/NavCommand` | `task_manager` | Unified command layer for map management, single-goal navigation, initial pose, route asset CRUD, and route mission lifecycle |
+| `/a2/control/command` | `a2_interfaces/srv/MotionCommand` | `a2_control_bridge` | Platform-facing motion primitive entrypoint: `stop`, `stand_up`, `stand_down`, `balance_stand`, `recovery_stand`, `damp`, `switch_gait`, `speed_level`, `body_height`, `set_auto_recovery` |
 
 ## TF Ownership
 

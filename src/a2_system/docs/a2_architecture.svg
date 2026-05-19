@@ -1,0 +1,224 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 980" width="1400" height="980">
+  <style>
+    text {
+      font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif;
+      fill: #111827;
+    }
+    .title { font-size: 28px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #6b7280; }
+    .layer-title { font-size: 16px; font-weight: 700; fill: #374151; }
+    .node-title { font-size: 15px; font-weight: 700; }
+    .node-sub { font-size: 12px; fill: #6b7280; }
+    .topic { font-size: 11px; fill: #4b5563; }
+    .legend { font-size: 12px; fill: #4b5563; }
+    .layer { fill: #f9fafb; stroke: #d1d5db; stroke-width: 1.5; stroke-dasharray: 8 6; rx: 14; ry: 14; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; rx: 8; ry: 8; }
+    .node-blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .node-green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .node-purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .node-orange { fill: #fff7ed; stroke: #fed7aa; }
+    .node-red { fill: #fef2f2; stroke: #fecaca; }
+    .node-teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .bus { fill: #111827; stroke: #374151; stroke-width: 1.5; rx: 8; ry: 8; }
+    .bus-text { fill: #ffffff; font-size: 13px; font-weight: 700; }
+    .bus-sub { fill: #d1d5db; font-size: 11px; }
+    .arrow-main { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrow-blue); }
+    .arrow-data { stroke: #16a34a; stroke-width: 2; fill: none; marker-end: url(#arrow-green); }
+    .arrow-control { stroke: #dc2626; stroke-width: 2; fill: none; marker-end: url(#arrow-red); }
+    .arrow-async { stroke: #9333ea; stroke-width: 2; fill: none; marker-end: url(#arrow-purple); stroke-dasharray: 6 5; }
+    .arrow-muted { stroke: #6b7280; stroke-width: 1.6; fill: none; marker-end: url(#arrow-gray); stroke-dasharray: 5 5; }
+    .label-bg { fill: #ffffff; opacity: 0.94; }
+  </style>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="980" fill="#ffffff"/>
+
+  <text class="title" x="48" y="54">A2 3D 导航系统架构</text>
+  <text class="subtitle" x="48" y="80">Unitree A2 host-side ROS 2 stack: JT128 感知、NDT 定位、Nav2 3D 导航、安全门控、SDK2 控制闭环</text>
+
+  <rect class="layer" x="36" y="112" width="1328" height="112"/>
+  <text class="layer-title" x="58" y="142">任务与上位接口层</text>
+
+  <rect class="node node-purple" x="86" y="160" width="210" height="48"/>
+  <text class="node-title" x="108" y="182">Web Console / gRPC</text>
+  <text class="node-sub" x="108" y="200">地图、路线、任务、状态</text>
+
+  <rect class="node node-purple" x="360" y="160" width="210" height="48"/>
+  <text class="node-title" x="382" y="182">task_manager</text>
+  <text class="node-sub" x="382" y="200">SetMode / NavCommand / RunMission</text>
+
+  <rect class="node node-purple" x="634" y="160" width="230" height="48"/>
+  <text class="node-title" x="656" y="182">auto_scan_mission</text>
+  <text class="node-sub" x="656" y="200">waypoints + reports + mission action</text>
+
+  <rect class="node node-teal" x="940" y="160" width="250" height="48"/>
+  <text class="node-title" x="962" y="182">diagnostic_aggregator</text>
+  <text class="node-sub" x="962" y="200">/diagnostics, /a2/health/status</text>
+
+  <rect class="layer" x="36" y="254" width="1328" height="142"/>
+  <text class="layer-title" x="58" y="284">硬件、驱动与状态层</text>
+
+  <rect class="node node-orange" x="76" y="310" width="188" height="56"/>
+  <text class="node-title" x="98" y="333">Unitree A2</text>
+  <text class="node-sub" x="98" y="351">robot body + SDK2 DDS</text>
+
+  <rect class="node node-blue" x="332" y="310" width="190" height="56"/>
+  <text class="node-title" x="354" y="333">a2_sdk_bridge</text>
+  <text class="node-sub" x="354" y="351">/a2/raw_state, /a2/sdk/status</text>
+
+  <rect class="node node-blue" x="590" y="310" width="210" height="56"/>
+  <text class="node-title" x="612" y="333">a2_state_publisher</text>
+  <text class="node-sub" x="612" y="351">/odom, /imu/data, /robot_state</text>
+
+  <rect class="node node-orange" x="868" y="310" width="190" height="56"/>
+  <text class="node-title" x="890" y="333">JT128 LiDAR</text>
+  <text class="node-sub" x="890" y="351">front points + lidar IMU</text>
+
+  <rect class="node node-blue" x="1126" y="310" width="190" height="56"/>
+  <text class="node-title" x="1148" y="333">jt128_driver</text>
+  <text class="node-sub" x="1148" y="351">/jt128/front/points</text>
+
+  <rect class="layer" x="36" y="426" width="1328" height="174"/>
+  <text class="layer-title" x="58" y="456">感知、地图与定位层</text>
+
+  <rect class="node node-green" x="76" y="486" width="210" height="62"/>
+  <text class="node-title" x="98" y="510">pointcloud_guard</text>
+  <text class="node-sub" x="98" y="528">点云新鲜度 / lidar connected</text>
+  <text class="topic" x="98" y="543">/a2/lidar/status</text>
+
+  <rect class="node node-green" x="350" y="486" width="230" height="62"/>
+  <text class="node-title" x="372" y="510">ground_segmentation</text>
+  <text class="node-sub" x="372" y="528">ground / obstacle / traversability</text>
+  <text class="topic" x="372" y="543">/a2/obstacle/points, /a2/traversability</text>
+
+  <rect class="node node-green" x="650" y="486" width="218" height="62"/>
+  <text class="node-title" x="672" y="510">map_manager</text>
+  <text class="node-sub" x="672" y="528">save / load / promote 3D maps</text>
+  <text class="topic" x="672" y="543">/a2/map/pointcloud_3d</text>
+
+  <rect class="node node-green" x="930" y="486" width="220" height="62"/>
+  <text class="node-title" x="952" y="510">a2_ndt_adapter</text>
+  <text class="node-sub" x="952" y="528">NDT initial guess + map correction</text>
+  <text class="topic" x="952" y="543">/a2/relocalization/pose</text>
+
+  <rect class="node node-green" x="1190" y="486" width="136" height="62"/>
+  <text class="node-title" x="1208" y="510">DLIO</text>
+  <text class="node-sub" x="1208" y="528">odometry source</text>
+  <text class="topic" x="1208" y="543">/jt128/dlio/odom</text>
+
+  <rect class="bus" x="438" y="570" width="520" height="34"/>
+  <text class="bus-text" x="474" y="592">TF Bus</text>
+  <text class="bus-sub" x="546" y="592">odom/base_link from state, map/odom from NDT or odom_only</text>
+
+  <rect class="layer" x="36" y="630" width="1328" height="146"/>
+  <text class="layer-title" x="58" y="660">导航、规划与行为树层</text>
+
+  <rect class="node node-blue" x="106" y="690" width="218" height="56"/>
+  <text class="node-title" x="128" y="713">Nav2 BT Navigator</text>
+  <text class="node-sub" x="128" y="731">/navigate_to_pose, BT XML</text>
+
+  <rect class="node node-blue" x="392" y="690" width="208" height="56"/>
+  <text class="node-title" x="414" y="713">planner_server</text>
+  <text class="node-sub" x="414" y="731">SmacPlanner2D on projected map</text>
+
+  <rect class="node node-blue" x="668" y="690" width="208" height="56"/>
+  <text class="node-title" x="690" y="713">controller_server</text>
+  <text class="node-sub" x="690" y="731">DWB, x/y/yaw velocity samples</text>
+
+  <rect class="node node-blue" x="944" y="690" width="208" height="56"/>
+  <text class="node-title" x="966" y="713">velocity_smoother</text>
+  <text class="node-sub" x="966" y="731">open-loop smoothing</text>
+
+  <rect class="node node-blue" x="1200" y="690" width="126" height="56"/>
+  <text class="node-title" x="1218" y="713">DWA-Lite</text>
+  <text class="node-sub" x="1218" y="731">fallback 3D</text>
+
+  <rect class="layer" x="36" y="806" width="1328" height="118"/>
+  <text class="layer-title" x="58" y="836">安全门控与执行层</text>
+
+  <rect class="node node-red" x="126" y="866" width="230" height="48"/>
+  <text class="node-title" x="148" y="888">safety_supervisor</text>
+  <text class="node-sub" x="148" y="906">lidar + map + localization gate</text>
+
+  <rect class="node node-red" x="438" y="866" width="230" height="48"/>
+  <text class="node-title" x="460" y="888">collision_monitor</text>
+  <text class="node-sub" x="460" y="906">/cmd_vel to /cmd_vel_safe</text>
+
+  <rect class="node node-orange" x="750" y="866" width="230" height="48"/>
+  <text class="node-title" x="772" y="888">a2_control_bridge</text>
+  <text class="node-sub" x="772" y="906">motion limits + timeout stop</text>
+
+  <rect class="node node-orange" x="1062" y="866" width="194" height="48"/>
+  <text class="node-title" x="1084" y="888">A2 Motion</text>
+  <text class="node-sub" x="1084" y="906">SDK2 motion command</text>
+
+  <path class="arrow-main" d="M 264 338 L 332 338"/>
+  <path class="arrow-main" d="M 522 338 L 590 338"/>
+  <path class="arrow-main" d="M 1058 338 L 1126 338"/>
+  <path class="arrow-data" d="M 1221 366 L 1221 420 L 181 420 L 181 486"/>
+  <path class="arrow-data" d="M 181 548 L 181 604 L 465 604 L 465 548"/>
+  <path class="arrow-data" d="M 286 517 L 350 517"/>
+  <path class="arrow-data" d="M 580 517 L 650 517"/>
+  <path class="arrow-data" d="M 868 517 L 930 517"/>
+  <path class="arrow-data" d="M 1190 517 L 1150 517"/>
+  <path class="arrow-data" d="M 1040 548 L 1040 588 L 958 588"/>
+  <path class="arrow-data" d="M 695 366 L 695 570"/>
+  <path class="arrow-main" d="M 749 208 L 749 238 L 50 238 L 50 718 L 106 718"/>
+  <path class="arrow-main" d="M 324 718 L 392 718"/>
+  <path class="arrow-main" d="M 600 718 L 668 718"/>
+  <path class="arrow-main" d="M 876 718 L 944 718"/>
+  <path class="arrow-main" d="M 1048 746 L 1048 800 L 553 800 L 553 866"/>
+  <path class="arrow-control" d="M 668 890 L 750 890"/>
+  <path class="arrow-control" d="M 980 890 L 1062 890"/>
+  <path class="arrow-control" d="M 1159 866 L 1159 842 L 50 842 L 50 338 L 76 338"/>
+  <path class="arrow-control" d="M 356 890 L 438 890"/>
+  <path class="arrow-async" d="M 465 208 L 465 238 L 1335 238 L 1335 470 L 759 470 L 759 486"/>
+  <path class="arrow-async" d="M 864 184 L 940 184"/>
+  <path class="arrow-async" d="M 1065 208 L 1065 252 L 1065 310"/>
+  <path class="arrow-async" d="M 1065 208 L 1065 430 L 181 430 L 181 486"/>
+  <path class="arrow-async" d="M 1065 208 L 1065 624 L 1335 624 L 1335 850 L 241 850 L 241 866"/>
+  <path class="arrow-muted" d="M 930 548 L 930 570"/>
+  <path class="arrow-muted" d="M 695 604 L 695 690"/>
+  <path class="arrow-muted" d="M 759 548 L 759 570"/>
+
+  <rect class="label-bg" x="286" y="322" width="48" height="18"/>
+  <text class="topic" x="291" y="335">state</text>
+  <rect class="label-bg" x="536" y="322" width="44" height="18"/>
+  <text class="topic" x="541" y="335">raw</text>
+  <rect class="label-bg" x="1118" y="398" width="114" height="18"/>
+  <text class="topic" x="1123" y="411">PointCloud2</text>
+  <rect class="label-bg" x="998" y="770" width="62" height="18"/>
+  <text class="topic" x="1003" y="783">/cmd_vel</text>
+  <rect class="label-bg" x="1008" y="874" width="42" height="18"/>
+  <text class="topic" x="1013" y="887">SDK2</text>
+
+  <g transform="translate(48 934)">
+    <line x1="0" y1="8" x2="32" y2="8" class="arrow-main"/>
+    <text class="legend" x="42" y="12">主控制流 / 任务导航</text>
+    <line x1="184" y1="8" x2="216" y2="8" class="arrow-data"/>
+    <text class="legend" x="226" y="12">传感器、地图、定位数据</text>
+    <line x1="420" y1="8" x2="452" y2="8" class="arrow-control"/>
+    <text class="legend" x="462" y="12">安全门控与运动执行</text>
+    <line x1="642" y1="8" x2="674" y2="8" class="arrow-async"/>
+    <text class="legend" x="684" y="12">状态诊断 / 异步报告</text>
+    <line x1="862" y1="8" x2="894" y2="8" class="arrow-muted"/>
+    <text class="legend" x="904" y="12">TF / 依赖关系</text>
+  </g>
+</svg>

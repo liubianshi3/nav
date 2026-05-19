@@ -16,6 +16,11 @@ map_manager:
     octomap_robot_height: 1.0
     octomap_min_obstacle_points: 2
     octomap_border_padding: 1.0
+    octomap_clear_current_pose_enabled: true
+    octomap_clear_current_pose_radius: 1.25
+    octomap_clear_pose_frames: ["map", "odom"]
+    octomap_clear_base_frame: base_link
+    octomap_clear_tf_timeout_sec: 0.2
     octomap_projection_timeout_sec: 30.0
     active_map_topic: /a2/map_manager/active_map
     mode_topic: /a2/system_mode

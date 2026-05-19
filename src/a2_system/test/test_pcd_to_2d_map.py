@@ -189,6 +189,58 @@ def test_clear_radius_with_ignore_keeps_origin_in_grid_and_free():
     assert cleared > 0
 
 
+def test_clear_world_point_marks_ndt_base_link_pose_free():
+    # The navigation start pose is not necessarily the map origin after NDT
+    # relocalization. Clearing only (0, 0) must not be mistaken for clearing the
+    # robot's current map-frame base_link pose.
+    start_x, start_y = 1.14, -2.76
+    far_x, far_y = 5.0, 0.0
+    xs = [start_x] * 4 + [far_x] * 4
+    ys = [start_y] * 4 + [far_y] * 4
+    zs = [0.5] * 8
+
+    origin_only, ox, oy, width, height, _ = pcd_to_2d_map.project(
+        xs, ys, zs,
+        resolution=0.1,
+        ground_threshold=0.08,
+        ceiling_threshold=2.0,
+        min_obstacle_points=2,
+        min_ground_points=1,
+        border_padding_m=0.5,
+        dilate_radius_cells=0,
+        ignore_obstacles_within_radius=0.0,
+        clear_radius_around_origin=0.45,
+    )
+    col = int((start_x - ox) / 0.1)
+    world_r = int((start_y - oy) / 0.1)
+    pgm_row = height - 1 - world_r
+    assert origin_only[pgm_row * width + col] == 100
+
+    cleared_grid, ox2, oy2, width2, height2, cleared = pcd_to_2d_map.project(
+        xs, ys, zs,
+        resolution=0.1,
+        ground_threshold=0.08,
+        ceiling_threshold=2.0,
+        min_obstacle_points=2,
+        min_ground_points=1,
+        border_padding_m=0.5,
+        dilate_radius_cells=0,
+        ignore_obstacles_within_radius=0.0,
+        clear_radius_around_origin=0.0,
+        clear_world_points=[(start_x, start_y, 0.45)],
+    )
+    col2 = int((start_x - ox2) / 0.1)
+    world_r2 = int((start_y - oy2) / 0.1)
+    pgm_row2 = height2 - 1 - world_r2
+    assert cleared_grid[pgm_row2 * width2 + col2] == 0
+    assert cleared > 0
+
+    far_col = int((far_x - ox2) / 0.1)
+    far_world_r = int((far_y - oy2) / 0.1)
+    far_pgm_row = height2 - 1 - far_world_r
+    assert cleared_grid[far_pgm_row * width2 + far_col] == 100
+
+
 def test_cli_dilate_default_is_zero():
     # The CLI default must stay 0 so we do not reintroduce projection-stage
     # inflation on top of Nav2 costmap inflation.

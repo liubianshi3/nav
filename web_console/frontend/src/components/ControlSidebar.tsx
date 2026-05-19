@@ -1,4 +1,10 @@
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent, TouchEvent } from "react";
+
 import type {
+  GaitControlCommand,
+  ManualVelocityCommand,
+  MotionAuthorizationStatus,
   NavigationGoal,
   NavigationTaskState,
   RobotPose,
@@ -19,6 +25,9 @@ export interface ControlSidebarProps {
   selectedGoal: NavigationGoal | null;
   canSendGoal: boolean;
   canSetInitialPose: boolean;
+  initialPoseBusy: boolean;
+  initialPoseMessage: string | null;
+  initialPoseError: string | null;
   startMappingReason: string | null;
   startNavigationReason: string | null;
   saveMapReason: string | null;
@@ -86,6 +95,9 @@ export function ControlSidebar(props: ControlSidebarProps) {
         selectedGoal={props.selectedGoal}
         canSendGoal={props.canSendGoal}
         canSetInitialPose={props.canSetInitialPose}
+        initialPoseBusy={props.initialPoseBusy}
+        initialPoseMessage={props.initialPoseMessage}
+        initialPoseError={props.initialPoseError}
         sendGoalReason={props.sendGoalReason}
         setInitialPoseReason={props.setInitialPoseReason}
         onSetInitialPose={props.onSetInitialPose}
@@ -109,7 +121,7 @@ export function ModeControlSection({
   return (
     <section className="panel">
       <h2>模式控制</h2>
-      <TaskStateChip state={stack?.mode ?? "stopped"} />
+      <StackModeChip mode={stack?.mode ?? "stopped"} />
       <StatusMini label="pid" value={formatNullable(stack?.pid)} />
       <StatusMini label="地图" value={formatNullable(stack?.selected_map_id)} />
       <p className="panel-message">
@@ -176,6 +188,7 @@ export function MapManagementSection({
   const isMapping = stack?.mode === "mapping";
   const isNavigation = stack?.mode === "navigation";
   const selectedMap = maps.find((map) => map.map_id === selectedMapId) ?? null;
+  const selectedMapNavigationBlocked = selectedMap?.navigation_compatible === false;
   const pointcloudArtifact =
     selectedMap?.artifacts.find((artifact) => artifact.kind === "native_pointcloud_map_3d") ??
     selectedMap?.artifacts.find((artifact) => artifact.kind === "pointcloud_snapshot_3d") ??
@@ -196,13 +209,13 @@ export function MapManagementSection({
         <option value="">选择地图</option>
         {maps.map((map) => (
           <option key={map.map_id} value={map.map_id}>
-            {map.map_id}
+            {map.navigation_compatible ? map.map_id : `${map.map_id}（不可用于当前导航）`}
           </option>
         ))}
       </select>
       <button
         className="primary-button full-width-button"
-        disabled={stackBusy || !selectedMapId || isNavigation}
+        disabled={stackBusy || !selectedMapId || isNavigation || selectedMapNavigationBlocked}
         onClick={onStartNavigation}
       >
         启动导航模式
@@ -210,6 +223,10 @@ export function MapManagementSection({
       <p className="panel-message">{formatNullable(startNavigationReason, "当前地图可用于导航启动")}</p>
       {selectedMap ? (
         <div className="map-asset-card">
+          <StatusMini
+            label="navigation"
+            value={selectedMap.navigation_compatible ? "compatible" : "incompatible"}
+          />
           <StatusMini label="representation" value={formatNullable(selectedMap.representation)} />
           <StatusMini label="projected 2D source" value={formatNullable(selectedMap.source_topic)} />
           <StatusMini
@@ -259,7 +276,6 @@ export function MapManagementSection({
             onChange={(event) => onMotionModeChange(event.target.value)}
           >
             <option value="planning_only">只跑规划/定位</option>
-            <option value="dry_run">Dry-run 控制桥</option>
             <option value="live_motion">Live-motion 真机</option>
           </select>
         </div>
@@ -291,9 +307,7 @@ export function MapManagementSection({
           ? collisionMonitorProfile === "live-validation"
             ? "Live-validation 会放宽近场点数门，仅限空阔现场人工看护验证。"
             : "Live-motion 会允许真实控制链输出，启动前必须确认现场安全。"
-          : motionMode === "dry_run"
-            ? "Dry-run 会启动控制桥但保持 mock，用于 Web 闭环验证。"
-            : "只跑定位、地图和规划组件，不启动真实运动链。"}
+          : "只跑定位、地图和规划组件，不启动真实运动链。"}
       </div>
       <label className="form-label" htmlFor="save-map-id">
         新地图名
@@ -343,10 +357,273 @@ export function NavigationTaskSection({
   );
 }
 
+interface ManualControlSectionProps {
+  disabled: boolean;
+  busy: boolean;
+  disabledReason: string | null;
+  lastMessage: string | null;
+  cmdTopic: string | null;
+  motionAuthorization: MotionAuthorizationStatus | null;
+  motionAuthorizationBusy: boolean;
+  onQueryMotionAuthorization: () => void;
+  onAuthorizeMotion: () => void;
+  onManualVelocityCommand: (command: ManualVelocityCommand) => void;
+}
+
+interface GaitControlSectionProps {
+  disabled: boolean;
+  busy: boolean;
+  lastMessage: string | null;
+  controlFields: Record<string, string> | null | undefined;
+  rawGaitType: number | null | undefined;
+  onGaitControlCommand: (command: GaitControlCommand) => void;
+}
+
+const MANUAL_COMMANDS: Record<string, ManualVelocityCommand> = {
+  forward: { linear_x: 0.35, linear_y: 0.0, angular_z: 0.0 },
+  backward: { linear_x: -0.25, linear_y: 0.0, angular_z: 0.0 },
+  left: { linear_x: 0.0, linear_y: 0.0, angular_z: 0.7 },
+  right: { linear_x: 0.0, linear_y: 0.0, angular_z: -0.7 },
+  stop: { linear_x: 0.0, linear_y: 0.0, angular_z: 0.0 },
+};
+
+const MIN_MANUAL_PRESS_MS = 320;
+
+export function ManualControlSection({
+  disabled,
+  busy,
+  disabledReason,
+  lastMessage,
+  cmdTopic,
+  motionAuthorization,
+  motionAuthorizationBusy,
+  onQueryMotionAuthorization,
+  onAuthorizeMotion,
+  onManualVelocityCommand,
+}: ManualControlSectionProps) {
+  const buttonDisabled = disabled;
+  const motionAlreadyAuthorized =
+    motionAuthorization?.standing === true && motionAuthorization?.motion_authorized === true;
+  const topicLabel = cmdTopic && cmdTopic.trim() ? cmdTopic : "速度控制 topic";
+  const repeatTimerRef = useRef<number | null>(null);
+  const stopDelayTimerRef = useRef<number | null>(null);
+  const pressStartedAtRef = useRef<number>(0);
+  const activeCommandRef = useRef<ManualVelocityCommand | null>(null);
+  const lastDirectSendRef = useRef<{ key: keyof typeof MANUAL_COMMANDS; at: number } | null>(null);
+  const [activeKey, setActiveKey] = useState<keyof typeof MANUAL_COMMANDS | null>(null);
+
+  const clearRepeat = (sendStop: boolean) => {
+    if (repeatTimerRef.current !== null) {
+      window.clearInterval(repeatTimerRef.current);
+      repeatTimerRef.current = null;
+    }
+    if (stopDelayTimerRef.current !== null) {
+      window.clearTimeout(stopDelayTimerRef.current);
+      stopDelayTimerRef.current = null;
+    }
+    if (sendStop && activeCommandRef.current) {
+      onManualVelocityCommand(MANUAL_COMMANDS.stop);
+    }
+    activeCommandRef.current = null;
+    setActiveKey(null);
+  };
+
+  useEffect(() => () => clearRepeat(false), []);
+
+  const sendCommand = (key: keyof typeof MANUAL_COMMANDS) => {
+    lastDirectSendRef.current = { key, at: Date.now() };
+    onManualVelocityCommand(MANUAL_COMMANDS[key]);
+  };
+
+  const shouldSkipClickReplay = (key: keyof typeof MANUAL_COMMANDS) => {
+    const last = lastDirectSendRef.current;
+    return Boolean(last && last.key === key && Date.now() - last.at < 450);
+  };
+
+  const startCommand = (key: keyof typeof MANUAL_COMMANDS) => {
+    if (buttonDisabled) {
+      return;
+    }
+    const command = MANUAL_COMMANDS[key];
+    clearRepeat(false);
+    setActiveKey(key);
+    pressStartedAtRef.current = Date.now();
+    sendCommand(key);
+    if (key === "stop") {
+      return;
+    }
+    activeCommandRef.current = command;
+    repeatTimerRef.current = window.setInterval(() => {
+      onManualVelocityCommand(command);
+    }, 100);
+  };
+
+  const finishCommand = () => {
+    if (!activeCommandRef.current) {
+      clearRepeat(false);
+      return;
+    }
+    if (repeatTimerRef.current !== null) {
+      window.clearInterval(repeatTimerRef.current);
+      repeatTimerRef.current = null;
+    }
+    const remainingMs = MIN_MANUAL_PRESS_MS - (Date.now() - pressStartedAtRef.current);
+    if (remainingMs <= 0) {
+      clearRepeat(true);
+      return;
+    }
+    if (stopDelayTimerRef.current !== null) {
+      window.clearTimeout(stopDelayTimerRef.current);
+    }
+    stopDelayTimerRef.current = window.setTimeout(() => clearRepeat(true), remainingMs);
+  };
+
+  const handleMouseDown = (key: keyof typeof MANUAL_COMMANDS, event: MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    startCommand(key);
+  };
+
+  const handleTouchStart = (key: keyof typeof MANUAL_COMMANDS, _event: TouchEvent<HTMLButtonElement>) => {
+    startCommand(key);
+  };
+
+  const commandButton = (key: keyof typeof MANUAL_COMMANDS, label: string, className: string, title: string) => (
+    <button
+      type="button"
+      className={`manual-control-button ${className} ${activeKey === key ? "manual-control-button-active" : ""}`}
+      disabled={buttonDisabled}
+      title={title}
+      aria-label={title}
+      onMouseDown={(event) => handleMouseDown(key, event)}
+      onMouseUp={finishCommand}
+      onMouseLeave={(event) => {
+        if (event.buttons !== 0) {
+          finishCommand();
+        }
+      }}
+      onTouchStart={(event) => handleTouchStart(key, event)}
+      onTouchEnd={finishCommand}
+      onTouchCancel={finishCommand}
+      onClick={() => {
+        if (shouldSkipClickReplay(key)) {
+          return;
+        }
+        sendCommand(key);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onManualVelocityCommand(MANUAL_COMMANDS[key]);
+        }
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <section className="panel">
+      <h2>手动控制</h2>
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={motionAuthorizationBusy}
+          onClick={onQueryMotionAuthorization}
+        >
+          查询授权
+        </button>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={buttonDisabled || motionAuthorizationBusy || motionAlreadyAuthorized}
+          onClick={onAuthorizeMotion}
+        >
+          {motionAlreadyAuthorized ? "已授权" : "启动运动授权"}
+        </button>
+      </div>
+      <div className="manual-auth-grid">
+        <StatusMini label="auth" value={motionAuthorization?.state ?? "—"} />
+        <StatusMini label="standing" value={motionAuthorization ? String(motionAuthorization.standing) : "—"} />
+        <StatusMini label="motion" value={motionAuthorization ? String(motionAuthorization.motion_authorized) : "—"} />
+      </div>
+      <div className="manual-control-grid">
+        <div />
+        {commandButton("forward", "↑", "manual-control-forward", "前进")}
+        <div />
+        {commandButton("left", "←", "manual-control-left", "左转")}
+        {commandButton("stop", "■", "manual-control-stop", "停止")}
+        {commandButton("right", "→", "manual-control-right", "右转")}
+        <div />
+        {commandButton("backward", "↓", "manual-control-backward", "后退")}
+        <div />
+      </div>
+      <p className="panel-message">{formatNullable(disabledReason ?? lastMessage, `按住方向键持续发布 ${topicLabel}，松开发送停止`)}</p>
+    </section>
+  );
+}
+
+export function GaitControlSection({
+  disabled,
+  busy,
+  lastMessage,
+  controlFields,
+  rawGaitType,
+  onGaitControlCommand,
+}: GaitControlSectionProps) {
+  const buttonDisabled = disabled || busy;
+  const currentGait = controlFields?.gait_type ?? (rawGaitType == null ? "—" : String(rawGaitType));
+  const gaitState = controlFields?.gait_state ?? "unknown";
+  const speedLevel = controlFields?.speed_level ?? "—";
+
+  return (
+    <section className="panel">
+      <h2>步态控制</h2>
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={buttonDisabled}
+          onClick={() => onGaitControlCommand({ gait_type: 1, speed_level: 1 })}
+        >
+          步态 1
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={buttonDisabled}
+          onClick={() => onGaitControlCommand({ gait_type: 2, speed_level: 2 })}
+        >
+          步态 2
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={buttonDisabled}
+          onClick={() => onGaitControlCommand({ gait_type: 3, speed_level: 1 })}
+        >
+          步态 3
+        </button>
+      </div>
+      <div className="status-grid compact-status-grid">
+        <StatusMini label="gait" value={currentGait} />
+        <StatusMini label="speed" value={speedLevel} />
+        <StatusMini label="state" value={gaitState} />
+      </div>
+      <p className="panel-message">{formatNullable(lastMessage, "等待步态指令")}</p>
+    </section>
+  );
+}
+
 export function SelectedGoalSection({
   selectedGoal,
   canSendGoal,
   canSetInitialPose,
+  initialPoseBusy,
+  initialPoseMessage,
+  initialPoseError,
   sendGoalReason,
   setInitialPoseReason,
   onSetInitialPose,
@@ -357,12 +634,22 @@ export function SelectedGoalSection({
   | "selectedGoal"
   | "canSendGoal"
   | "canSetInitialPose"
+  | "initialPoseBusy"
+  | "initialPoseMessage"
+  | "initialPoseError"
   | "sendGoalReason"
   | "setInitialPoseReason"
   | "onSetInitialPose"
   | "onSendGoal"
   | "onCancelGoal"
 >) {
+  const initialPoseFeedback = initialPoseError ?? initialPoseMessage ?? setInitialPoseReason;
+  const initialPoseFeedbackClass = initialPoseError
+    ? "notice notice-error initial-pose-feedback"
+    : initialPoseMessage
+      ? `notice ${initialPoseBusy ? "" : "notice-success"} initial-pose-feedback`
+      : "panel-message initial-pose-feedback";
+
   return (
     <section className="panel">
       <h2>当前选点</h2>
@@ -370,8 +657,8 @@ export function SelectedGoalSection({
       <StatusMini label="y" value={formatNumber(selectedGoal?.y, 2)} />
       <StatusMini label="yaw" value={formatNumber(selectedGoal?.yaw, 2)} />
       <div className="button-group">
-        <button className="secondary-button" disabled={!selectedGoal || !canSetInitialPose} onClick={onSetInitialPose}>
-          设置初始位姿
+        <button className="secondary-button" disabled={initialPoseBusy || !selectedGoal || !canSetInitialPose} onClick={onSetInitialPose}>
+          {initialPoseBusy ? "设置中..." : "设置初始位姿"}
         </button>
         <button className="primary-button" disabled={!selectedGoal || !canSendGoal} onClick={onSendGoal}>
           发送导航
@@ -380,7 +667,7 @@ export function SelectedGoalSection({
           停止导航
         </button>
       </div>
-      <p className="panel-message">{formatNullable(setInitialPoseReason, "当前模式允许设置初始位姿")}</p>
+      <p className={initialPoseFeedbackClass}>{formatNullable(initialPoseFeedback, "当前模式允许设置初始位姿")}</p>
       <p className="panel-message">{formatNullable(sendGoalReason, "当前模式允许发送导航目标")}</p>
     </section>
   );
@@ -404,6 +691,15 @@ export function RecentNoticeSection({
 
 export function TaskStateChip({ state }: { state: string }) {
   return <div className={`task-chip task-chip-${state}`}>{state}</div>;
+}
+
+export function StackModeChip({ mode }: { mode: string }) {
+  const label = toStackModeLabel(mode);
+  return <div className={`task-chip task-chip-${label}`}>{label}</div>;
+}
+
+export function toStackModeLabel(mode: string) {
+  return mode === "stopped" ? "standby" : mode;
 }
 
 interface TaskRouteManagerSectionProps {

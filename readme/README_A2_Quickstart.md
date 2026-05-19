@@ -53,7 +53,7 @@ cd /home/unitree/a2_system_ws
 ### 2.1 停掉 Docker 版网页容器
 
 ```bash
-docker compose -f docker/docker-compose.a2.yml down || true
+docker compose -f docker-compose.a2.yml down || true
 ```
 
 ### 2.2 停掉宿主机旧 Web 服务
@@ -273,7 +273,7 @@ pgrep -af "bringup.launch.py|a2_sdk_bridge|a2_control_bridge|manual_localization
 ```bash
 ssh unitree@192.168.31.49
 cd /home/unitree/a2_system_ws
-docker compose -f docker/docker-compose.a2.yml down || true
+docker compose -f docker-compose.a2.yml down || true
 sudo systemctl stop a2-web-console.service || true
 source /opt/ros/humble/setup.bash
 source /home/unitree/a2_system_ws/install/setup.bash

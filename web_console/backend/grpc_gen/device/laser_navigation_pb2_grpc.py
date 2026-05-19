@@ -69,6 +69,16 @@ class LaserNavigationServiceStub(object):
                 request_serializer=device_dot_laser__navigation__pb2.SelectMapRequest.SerializeToString,
                 response_deserializer=device_dot_laser__navigation__pb2.SelectMapResponse.FromString,
                 _registered_method=True)
+        self.StartNavigation = channel.unary_unary(
+                '/physical.device.LaserNavigationService/StartNavigation',
+                request_serializer=device_dot_laser__navigation__pb2.StartNavigationRequest.SerializeToString,
+                response_deserializer=device_dot_laser__navigation__pb2.StartNavigationResponse.FromString,
+                _registered_method=True)
+        self.SetInitialPose = channel.unary_unary(
+                '/physical.device.LaserNavigationService/SetInitialPose',
+                request_serializer=device_dot_laser__navigation__pb2.SetInitialPoseRequest.SerializeToString,
+                response_deserializer=device_dot_laser__navigation__pb2.SetInitialPoseResponse.FromString,
+                _registered_method=True)
         self.ListMaps = channel.unary_unary(
                 '/physical.device.LaserNavigationService/ListMaps',
                 request_serializer=device_dot_laser__navigation__pb2.ListMapsRequest.SerializeToString,
@@ -81,6 +91,11 @@ class LaserNavigationServiceStub(object):
                 _registered_method=True)
         self.GetScanData = channel.unary_unary(
                 '/physical.device.LaserNavigationService/GetScanData',
+                request_serializer=device_dot_laser__navigation__pb2.ScanDataRequest.SerializeToString,
+                response_deserializer=device_dot_laser__navigation__pb2.ScanDataResponse.FromString,
+                _registered_method=True)
+        self.WatchScanData = channel.unary_stream(
+                '/physical.device.LaserNavigationService/WatchScanData',
                 request_serializer=device_dot_laser__navigation__pb2.ScanDataRequest.SerializeToString,
                 response_deserializer=device_dot_laser__navigation__pb2.ScanDataResponse.FromString,
                 _registered_method=True)
@@ -141,6 +156,18 @@ class LaserNavigationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartNavigation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetInitialPose(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListMaps(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -154,6 +181,12 @@ class LaserNavigationServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetScanData(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchScanData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -209,6 +242,16 @@ def add_LaserNavigationServiceServicer_to_server(servicer, server):
                     request_deserializer=device_dot_laser__navigation__pb2.SelectMapRequest.FromString,
                     response_serializer=device_dot_laser__navigation__pb2.SelectMapResponse.SerializeToString,
             ),
+            'StartNavigation': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartNavigation,
+                    request_deserializer=device_dot_laser__navigation__pb2.StartNavigationRequest.FromString,
+                    response_serializer=device_dot_laser__navigation__pb2.StartNavigationResponse.SerializeToString,
+            ),
+            'SetInitialPose': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetInitialPose,
+                    request_deserializer=device_dot_laser__navigation__pb2.SetInitialPoseRequest.FromString,
+                    response_serializer=device_dot_laser__navigation__pb2.SetInitialPoseResponse.SerializeToString,
+            ),
             'ListMaps': grpc.unary_unary_rpc_method_handler(
                     servicer.ListMaps,
                     request_deserializer=device_dot_laser__navigation__pb2.ListMapsRequest.FromString,
@@ -221,6 +264,11 @@ def add_LaserNavigationServiceServicer_to_server(servicer, server):
             ),
             'GetScanData': grpc.unary_unary_rpc_method_handler(
                     servicer.GetScanData,
+                    request_deserializer=device_dot_laser__navigation__pb2.ScanDataRequest.FromString,
+                    response_serializer=device_dot_laser__navigation__pb2.ScanDataResponse.SerializeToString,
+            ),
+            'WatchScanData': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchScanData,
                     request_deserializer=device_dot_laser__navigation__pb2.ScanDataRequest.FromString,
                     response_serializer=device_dot_laser__navigation__pb2.ScanDataResponse.SerializeToString,
             ),
@@ -435,6 +483,60 @@ class LaserNavigationService(object):
             _registered_method=True)
 
     @staticmethod
+    def StartNavigation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.LaserNavigationService/StartNavigation',
+            device_dot_laser__navigation__pb2.StartNavigationRequest.SerializeToString,
+            device_dot_laser__navigation__pb2.StartNavigationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetInitialPose(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.LaserNavigationService/SetInitialPose',
+            device_dot_laser__navigation__pb2.SetInitialPoseRequest.SerializeToString,
+            device_dot_laser__navigation__pb2.SetInitialPoseResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def ListMaps(request,
             target,
             options=(),
@@ -503,6 +605,33 @@ class LaserNavigationService(object):
             request,
             target,
             '/physical.device.LaserNavigationService/GetScanData',
+            device_dot_laser__navigation__pb2.ScanDataRequest.SerializeToString,
+            device_dot_laser__navigation__pb2.ScanDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchScanData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/physical.device.LaserNavigationService/WatchScanData',
             device_dot_laser__navigation__pb2.ScanDataRequest.SerializeToString,
             device_dot_laser__navigation__pb2.ScanDataResponse.FromString,
             options,

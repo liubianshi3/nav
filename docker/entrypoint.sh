@@ -19,6 +19,223 @@ log() {
   printf '[a2-docker] %s\n' "$*"
 }
 
+configure_cyclonedds_interface() {
+  if [[ "${RMW_IMPLEMENTATION:-}" != "rmw_cyclonedds_cpp" ]]; then
+    return 0
+  fi
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    log "CycloneDDS URI provided by environment"
+    return 0
+  fi
+
+  local iface="${A2_ROS_INTERFACE:-}"
+  if [[ -z "$iface" ]]; then
+    return 0
+  fi
+  if ! ip link show "$iface" >/dev/null 2>&1; then
+    log "CycloneDDS ROS interface skipped; interface not found: ${iface}"
+    return 0
+  fi
+
+  local peers_xml=""
+  local peer
+  local peers="${A2_ROS_PEERS:-}"
+  if [[ -n "$peers" ]]; then
+    peers_xml="<Discovery><Peers>"
+    peers="${peers//,/ }"
+    for peer in $peers; do
+      peers_xml="${peers_xml}<Peer Address=\"${peer}\" />"
+    done
+    peers_xml="${peers_xml}</Peers></Discovery>"
+  fi
+
+  export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" /></Interfaces></General>${peers_xml}</Domain></CycloneDDS>"
+  log "CycloneDDS ROS traffic bound to iface=${iface} peers=${peers:-<none>}"
+}
+
+is_true() {
+  [[ "${1:-}" == "true" || "${1:-}" == "1" || "${1:-}" == "yes" || "${1:-}" == "on" ]]
+}
+
+start_standby_control_bridge() {
+  local enabled="${A2_CONTROL_BRIDGE_AUTOSTART:-false}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+
+  local mode="${A2_DOCKER_START_MODE:-auto}"
+  if [[ "$mode" != "web" && "$mode" != "standby" && "$mode" != "none" ]]; then
+    log "control bridge autostart skipped mode=${mode}; stack startup owns it"
+    return 0
+  fi
+
+  local params_file="${A2_WORKSPACE}/install/a2_system/share/a2_system/config/motion_limits.yaml"
+  if [[ ! -f "$params_file" ]]; then
+    params_file="${A2_WORKSPACE}/src/a2_system/config/motion_limits.yaml"
+  fi
+  if [[ ! -f "$params_file" ]]; then
+    log "control bridge autostart skipped; params file not found"
+    return 0
+  fi
+
+  local control_iface="${A2_CONTROL_INTERFACE:-${A2_SDK_INTERFACE:-${A2_NETWORK_INTERFACE:-eth0}}}"
+  local cmd_topic="${A2_CONTROL_CMD_TOPIC:-/cmd_vel_safe}"
+  local allow_without_map="${A2_CONTROL_ALLOW_WITHOUT_MAP:-false}"
+  local allow_without_localization="${A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION:-false}"
+  local max_linear_x="${A2_CONTROL_MAX_LINEAR_X:-0.20}"
+  local max_linear_y="${A2_CONTROL_MAX_LINEAR_Y:-0.10}"
+  local max_yaw_rate="${A2_CONTROL_MAX_YAW_RATE:-0.30}"
+  local cmd_timeout_sec="${A2_CONTROL_CMD_TIMEOUT_SEC:-0.30}"
+  local log_file="${A2_WORKSPACE}/runtime/logs/a2_control_bridge_standby.log"
+  local ld_preload="${A2_CONTROL_BRIDGE_LD_PRELOAD:-}"
+  local env_args=()
+
+  env_args+=("RMW_IMPLEMENTATION=${A2_UNITREE_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}")
+  if [[ -n "$ld_preload" ]]; then
+    env_args+=("LD_PRELOAD=${ld_preload}")
+  fi
+
+  log "autostarting standby control bridge iface=${control_iface} topic=${cmd_topic}"
+  nohup env "${env_args[@]}" ros2 run a2_control_bridge a2_control_bridge_node \
+    --ros-args \
+    --params-file "$params_file" \
+    -p use_mock:=false \
+    -p runtime_mode:=real \
+    -p allow_loopback:=false \
+    -p network_interface:="$control_iface" \
+    -p cmd_topic:="$cmd_topic" \
+    -p allow_motion_without_map:="$allow_without_map" \
+    -p allow_motion_without_localization:="$allow_without_localization" \
+    -p max_linear_x:="$max_linear_x" \
+    -p max_linear_y:="$max_linear_y" \
+    -p max_yaw_rate:="$max_yaw_rate" \
+    -p cmd_timeout_sec:="$cmd_timeout_sec" \
+    > "$log_file" 2>&1 &
+  log "standby control bridge log=${log_file}"
+}
+
+start_standby_sdk_bridge() {
+  local enabled="${A2_SDK_BRIDGE_AUTOSTART:-${A2_CONTROL_BRIDGE_AUTOSTART:-false}}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+
+  local mode="${A2_DOCKER_START_MODE:-auto}"
+  if [[ "$mode" != "web" && "$mode" != "standby" && "$mode" != "none" ]]; then
+    log "sdk bridge autostart skipped mode=${mode}; stack startup owns it"
+    return 0
+  fi
+
+  local sdk_iface="${A2_SDK_INTERFACE:-${A2_NETWORK_INTERFACE:-eth0}}"
+  local state_topic="${A2_SDK_STATE_TOPIC:-/a2/raw_state}"
+  local sport_state_topic="${A2_SDK_SPORT_STATE_TOPIC:-rt/lf/sportmodestate}"
+  local timer_hz="${A2_SDK_TIMER_HZ:-50.0}"
+  local stale_timeout_sec="${A2_SDK_STALE_TIMEOUT_SEC:-0.5}"
+  local log_file="${A2_WORKSPACE}/runtime/logs/a2_sdk_bridge_standby.log"
+  local ld_preload="${A2_SDK_BRIDGE_LD_PRELOAD:-${A2_CONTROL_BRIDGE_LD_PRELOAD:-}}"
+  local env_args=()
+
+  env_args+=("RMW_IMPLEMENTATION=${A2_UNITREE_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}")
+  if [[ -n "$ld_preload" ]]; then
+    env_args+=("LD_PRELOAD=${ld_preload}")
+  fi
+
+  log "autostarting standby sdk bridge iface=${sdk_iface} state_topic=${state_topic}"
+  nohup env "${env_args[@]}" ros2 run a2_sdk_bridge a2_sdk_bridge_node \
+    --ros-args \
+    -p use_mock:=false \
+    -p auto_detect_interface:=false \
+    -p allow_loopback:=false \
+    -p network_interface:="$sdk_iface" \
+    -p state_topic:="$state_topic" \
+    -p sport_state_topic:="$sport_state_topic" \
+    -p timer_hz:="$timer_hz" \
+    -p stale_timeout_sec:="$stale_timeout_sec" \
+    > "$log_file" 2>&1 &
+  log "standby sdk bridge log=${log_file}"
+}
+
+start_standby_lidar_preview() {
+  local enabled="${A2_STANDBY_LIDAR_AUTOSTART:-true}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+
+  local mode="${A2_DOCKER_START_MODE:-auto}"
+  if [[ "$mode" != "standby" ]]; then
+    log "standby lidar preview skipped mode=${mode}"
+    return 0
+  fi
+
+  local lidar_iface="${A2_JT128_INTERFACE:-${A2_NETWORK_INTERFACE:-net1}}"
+  local lidar_ip="${A2_JT128_IP:-192.168.124.20}"
+  local log_file="${A2_WORKSPACE}/runtime/logs/jt128_lidar_standby.log"
+  local iface_ip=""
+
+  if ! ip link show "$lidar_iface" >/dev/null 2>&1; then
+    log "standby lidar preview skipped; interface not found: ${lidar_iface}"
+    return 0
+  fi
+  iface_ip="$(ip -4 -o addr show dev "$lidar_iface" scope global | awk '{print $4}' | cut -d/ -f1 | head -1)"
+  if [[ -z "$iface_ip" ]]; then
+    log "standby lidar preview skipped; ${lidar_iface} has no IPv4 address"
+    return 0
+  fi
+  ip route replace "${lidar_ip}/32" dev "$lidar_iface" src "$iface_ip" >/dev/null 2>&1 || true
+  if ! ping -I "$lidar_iface" -c 1 -W 1 "$lidar_ip" >/dev/null 2>&1; then
+    log "standby lidar preview skipped; JT128 ${lidar_ip} is not reachable on ${lidar_iface}"
+    return 0
+  fi
+  if ss -H -lun | grep -Eq '(^|[[:space:]])[^[:space:]]*:2368[[:space:]]'; then
+    log "standby lidar preview skipped; UDP port 2368 is already bound"
+    return 0
+  fi
+
+  log "autostarting standby JT128 lidar driver iface=${lidar_iface} ip=${lidar_ip}"
+  nohup bash -lc "
+    set -e
+    source /opt/ros/humble/setup.bash
+    source '${A2_WORKSPACE}/install/setup.bash'
+    export A2_WORKSPACE='${A2_WORKSPACE}'
+    export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
+    ros2 launch a2_bringup jt128_driver.launch.py use_sim_time:=false
+  " >"$log_file" 2>&1 &
+  log "standby JT128 lidar log=${log_file}"
+
+  start_standby_pointcloud_preview
+}
+
+start_standby_pointcloud_preview() {
+  local enabled="${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+  if [[ ! -x "${A2_WORKSPACE}/install/a2_system/lib/a2_system/pointcloud_preview_node.py" ]]; then
+    log "standby pointcloud preview skipped; pointcloud_preview_node.py is not installed"
+    return 0
+  fi
+
+  local log_file="${A2_WORKSPACE}/runtime/logs/jt128_front_points_preview_standby.log"
+  log "autostarting standby pointcloud preview /jt128/front/points_preview"
+  nohup bash -lc "
+    set -e
+    source /opt/ros/humble/setup.bash
+    source '${A2_WORKSPACE}/install/setup.bash'
+    export A2_WORKSPACE='${A2_WORKSPACE}'
+    ros2 run a2_system pointcloud_preview_node.py --ros-args \
+      -p input_topic:=/jt128/front/points \
+      -p output_topic:=/jt128/front/points_preview \
+      -p preview_rate_hz:=5.0 \
+      -p voxel_size_m:=0.05 \
+      -p min_range_m:=0.2 \
+      -p max_range_m:=20.0 \
+      -p max_points:=30000 \
+      -p include_intensity:=true \
+      -p qos_reliability:=best_effort
+  " >"$log_file" 2>&1 &
+  log "standby pointcloud preview log=${log_file}"
+}
+
 find_latest_3d_map() {
   python3 - "${A2_WORKSPACE}" "${A2_REQUIRE_NAV2_MAP:-true}" <<'PY'
 from pathlib import Path
@@ -51,8 +268,8 @@ start_a2_stack() {
   local lidar_iface="${A2_JT128_INTERFACE:-${A2_NETWORK_INTERFACE:-net1}}"
   local sdk_iface="${A2_SDK_INTERFACE:-eth0}"
   local control_iface="${A2_CONTROL_INTERFACE:-${sdk_iface}}"
-  local enable_motion="${A2_ENABLE_MOTION:-false}"
-  local live_motion="${A2_LIVE_MOTION:-false}"
+  local enable_motion="${A2_ENABLE_MOTION:-true}"
+  local live_motion="${A2_LIVE_MOTION:-true}"
   local enable_nav2_3d="${A2_ENABLE_NAV2_3D:-true}"
   local require_nav2_map="${A2_REQUIRE_NAV2_MAP:-true}"
   local stack_required="${A2_STACK_REQUIRED:-false}"
@@ -132,52 +349,11 @@ start_a2_stack() {
   return 0
 }
 
-start_sdk_bridge() {
-  local autostart="${A2_AUTOSTART_SDK_BRIDGE:-true}"
-  local sdk_iface="${A2_SDK_INTERFACE:-eth0}"
-  local use_mock="${A2_SDK_BRIDGE_USE_MOCK:-false}"
-
-  if [[ "${autostart}" != "true" && "${autostart}" != "1" ]]; then
-    log "sdk bridge autostart disabled A2_AUTOSTART_SDK_BRIDGE=${autostart}"
-    return 0
-  fi
-
-  if pgrep -f "a2_sdk_bridge_node" >/dev/null 2>&1; then
-    log "sdk bridge already running"
-    return 0
-  fi
-
-  local preload_candidate=""
-  for candidate in /opt/unitree_robotics/lib/x86_64/libddsc.so.0 /opt/unitree_robotics/lib/x86_64/libddsc.so; do
-    if [[ -f "${candidate}" ]]; then
-      preload_candidate="${candidate}"
-      break
-    fi
-  done
-
-  local cmd=(
-    ros2 run a2_sdk_bridge a2_sdk_bridge_node
-    --ros-args
-    --params-file "${A2_WORKSPACE}/src/a2_system/config/a2_sdk.yaml"
-    -p use_mock:="${use_mock}"
-    -p allow_loopback:=false
-    -p network_interface:="${sdk_iface}"
-  )
-
-  log "autostarting sdk bridge on iface=${sdk_iface}"
-  (
-    export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-    export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
-    if [[ -n "${preload_candidate}" ]]; then
-      export LD_PRELOAD="${preload_candidate}${LD_PRELOAD:+:${LD_PRELOAD}}"
-    fi
-    exec "${cmd[@]}"
-  ) >"${A2_WORKSPACE}/runtime/logs/a2_sdk_bridge.log" 2>&1 &
-}
-
+configure_cyclonedds_interface
+start_standby_sdk_bridge
+start_standby_control_bridge
+start_standby_lidar_preview
 start_a2_stack
-
-start_sdk_bridge
 
 # Keep the container alive with the Web console backend in the foreground.
 exec "${A2_WORKSPACE}/web_console/scripts/run_backend.sh" "$@"

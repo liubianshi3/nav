@@ -154,6 +154,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Dry-run validation for A2 Autoware NDT adapter readiness.")
     parser.add_argument("--timeout-sec", type=float, default=15.0)
     parser.add_argument("--topic-timeout-sec", type=float, default=2.0)
+    parser.add_argument("--tf-timeout-sec", type=float, default=1.0)
     parser.add_argument("--report-dir", default="runtime/reports")
     parser.add_argument("--live-cloud-topic", default="/jt128/front/points")
     parser.add_argument("--odom-topic", default="/jt128/dlio/odom")

@@ -1,0 +1,126 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  allow_non_lan_access: false
+  cors_origins: []
+  static_dir: backend/static
+  websocket_path: /ws
+
+grpc:
+  enabled: true
+  host: 0.0.0.0
+  port: 50051
+
+ros:
+  map_topic: /map
+  pointcloud_topic: /jt128/front/points
+  pointcloud_fallback_topic: /jt128/front/points
+  pointcloud_map_topics:
+    - /jt128/dlio/map_points
+    - /a2/pointcloud_map_3d
+    - /a2/map/pointcloud_3d
+  pointcloud_primary_stale_sec: 2.0
+  pointcloud_preview_max_points: 20000
+  task_manager_service: /a2/task_manager/command
+  localization_pose_topic: /amcl_pose
+  localization_pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
+  odom_topic: /odom
+  tf_topic: /tf
+  tf_static_topic: /tf_static
+  real_report_topic: /a2/real/report
+  lidar_status_topic: /a2/lidar/status
+  localization_ok_topic: /a2/localization_ok
+  localization_status_topic: /a2/localization/status
+  map_manager_status_topic: /a2/map_manager/status
+  map_manager_active_map_topic: /a2/map_manager/active_map
+  task_manager_status_topic: /a2/task_manager/status
+  pose_goal_status_topic: /a2/nav2/status
+  sdk_status_topic: /a2/sdk/status
+  control_status_topic: /a2/control/status
+  control_state_topic: /a2/control/state
+  motion_command_service: /a2/control/command
+  raw_state_topic: /a2/raw_state
+
+camera:
+  enabled: true
+  prefer_compressed: false
+  max_broadcast_hz: 2.0
+  jpeg_quality: 70
+
+navigation:
+  backend: cmd_vel_direct
+  action_name: /navigate_to_pose
+  goal_topic: /goal_pose_
+  goal_frame: map
+  direct_cmd_topic: /cmd_vel_safe
+  direct_control_hz: 10.0
+  direct_max_linear_x: 0.3
+  direct_max_angular_z: 0.6
+  direct_slow_radius_m: 0.6
+  direct_heading_deadband_rad: 0.25
+  direct_goal_tolerance_m: 0.15
+  direct_yaw_tolerance_rad: 0.25
+  cancel_stop_topic: /cmd_vel
+  cancel_stop_burst_count: 5
+  cancel_stop_burst_interval_sec: 0.05
+  cancel_retarget_current_pose: true
+  initial_pose_topic: /initialpose
+  action_wait_timeout_sec: 3.0
+  goal_response_timeout_sec: 5.0
+  goal_timeout_sec: 180.0
+  cancel_timeout_sec: 3.0
+  initial_pose_wait_timeout_sec: 8.0
+  initial_pose_publish_interval_sec: 0.4
+  initial_pose_covariance_xy: 0.05
+  initial_pose_covariance_yaw: 0.03
+  allow_send_goal: true
+  require_map_for_goal: true
+  require_localization_ready: true
+  pose_goal_tolerance_m: 0.35
+  pose_goal_yaw_tolerance_rad: 0.35
+  occupancy_block_threshold: 65
+  goal_snap_radius_m: 1.5
+  goal_clearance_m: 0.18
+  initial_pose_snap_radius_m: 1.0
+  initial_pose_clearance_m: 0.18
+
+manual_control:
+  enabled: true
+  cmd_topic: /cmd_vel_safe
+  max_linear_x: 0.4
+  max_linear_y: 0.25
+  max_angular_z: 0.8
+  publish_burst_count: 3
+  publish_burst_interval_sec: 0.05
+
+gait_control:
+  enabled: true
+  gait_type_topic: /a2/control/gait_type
+  speed_level_topic: /a2/control/speed_level
+  body_height_topic: /a2/control/body_height
+  gait_type_min: 0
+  gait_type_max: 7
+  speed_level_min: 0
+  speed_level_max: 3
+  body_height_min: -0.10
+  body_height_max: 0.10
+
+health:
+  pose_stale_sec: 2.0
+  health_broadcast_hz: 1.0
+
+native_slam:
+  enabled: true
+  request_topic: /api/slam_operate/request
+  response_topic: /api/slam_operate/response
+  response_timeout_sec: 5.0
+  mapping_type: indoor
+  save_root: /home/unitree/dist/maps
+
+stack:
+  workspace: /opt/a2_system_ws
+  network_interface: net1
+  map_root: /opt/a2_system_ws/runtime/maps
+  start_script: /opt/a2_system_ws/src/a2_system/tools/start_real_stack.sh
+  stop_script: /opt/a2_system_ws/src/a2_system/tools/stop_stack.sh
+  command_timeout_sec: 15.0

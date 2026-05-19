@@ -84,6 +84,71 @@ class RobotDogServiceStub(object):
                 request_serializer=device_dot_robot__dog__pb2.WatchRobotDogStatusRequest.SerializeToString,
                 response_deserializer=device_dot_robot__dog__pb2.RobotDogStatus.FromString,
                 _registered_method=True)
+        self.BalanceStand = channel.unary_unary(
+                '/physical.device.RobotDogService/BalanceStand',
+                request_serializer=device_dot_robot__dog__pb2.BalanceStandRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.BalanceStandResponse.FromString,
+                _registered_method=True)
+        self.StandUp = channel.unary_unary(
+                '/physical.device.RobotDogService/StandUp',
+                request_serializer=device_dot_robot__dog__pb2.StandUpRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.StandUpResponse.FromString,
+                _registered_method=True)
+        self.StandDown = channel.unary_unary(
+                '/physical.device.RobotDogService/StandDown',
+                request_serializer=device_dot_robot__dog__pb2.StandDownRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.StandDownResponse.FromString,
+                _registered_method=True)
+        self.RecoveryStand = channel.unary_unary(
+                '/physical.device.RobotDogService/RecoveryStand',
+                request_serializer=device_dot_robot__dog__pb2.RecoveryStandRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.RecoveryStandResponse.FromString,
+                _registered_method=True)
+        self.Damp = channel.unary_unary(
+                '/physical.device.RobotDogService/Damp',
+                request_serializer=device_dot_robot__dog__pb2.DampRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.DampResponse.FromString,
+                _registered_method=True)
+        self.SetAutoRecovery = channel.unary_unary(
+                '/physical.device.RobotDogService/SetAutoRecovery',
+                request_serializer=device_dot_robot__dog__pb2.SetAutoRecoveryRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.SetAutoRecoveryResponse.FromString,
+                _registered_method=True)
+        self.SwitchGait = channel.unary_unary(
+                '/physical.device.RobotDogService/SwitchGait',
+                request_serializer=device_dot_robot__dog__pb2.SwitchGaitRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.SwitchGaitResponse.FromString,
+                _registered_method=True)
+        self.SetSpeedLevel = channel.unary_unary(
+                '/physical.device.RobotDogService/SetSpeedLevel',
+                request_serializer=device_dot_robot__dog__pb2.SetSpeedLevelRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.SetSpeedLevelResponse.FromString,
+                _registered_method=True)
+        self.SetBodyHeight = channel.unary_unary(
+                '/physical.device.RobotDogService/SetBodyHeight',
+                request_serializer=device_dot_robot__dog__pb2.SetBodyHeightRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.SetBodyHeightResponse.FromString,
+                _registered_method=True)
+        self.GetControlState = channel.unary_unary(
+                '/physical.device.RobotDogService/GetControlState',
+                request_serializer=device_dot_robot__dog__pb2.GetControlStateRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.GetControlStateResponse.FromString,
+                _registered_method=True)
+        self.AuthorizeMotion = channel.unary_unary(
+                '/physical.device.RobotDogService/AuthorizeMotion',
+                request_serializer=device_dot_robot__dog__pb2.AuthorizeMotionRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.AuthorizeMotionResponse.FromString,
+                _registered_method=True)
+        self.ReleaseMotionAuthorization = channel.unary_unary(
+                '/physical.device.RobotDogService/ReleaseMotionAuthorization',
+                request_serializer=device_dot_robot__dog__pb2.ReleaseMotionAuthorizationRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.ReleaseMotionAuthorizationResponse.FromString,
+                _registered_method=True)
+        self.GetMotionAuthorization = channel.unary_unary(
+                '/physical.device.RobotDogService/GetMotionAuthorization',
+                request_serializer=device_dot_robot__dog__pb2.GetMotionAuthorizationRequest.SerializeToString,
+                response_deserializer=device_dot_robot__dog__pb2.GetMotionAuthorizationResponse.FromString,
+                _registered_method=True)
 
 
 class RobotDogServiceServicer(object):
@@ -149,6 +214,84 @@ class RobotDogServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def BalanceStand(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StandUp(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StandDown(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecoveryStand(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Damp(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetAutoRecovery(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SwitchGait(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetSpeedLevel(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetBodyHeight(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetControlState(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AuthorizeMotion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReleaseMotionAuthorization(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetMotionAuthorization(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RobotDogServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -201,6 +344,71 @@ def add_RobotDogServiceServicer_to_server(servicer, server):
                     servicer.WatchRobotDogStatus,
                     request_deserializer=device_dot_robot__dog__pb2.WatchRobotDogStatusRequest.FromString,
                     response_serializer=device_dot_robot__dog__pb2.RobotDogStatus.SerializeToString,
+            ),
+            'BalanceStand': grpc.unary_unary_rpc_method_handler(
+                    servicer.BalanceStand,
+                    request_deserializer=device_dot_robot__dog__pb2.BalanceStandRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.BalanceStandResponse.SerializeToString,
+            ),
+            'StandUp': grpc.unary_unary_rpc_method_handler(
+                    servicer.StandUp,
+                    request_deserializer=device_dot_robot__dog__pb2.StandUpRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.StandUpResponse.SerializeToString,
+            ),
+            'StandDown': grpc.unary_unary_rpc_method_handler(
+                    servicer.StandDown,
+                    request_deserializer=device_dot_robot__dog__pb2.StandDownRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.StandDownResponse.SerializeToString,
+            ),
+            'RecoveryStand': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecoveryStand,
+                    request_deserializer=device_dot_robot__dog__pb2.RecoveryStandRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.RecoveryStandResponse.SerializeToString,
+            ),
+            'Damp': grpc.unary_unary_rpc_method_handler(
+                    servicer.Damp,
+                    request_deserializer=device_dot_robot__dog__pb2.DampRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.DampResponse.SerializeToString,
+            ),
+            'SetAutoRecovery': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetAutoRecovery,
+                    request_deserializer=device_dot_robot__dog__pb2.SetAutoRecoveryRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.SetAutoRecoveryResponse.SerializeToString,
+            ),
+            'SwitchGait': grpc.unary_unary_rpc_method_handler(
+                    servicer.SwitchGait,
+                    request_deserializer=device_dot_robot__dog__pb2.SwitchGaitRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.SwitchGaitResponse.SerializeToString,
+            ),
+            'SetSpeedLevel': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetSpeedLevel,
+                    request_deserializer=device_dot_robot__dog__pb2.SetSpeedLevelRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.SetSpeedLevelResponse.SerializeToString,
+            ),
+            'SetBodyHeight': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetBodyHeight,
+                    request_deserializer=device_dot_robot__dog__pb2.SetBodyHeightRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.SetBodyHeightResponse.SerializeToString,
+            ),
+            'GetControlState': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetControlState,
+                    request_deserializer=device_dot_robot__dog__pb2.GetControlStateRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.GetControlStateResponse.SerializeToString,
+            ),
+            'AuthorizeMotion': grpc.unary_unary_rpc_method_handler(
+                    servicer.AuthorizeMotion,
+                    request_deserializer=device_dot_robot__dog__pb2.AuthorizeMotionRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.AuthorizeMotionResponse.SerializeToString,
+            ),
+            'ReleaseMotionAuthorization': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReleaseMotionAuthorization,
+                    request_deserializer=device_dot_robot__dog__pb2.ReleaseMotionAuthorizationRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.ReleaseMotionAuthorizationResponse.SerializeToString,
+            ),
+            'GetMotionAuthorization': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMotionAuthorization,
+                    request_deserializer=device_dot_robot__dog__pb2.GetMotionAuthorizationRequest.FromString,
+                    response_serializer=device_dot_robot__dog__pb2.GetMotionAuthorizationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -473,6 +681,357 @@ class RobotDogService(object):
             '/physical.device.RobotDogService/WatchRobotDogStatus',
             device_dot_robot__dog__pb2.WatchRobotDogStatusRequest.SerializeToString,
             device_dot_robot__dog__pb2.RobotDogStatus.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BalanceStand(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/BalanceStand',
+            device_dot_robot__dog__pb2.BalanceStandRequest.SerializeToString,
+            device_dot_robot__dog__pb2.BalanceStandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StandUp(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/StandUp',
+            device_dot_robot__dog__pb2.StandUpRequest.SerializeToString,
+            device_dot_robot__dog__pb2.StandUpResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StandDown(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/StandDown',
+            device_dot_robot__dog__pb2.StandDownRequest.SerializeToString,
+            device_dot_robot__dog__pb2.StandDownResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecoveryStand(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/RecoveryStand',
+            device_dot_robot__dog__pb2.RecoveryStandRequest.SerializeToString,
+            device_dot_robot__dog__pb2.RecoveryStandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Damp(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/Damp',
+            device_dot_robot__dog__pb2.DampRequest.SerializeToString,
+            device_dot_robot__dog__pb2.DampResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetAutoRecovery(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/SetAutoRecovery',
+            device_dot_robot__dog__pb2.SetAutoRecoveryRequest.SerializeToString,
+            device_dot_robot__dog__pb2.SetAutoRecoveryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SwitchGait(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/SwitchGait',
+            device_dot_robot__dog__pb2.SwitchGaitRequest.SerializeToString,
+            device_dot_robot__dog__pb2.SwitchGaitResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetSpeedLevel(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/SetSpeedLevel',
+            device_dot_robot__dog__pb2.SetSpeedLevelRequest.SerializeToString,
+            device_dot_robot__dog__pb2.SetSpeedLevelResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetBodyHeight(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/SetBodyHeight',
+            device_dot_robot__dog__pb2.SetBodyHeightRequest.SerializeToString,
+            device_dot_robot__dog__pb2.SetBodyHeightResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetControlState(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/GetControlState',
+            device_dot_robot__dog__pb2.GetControlStateRequest.SerializeToString,
+            device_dot_robot__dog__pb2.GetControlStateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AuthorizeMotion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/AuthorizeMotion',
+            device_dot_robot__dog__pb2.AuthorizeMotionRequest.SerializeToString,
+            device_dot_robot__dog__pb2.AuthorizeMotionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReleaseMotionAuthorization(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/ReleaseMotionAuthorization',
+            device_dot_robot__dog__pb2.ReleaseMotionAuthorizationRequest.SerializeToString,
+            device_dot_robot__dog__pb2.ReleaseMotionAuthorizationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMotionAuthorization(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/physical.device.RobotDogService/GetMotionAuthorization',
+            device_dot_robot__dog__pb2.GetMotionAuthorizationRequest.SerializeToString,
+            device_dot_robot__dog__pb2.GetMotionAuthorizationResponse.FromString,
             options,
             channel_credentials,
             insecure,

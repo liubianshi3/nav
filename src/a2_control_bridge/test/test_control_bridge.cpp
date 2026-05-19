@@ -2,16 +2,20 @@
 
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <memory>
 #include <regex>
 #include <string>
 #include <thread>
 
 #include "a2_control_bridge/a2_control_bridge_node.hpp"
+#include "a2_interfaces/msg/control_state.hpp"
+#include "a2_interfaces/srv/motion_command.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include "std_msgs/msg/string.hpp"
 
 // ============================================================================
@@ -34,12 +38,16 @@ protected:
   {
     // Create node with mock mode (default) — no SDK, no network probing
     node_ = std::make_shared<A2ControlBridgeNode>();
+    attach_test_subscriptions();
     // Spin once to let construction settle
     spin();
   }
 
   void TearDown() override
   {
+    limited_sub_.reset();
+    status_sub_.reset();
+    control_state_sub_.reset();
     node_.reset();
   }
 
@@ -56,61 +64,177 @@ protected:
     }
   }
 
+  template<typename PublisherT>
+  void wait_for_subscription(const PublisherT & pub)
+  {
+    for (int i = 0; i < 20 && pub->get_subscription_count() == 0; ++i) {
+      spin(1);
+    }
+    ASSERT_GT(pub->get_subscription_count(), 0u);
+  }
+
   /// Publish a Bool on a topic and spin
   void publish_bool(const std::string & topic, bool value)
   {
     auto pub = node_->create_publisher<std_msgs::msg::Bool>(topic, 10);
+    wait_for_subscription(pub);
     auto msg = std::make_unique<std_msgs::msg::Bool>();
     msg->data = value;
     pub->publish(std::move(msg));
-    spin();
+    spin(2);
   }
 
   /// Publish a Twist on /cmd_vel and spin
   void publish_twist(double vx, double vy, double wz)
   {
     auto pub = node_->create_publisher<geometry_msgs::msg::Twist>("/cmd_vel", 10);
+    wait_for_subscription(pub);
     auto msg = std::make_unique<geometry_msgs::msg::Twist>();
     msg->linear.x = vx;
     msg->linear.y = vy;
     msg->angular.z = wz;
     pub->publish(std::move(msg));
-    spin();
+    spin(2);
   }
 
   /// Publish a Float32 on /a2/nav/max_speed_scale and spin
   void publish_speed_scale(float scale)
   {
     auto pub = node_->create_publisher<std_msgs::msg::Float32>("/a2/nav/max_speed_scale", 10);
+    wait_for_subscription(pub);
     auto msg = std::make_unique<std_msgs::msg::Float32>();
     msg->data = scale;
     pub->publish(std::move(msg));
+    spin(2);
+  }
+
+  void publish_int32(const std::string & topic, int value)
+  {
+    auto pub = node_->create_publisher<std_msgs::msg::Int32>(topic, 10);
+    wait_for_subscription(pub);
+    auto msg = std::make_unique<std_msgs::msg::Int32>();
+    msg->data = value;
+    pub->publish(std::move(msg));
+    spin(2);
+  }
+
+  void publish_float32(const std::string & topic, float value)
+  {
+    auto pub = node_->create_publisher<std_msgs::msg::Float32>(topic, 10);
+    wait_for_subscription(pub);
+    auto msg = std::make_unique<std_msgs::msg::Float32>();
+    msg->data = value;
+    pub->publish(std::move(msg));
+    spin(2);
+  }
+
+  a2_interfaces::srv::MotionCommand::Response::SharedPtr call_motion_command(
+    const std::string & command,
+    int int_value = 0,
+    float float_value = 0.0F,
+    bool bool_value = false)
+  {
+    auto client = node_->create_client<a2_interfaces::srv::MotionCommand>("/a2/control/command");
+    if (!client->wait_for_service(std::chrono::seconds(1))) {
+      ADD_FAILURE() << "motion command service is not available";
+      return {};
+    }
+
+    auto request = std::make_shared<a2_interfaces::srv::MotionCommand::Request>();
+    request->command = command;
+    request->int_value = int_value;
+    request->float_value = float_value;
+    request->bool_value = bool_value;
+
+    auto future = client->async_send_request(request);
+    for (int i = 0; i < 50 && future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready; ++i) {
+      spin(1);
+    }
+    if (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+      ADD_FAILURE() << "motion command service did not respond";
+      return {};
+    }
+    return future.get();
+  }
+
+  void recreate_with_parameters(const std::vector<rclcpp::Parameter> & parameters)
+  {
+    limited_sub_.reset();
+    status_sub_.reset();
+    node_.reset();
+    rclcpp::NodeOptions options;
+    options.parameter_overrides(parameters);
+    node_ = std::make_shared<A2ControlBridgeNode>(options);
+    attach_test_subscriptions();
     spin();
+  }
+
+  void attach_test_subscriptions()
+  {
+    have_limited_ = false;
+    have_status_ = false;
+    limited_sub_ = node_->create_subscription<geometry_msgs::msg::TwistStamped>(
+      "/a2/command_limited", 10,
+      [this](const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+        last_limited_ = *msg;
+        have_limited_ = true;
+      });
+    status_sub_ = node_->create_subscription<std_msgs::msg::String>(
+      "/a2/control/status", 10,
+      [this](const std_msgs::msg::String::SharedPtr msg) {
+        last_status_ = msg->data;
+        have_status_ = true;
+      });
+    control_state_sub_ = node_->create_subscription<a2_interfaces::msg::ControlState>(
+      "/a2/control/state", 10,
+      [this](const a2_interfaces::msg::ControlState::SharedPtr msg) {
+        last_control_state_ = *msg;
+        have_control_state_ = true;
+      });
   }
 
   /// Subscribe to /a2/command_limited and return the last received twist
   geometry_msgs::msg::TwistStamped get_limited()
   {
-    geometry_msgs::msg::TwistStamped out;
-    auto sub = node_->create_subscription<geometry_msgs::msg::TwistStamped>(
-      "/a2/command_limited", 10,
-      [&out](const geometry_msgs::msg::TwistStamped::SharedPtr msg) { out = *msg; });
-    spin(5);
-    return out;
+    have_limited_ = false;
+    for (int i = 0; i < 20 && !have_limited_; ++i) {
+      spin(1);
+    }
+    EXPECT_TRUE(have_limited_);
+    return last_limited_;
   }
 
   /// Subscribe to /a2/control/status and return the last received string
   std::string get_status()
   {
-    std::string out;
-    auto sub = node_->create_subscription<std_msgs::msg::String>(
-      "/a2/control/status", 10,
-      [&out](const std_msgs::msg::String::SharedPtr msg) { out = msg->data; });
-    spin(5);
-    return out;
+    have_status_ = false;
+    for (int i = 0; i < 20 && !have_status_; ++i) {
+      spin(1);
+    }
+    EXPECT_TRUE(have_status_);
+    return last_status_;
+  }
+
+  a2_interfaces::msg::ControlState get_control_state()
+  {
+    have_control_state_ = false;
+    for (int i = 0; i < 20 && !have_control_state_; ++i) {
+      spin(1);
+    }
+    EXPECT_TRUE(have_control_state_);
+    return last_control_state_;
   }
 
   std::shared_ptr<A2ControlBridgeNode> node_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr limited_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_sub_;
+  rclcpp::Subscription<a2_interfaces::msg::ControlState>::SharedPtr control_state_sub_;
+  geometry_msgs::msg::TwistStamped last_limited_;
+  a2_interfaces::msg::ControlState last_control_state_;
+  std::string last_status_;
+  bool have_limited_{false};
+  bool have_status_{false};
+  bool have_control_state_{false};
 };
 
 // ============================================================================
@@ -310,12 +434,11 @@ TEST_F(ControlBridgeTest, TICK_006_SpeedScaleDefault_NoEffect)
 
 TEST_F(ControlBridgeTest, CMD_001_ReceiveTwist_StoresAndTimestamps)
 {
-  publish_twist(0.3, 0.1, 0.2);
-  // Verify via control_tick output
   publish_bool("/a2/estop", false);
   publish_bool("/a2/allow_motion", true);
   publish_bool("/a2/localization_ok", true);
   publish_bool("/a2/map_ready", true);
+  publish_twist(0.3, 0.1, 0.2);
 
   auto limited = get_limited();
   EXPECT_NEAR(limited.twist.linear.x, 0.3, 1e-3);
@@ -325,20 +448,19 @@ TEST_F(ControlBridgeTest, CMD_001_ReceiveTwist_StoresAndTimestamps)
 
 TEST_F(ControlBridgeTest, CMD_002_SecondTwistOverwritesFirst)
 {
-  publish_twist(0.1, 0.0, 0.0);
-  publish_twist(0.2, 0.0, 0.0);
-
   publish_bool("/a2/estop", false);
   publish_bool("/a2/allow_motion", true);
   publish_bool("/a2/localization_ok", true);
   publish_bool("/a2/map_ready", true);
+  publish_twist(0.1, 0.0, 0.0);
+  publish_twist(0.2, 0.0, 0.0);
 
   auto limited = get_limited();
   EXPECT_NEAR(limited.twist.linear.x, 0.2, 1e-3);
 }
 
 // ============================================================================
-// Group 5: publish_control_status() string format — 2 test cases
+// Group 5: publish_control_status() string format — 3 test cases
 // ============================================================================
 
 TEST_F(ControlBridgeTest, STATUS_001_FormatContainsAllFields)
@@ -370,8 +492,100 @@ TEST_F(ControlBridgeTest, STATUS_002_BlockedState_ReadyFalse)
   EXPECT_TRUE(std::regex_search(status, std::regex("reason=estop")));
 }
 
+TEST_F(ControlBridgeTest, STATUS_003_GaitControlFieldsReflectTopicRequests)
+{
+  recreate_with_parameters({
+    rclcpp::Parameter("gait_control_enabled", true),
+    rclcpp::Parameter("gait_type", 1),
+    rclcpp::Parameter("speed_level", 1),
+    rclcpp::Parameter("apply_body_height", true),
+    rclcpp::Parameter("body_height", 0.0),
+  });
+
+  publish_int32("/a2/control/gait_type", 3);
+  publish_int32("/a2/control/speed_level", 2);
+  publish_float32("/a2/control/body_height", 0.05F);
+  publish_bool("/a2/estop", false);
+  publish_bool("/a2/allow_motion", true);
+  publish_bool("/a2/localization_ok", true);
+  publish_bool("/a2/map_ready", true);
+  publish_twist(0.2, 0.0, 0.0);
+
+  std::string status = get_status();
+  EXPECT_TRUE(std::regex_search(status, std::regex("gait_backend=unitree_sport")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("gait_control=true")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("gait_type=3")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("speed_level=2")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("body_height=0\\.050")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("gait_state=simulated")));
+}
+
 // ============================================================================
-// Group 6: Parameter defaults — 2 test cases
+// Group 6: platform-facing motion command service — 4 test cases
+// ============================================================================
+
+TEST_F(ControlBridgeTest, CONTROL_SERVICE_001_MockStandUpSucceedsBeforeMapReady)
+{
+  auto response = call_motion_command(a2_interfaces::srv::MotionCommand::Request::STAND_UP);
+
+  ASSERT_TRUE(response->success);
+  EXPECT_EQ(response->sdk_code, 0);
+  EXPECT_EQ(response->error_code, "ok");
+  EXPECT_EQ(response->runtime_mode, "mock");
+
+  auto state = get_control_state();
+  EXPECT_EQ(state.runtime_mode, "mock");
+  EXPECT_EQ(state.last_command, "stand_up");
+  EXPECT_EQ(state.last_sdk_code, 0);
+  EXPECT_EQ(state.last_error_code, "ok");
+}
+
+TEST_F(ControlBridgeTest, CONTROL_SERVICE_002_UnknownCommandReturnsStandardError)
+{
+  auto response = call_motion_command("moonwalk");
+
+  ASSERT_FALSE(response->success);
+  EXPECT_EQ(response->sdk_code, -1);
+  EXPECT_EQ(response->error_code, "invalid_command");
+  EXPECT_TRUE(response->message.find("moonwalk") != std::string::npos);
+
+  auto state = get_control_state();
+  EXPECT_EQ(state.last_command, "moonwalk");
+  EXPECT_EQ(state.last_error_code, "invalid_command");
+}
+
+TEST_F(ControlBridgeTest, CONTROL_SERVICE_003_SetAutoRecoveryUpdatesStructuredState)
+{
+  auto response = call_motion_command(
+    a2_interfaces::srv::MotionCommand::Request::SET_AUTO_RECOVERY, 0, 0.0F, true);
+
+  ASSERT_TRUE(response->success);
+  EXPECT_EQ(response->error_code, "ok");
+
+  auto state = get_control_state();
+  EXPECT_TRUE(state.auto_recovery);
+  EXPECT_EQ(state.last_command, "set_auto_recovery");
+}
+
+TEST_F(ControlBridgeTest, CONTROL_SERVICE_004_EstopBlocksPostureButAllowsStop)
+{
+  publish_bool("/a2/estop", true);
+
+  auto stand_response = call_motion_command(a2_interfaces::srv::MotionCommand::Request::STAND_UP);
+  ASSERT_FALSE(stand_response->success);
+  EXPECT_EQ(stand_response->error_code, "safety_gate_closed");
+
+  auto stop_response = call_motion_command(a2_interfaces::srv::MotionCommand::Request::STOP);
+  ASSERT_TRUE(stop_response->success);
+  EXPECT_EQ(stop_response->error_code, "ok");
+
+  auto state = get_control_state();
+  EXPECT_EQ(state.last_command, "stop");
+  EXPECT_EQ(state.last_error_code, "ok");
+}
+
+// ============================================================================
+// Group 7: Parameter defaults — 3 test cases
 // ============================================================================
 
 TEST_F(ControlBridgeTest, PARAM_001_KeySafetyDefaults)
@@ -407,8 +621,28 @@ TEST_F(ControlBridgeTest, PARAM_002_NavSpeedScaleDefault)
   EXPECT_NEAR(limited.twist.linear.x, 0.3, 1e-3);
 }
 
+TEST_F(ControlBridgeTest, PARAM_003_GaitDefaultsAreSafeUntilEnabled)
+{
+  bool gait_control_enabled, apply_speed_level, apply_body_height;
+  int gait_type, speed_level;
+  double body_height;
+  node_->get_parameter("gait_control_enabled", gait_control_enabled);
+  node_->get_parameter("apply_speed_level", apply_speed_level);
+  node_->get_parameter("apply_body_height", apply_body_height);
+  node_->get_parameter("gait_type", gait_type);
+  node_->get_parameter("speed_level", speed_level);
+  node_->get_parameter("body_height", body_height);
+
+  EXPECT_FALSE(gait_control_enabled);
+  EXPECT_TRUE(apply_speed_level);
+  EXPECT_FALSE(apply_body_height);
+  EXPECT_EQ(gait_type, 1);
+  EXPECT_EQ(speed_level, 1);
+  EXPECT_DOUBLE_EQ(body_height, 0.0);
+}
+
 // ============================================================================
-// Group 7: Integration scenarios — 2 test cases
+// Group 8: Integration scenarios — 2 test cases
 // ============================================================================
 
 TEST_F(ControlBridgeTest, INTEG_001_FullDegradationChain)

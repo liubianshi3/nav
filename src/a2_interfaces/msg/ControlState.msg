@@ -1,0 +1,15 @@
+builtin_interfaces/Time stamp
+string runtime_mode
+string state
+bool ready
+string reason
+string interface_name
+bool gait_control_enabled
+int32 gait_type
+int32 speed_level
+float32 body_height
+bool auto_recovery
+string last_command
+int32 last_sdk_code
+string last_error_code
+string last_error_reason

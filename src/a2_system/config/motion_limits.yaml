@@ -12,9 +12,9 @@ a2_control_bridge:
     localization_ok_topic: /a2/localization_ok
     map_ready_topic: /a2/map_ready
     allow_motion_topic: /a2/allow_motion
-    max_linear_x: 0.4
-    max_linear_y: 0.25
-    max_yaw_rate: 0.5
+    max_linear_x: 0.30
+    max_linear_y: 0.15
+    max_yaw_rate: 0.50
     linear_x_sign: 1.0
     linear_y_sign: 1.0
     yaw_sign: 1.0
@@ -22,3 +22,20 @@ a2_control_bridge:
     control_hz: 20.0
     allow_motion_without_map: false
     allow_motion_without_localization: false
+    gait_control_enabled: false
+    motion_command_service: /a2/control/command
+    control_state_topic: /a2/control/state
+    gait_type_topic: /a2/control/gait_type
+    speed_level_topic: /a2/control/speed_level
+    body_height_topic: /a2/control/body_height
+    gait_type: 1
+    gait_type_min: 0
+    gait_type_max: 7
+    apply_speed_level: true
+    speed_level: 1
+    speed_level_min: 0
+    speed_level_max: 3
+    apply_body_height: false
+    body_height: 0.0
+    body_height_min: -0.10
+    body_height_max: 0.10

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 IFACE="${A2_NETWORK_INTERFACE:-eth0}"
 WEB_SERVICE="${A2_WEB_SERVICE:-a2-web-console.service}"
 WEB_URL="${A2_WEB_URL:-http://127.0.0.1:8080}"
@@ -23,7 +23,7 @@ REAL_LIDAR_CONFIG="${WORKSPACE}/src/a2_system/config/real_lidar.yaml"
 NETWORK_CONFIG="${WORKSPACE}/src/a2_system/config/network.yaml"
 FORCE_BUILD_WEB="${A2_FORCE_BUILD_WEB:-0}"
 STARTUP_HINT_MESSAGE="Web 控制台已就绪，请在页面选择建图或导航模式"
-RESIDUAL_PATTERN="bringup.launch.py|a2_state_publisher_node|a2_sdk_bridge_node|a2_control_bridge_node|task_manager.py|safety_supervisor|real_readiness_monitor|static_tf_manager|sync_monitor|pointcloud_relay|pointcloud_accumulator|pointcloud_to_laserscan|slam_toolbox|native_map_relay|localization_gate|manual_localization_publisher|amcl|goal_bridge|occupancy_mapper|map_manager_node|map_server|controller_server|smoother_server|planner_server|behavior_server|bt_navigator|waypoint_follower|velocity_smoother|lifecycle_manager"
+RESIDUAL_PATTERN="bringup.launch.py|jt128_3d_navigation.launch.py|dlio_mapping.launch.py|a2_state_publisher_node|a2_sdk_bridge_node|a2_control_bridge_node|task_manager.py|safety_supervisor|real_readiness_monitor|static_tf_manager|sync_monitor|pointcloud_guard|pointcloud_preview_node.py|pointcloud_relay|pointcloud_accumulator|pointcloud_map_loader|pointcloud_to_laserscan|slam_toolbox|native_map_relay|pcd_relocalizer_3d|ndt_scan_matcher|autoware_ndt_scan_matcher_node|ndt_adapter|ndt_health_monitor|sensor_covariance_injector.py|body_imu_covariance_injector|imu_to_si_converter.py|ekf_node|localization_gate|manual_localization_publisher|amcl|goal_bridge|pose_goal_controller_3d|ground_segmentation_cpp_node|traversability_to_obstacle_cloud.py|collision_monitor|occupancy_mapper|map_manager_node|map_server|controller_server|smoother_server|planner_server|behavior_server|bt_navigator|waypoint_follower|velocity_smoother|lifecycle_manager|local_costmap|global_costmap"
 
 SKIP_NATIVE_LIDAR=0
 
@@ -255,7 +255,32 @@ ensure_web_backend_ready() {
 
 ensure_web_service_installed() {
   require_file "$WEB_SERVICE_UNIT_FILE"
-  sudo install -m 644 "$WEB_SERVICE_UNIT_FILE" "/etc/systemd/system/${WEB_SERVICE}"
+  local generated_unit
+  generated_unit="$(mktemp)"
+  cat > "$generated_unit" <<EOF
+[Unit]
+Description=A2 ROS2 Web Console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unitree
+WorkingDirectory=${WORKSPACE}/web_console
+Environment=PYTHONUNBUFFERED=1
+Environment=A2_WORKSPACE=${WORKSPACE}
+Environment=A2_NETWORK_INTERFACE=${IFACE}
+Environment=RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+Environment=CONFIG_PATH=${WORKSPACE}/web_console/backend/config.3d.yaml
+ExecStart=/bin/bash -lc '${WORKSPACE}/web_console/scripts/run_backend.sh'
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo install -m 644 "$generated_unit" "/etc/systemd/system/${WEB_SERVICE}"
+  rm -f "$generated_unit"
   sudo systemctl daemon-reload
   sudo systemctl enable "$WEB_SERVICE" >/dev/null 2>&1 || true
 }
@@ -355,7 +380,7 @@ if (( HAVE_DOCKER == 1 )); then
   log "Stopping dockerized web stack if present"
   (
     cd "$WORKSPACE"
-    docker compose -f docker/docker-compose.a2.yml down
+    docker compose -f docker-compose.a2.yml down
   ) >/dev/null 2>&1 || true
 
   if docker ps --format '{{.Names}}' | grep -Fxq "$INTERFERENCE_CONTAINER"; then
@@ -372,6 +397,13 @@ log "Stopping old ROS stack"
 "$STOP_SCRIPT" >/dev/null 2>&1 || true
 cleanup_residuals
 sleep 2
+
+if pgrep -af "$RESIDUAL_PATTERN" >/dev/null 2>&1; then
+  warn "Residual ROS stack processes survived TERM cleanup; forcing known stack cleanup"
+  pkill -KILL -f "$RESIDUAL_PATTERN" >/dev/null 2>&1 || true
+  sudo pkill -KILL -f "$RESIDUAL_PATTERN" >/dev/null 2>&1 || true
+  sleep 1
+fi
 
 if pgrep -af "$RESIDUAL_PATTERN" >/dev/null 2>&1; then
   show_failure_context

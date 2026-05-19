@@ -1,11 +1,18 @@
 build/
 install/
 /log/
+.DS_Store
+._*
+**/.DS_Store
+**/._*
 
 runtime/logs/
 runtime/outdoor_demo_logs/
 runtime/generated/
 runtime/bringup.pid
+runtime/bag_validation/raw/
+runtime/bag_validation/processed/
+runtime/bag_validation/reports/
 
 web_console/backend/.venv/
 web_console/.venv/

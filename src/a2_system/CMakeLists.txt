@@ -22,12 +22,17 @@ install(PROGRAMS
   scripts/goal_pose_3d_smoke_test.py
   scripts/industrial_3d_closed_loop_check.py
   scripts/industrial_3d_nav_preflight.py
+  scripts/imu_to_si_converter.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav2_corridor_gate.py
   scripts/nav_contract_check.py
   scripts/ndt_adapter_dry_run_check.py
   scripts/odometry_tf_broadcaster.py
   scripts/preflight_check.py
+  scripts/pointcloud_preview_node.py
+  scripts/sim_validate_perception_pipeline.py
+  scripts/sim_validate_gazebo_perception.py
+  scripts/sim_validate_simple_car_perception.py
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
   tools/bootstrap_env.sh
@@ -47,6 +52,7 @@ install(PROGRAMS
   tools/stop_stack.sh
   tools/stop_jt128_stack.sh
   tools/setup_unitree_dds.sh
+  scripts/global_traversability_integrator.py
   tools/map_quality/check_map_quality.py
   DESTINATION share/${PROJECT_NAME})
 
@@ -58,6 +64,7 @@ install(PROGRAMS
   scripts/goal_pose_3d_smoke_test.py
   scripts/industrial_3d_closed_loop_check.py
   scripts/industrial_3d_nav_preflight.py
+  scripts/imu_to_si_converter.py
   scripts/jt128_dlio_watchdog.py
   scripts/nav2_corridor_gate.py
   scripts/nav_contract_check.py
@@ -65,12 +72,18 @@ install(PROGRAMS
   scripts/odometry_tf_broadcaster.py
   scripts/octomap_mapping_node.py
   scripts/octomap_to_2d_grid.py
+  scripts/pointcloud_preview_node.py
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
   scripts/nav2_corridor_gate.py
+  scripts/global_traversability_integrator.py
   scripts/traversability_to_obstacle_cloud.py
   scripts/odometry_to_pose_covariance.py
   scripts/pcd_to_2d_map.py
+  scripts/analyze_perception_bag.py
+  scripts/sim_validate_perception_pipeline.py
+  scripts/sim_validate_gazebo_perception.py
+  scripts/sim_validate_simple_car_perception.py
   scripts/a2_battery_publisher.py
   tools/map_quality/check_map_quality.py
   DESTINATION lib/${PROJECT_NAME})

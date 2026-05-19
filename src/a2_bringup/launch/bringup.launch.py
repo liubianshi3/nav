@@ -47,6 +47,9 @@ def _unitree_ddsc_env(runtime_mode):
     if runtime_mode != "real":
         return {}
 
+    env = {
+        "RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
+    }
     candidates = [
         "/opt/unitree_robotics/lib/x86_64/libddsc.so.0",
         "/unitree/opt/lib/libddsc.so.0",
@@ -56,8 +59,9 @@ def _unitree_ddsc_env(runtime_mode):
             continue
         current = os.environ.get("LD_PRELOAD", "").strip()
         preload = candidate if not current else f"{candidate}:{current}"
-        return {"LD_PRELOAD": preload}
-    return {}
+        env["LD_PRELOAD"] = preload
+        return env
+    return env
 
 
 def _launch_setup(context, *args, **kwargs):

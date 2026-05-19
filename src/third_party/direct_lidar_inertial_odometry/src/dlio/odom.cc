@@ -763,6 +763,10 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::msg::PointCloud2::Sha
   }
   this->main_loop_running = true;
   lock.unlock();
+  auto release_main_loop = [this]() {
+    std::unique_lock<decltype(this->main_loop_running_mutex)> release_lock(this->main_loop_running_mutex);
+    this->main_loop_running = false;
+  };
 
   double then = this->now().seconds();
 
@@ -782,11 +786,13 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::msg::PointCloud2::Sha
   this->preprocessPoints();
 
   if (!this->first_valid_scan) {
+    release_main_loop();
     return;
   }
 
   if (this->current_scan->points.size() <= this->gicp_min_num_points_) {
     RCLCPP_FATAL(this->get_logger(), "Low number of points in the cloud!");
+    release_main_loop();
     return;
   }
 

@@ -123,6 +123,39 @@ def read_pcd(path: str):
 # ---------------------------------------------------------------------------
 
 
+def parse_clear_world_point_spec(spec: str) -> tuple[float, float, float]:
+    parts = [part.strip() for part in spec.split(",")]
+    if len(parts) != 3:
+        raise ValueError("clear world point must be formatted as x,y,radius")
+    x, y, radius = (float(part) for part in parts)
+    if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(radius)):
+        raise ValueError("clear world point values must be finite")
+    if radius <= 0.0:
+        raise ValueError("clear world point radius must be > 0")
+    return x, y, radius
+
+
+def normalize_clear_world_points(value) -> list[tuple[float, float, float]]:
+    if value is None:
+        return []
+    result: list[tuple[float, float, float]] = []
+    for item in value:
+        if isinstance(item, str):
+            if not item.strip():
+                continue
+            result.append(parse_clear_world_point_spec(item))
+            continue
+        if len(item) != 3:
+            raise ValueError("clear world point must contain exactly x, y, radius")
+        x, y, radius = (float(part) for part in item)
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(radius)):
+            raise ValueError("clear world point values must be finite")
+        if radius <= 0.0:
+            raise ValueError("clear world point radius must be > 0")
+        result.append((x, y, radius))
+    return result
+
+
 def project(
     xs, ys, zs,
     resolution=0.05,
@@ -134,6 +167,7 @@ def project(
     dilate_radius_cells=0,
     ignore_obstacles_within_radius=0.0,
     clear_radius_around_origin=0.0,
+    clear_world_points=None,
 ):
     """Project classified points to a 2D occupancy grid.
 
@@ -149,8 +183,14 @@ def project(
     applied AFTER classification and FORCES every cell whose center lies
     inside the disk to free (0). Used to guarantee the static map publishes a
     real free patch around the build origin / robot start location.
+
+    ``clear_world_points`` is a list of ``(x, y, radius)`` disks in the map
+    frame. This is the navigation-start clearing path: after NDT converges, the
+    caller can pass the current map-frame base_link pose instead of assuming
+    the robot is still at the map origin.
     """
     ignore_radius_sq = float(ignore_obstacles_within_radius) ** 2
+    clear_points = normalize_clear_world_points(clear_world_points)
 
     # Bounding box from obstacle points (also subject to the ignore radius so
     # a tight self-shell does not inflate the map bounds).
@@ -180,6 +220,11 @@ def project(
         max_x = max(max_x, r + border_padding_m)
         min_y = min(min_y, -r - border_padding_m)
         max_y = max(max_y, r + border_padding_m)
+    for center_x, center_y, radius in clear_points:
+        min_x = min(min_x, center_x - radius - border_padding_m)
+        max_x = max(max_x, center_x + radius + border_padding_m)
+        min_y = min(min_y, center_y - radius - border_padding_m)
+        max_y = max(max_y, center_y + radius + border_padding_m)
 
     # Snap origin to resolution grid
     origin_x = math.floor(min_x / resolution) * resolution
@@ -229,6 +274,11 @@ def project(
         cleared_cells = clear_disk_around_world_point(
             grid, width, height, origin_x, origin_y, resolution,
             0.0, 0.0, float(clear_radius_around_origin),
+        )
+    for center_x, center_y, radius in clear_points:
+        cleared_cells += clear_disk_around_world_point(
+            grid, width, height, origin_x, origin_y, resolution,
+            center_x, center_y, radius,
         )
 
     return grid, origin_x, origin_y, width, height, cleared_cells
@@ -357,16 +407,19 @@ def _log_projection_summary(
     *,
     ignore_obstacles_within_radius: float,
     clear_radius_around_origin: float,
+    clear_world_points: list[tuple[float, float, float]] | None = None,
     cleared_cells: int,
     dilate_radius_cells: int,
     log=print,
 ) -> None:
+    clear_world_points = clear_world_points or []
     log(
         f"[pcd_to_2d_map] dilate_radius_cells={dilate_radius_cells}, "
         f"ignore_obstacles_within_radius={ignore_obstacles_within_radius:.3f} m, "
-        f"clear_radius_around_origin={clear_radius_around_origin:.3f} m"
+        f"clear_radius_around_origin={clear_radius_around_origin:.3f} m, "
+        f"clear_world_points={len(clear_world_points)}"
     )
-    if clear_radius_around_origin > 0.0:
+    if clear_radius_around_origin > 0.0 or clear_world_points:
         log(f"[pcd_to_2d_map] clear_disk_around_world_point cleared {cleared_cells} cells")
 
 
@@ -414,6 +467,14 @@ def _cli_args():
                        "static map exposes a real free patch around the robot "
                        "start location."
                    ))
+    p.add_argument("--clear-world-point", action="append", default=[],
+                   metavar="X,Y,R",
+                   help=(
+                       "Force every cell within radius R of map-frame point "
+                       "(X, Y) to free. Repeatable. Use this with the NDT "
+                       "map->base_link pose so the static map is cleared at "
+                       "the actual navigation start, not only at (0, 0)."
+                   ))
     return p.parse_args()
 
 
@@ -458,6 +519,9 @@ def _ros_entry():
     clear_radius_around_origin = float(
         node.declare_parameter("clear_radius_around_origin", 0.0).value
     )
+    clear_world_points = normalize_clear_world_points(
+        node.declare_parameter("clear_world_points", [""]).value
+    )
     oneshot = bool(node.declare_parameter("oneshot", True).value)
 
     node.get_logger().info(f"Projecting {pcd_path} → {output_dir}")
@@ -476,11 +540,13 @@ def _ros_entry():
         dilate_radius_cells=dilate,
         ignore_obstacles_within_radius=ignore_obstacles_within_radius,
         clear_radius_around_origin=clear_radius_around_origin,
+        clear_world_points=clear_world_points,
     )
     write_map_output(grid, w, h, resolution, ox, oy, output_dir)
     _log_projection_summary(
         ignore_obstacles_within_radius=ignore_obstacles_within_radius,
         clear_radius_around_origin=clear_radius_around_origin,
+        clear_world_points=clear_world_points,
         cleared_cells=cleared_cells,
         dilate_radius_cells=dilate,
         log=node.get_logger().info,
@@ -522,6 +588,7 @@ def main():
 
     xs, ys, zs = read_pcd(pcd_path)
     print(f"[pcd_to_2d_map] Read {len(xs)} points from {pcd_path}")
+    clear_world_points = normalize_clear_world_points(args.clear_world_point)
 
     grid, ox, oy, w, h, cleared_cells = project(
         xs, ys, zs,
@@ -534,11 +601,13 @@ def main():
         dilate_radius_cells=args.dilate,
         ignore_obstacles_within_radius=args.ignore_obstacles_within_radius,
         clear_radius_around_origin=args.clear_radius_around_origin,
+        clear_world_points=clear_world_points,
     )
     write_map_output(grid, w, h, args.resolution, ox, oy, output_dir)
     _log_projection_summary(
         ignore_obstacles_within_radius=args.ignore_obstacles_within_radius,
         clear_radius_around_origin=args.clear_radius_around_origin,
+        clear_world_points=clear_world_points,
         cleared_cells=cleared_cells,
         dilate_radius_cells=args.dilate,
     )

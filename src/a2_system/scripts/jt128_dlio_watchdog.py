@@ -22,6 +22,7 @@ class Jt128DlioWatchdog(Node):
         self.max_position_norm = float(self.declare_parameter("max_position_norm", 50.0).value)
         self.max_abs_z = float(self.declare_parameter("max_abs_z", 5.0).value)
         self.max_linear_speed = float(self.declare_parameter("max_linear_speed", 2.0).value)
+        self.fault_sample_count = int(self.declare_parameter("fault_sample_count", 10).value)
         self.startup_grace_sec = float(self.declare_parameter("startup_grace_sec", 8.0).value)
         self.stop_on_fault = bool(self.declare_parameter("stop_on_fault", True).value)
         raw_stop_script = self.declare_parameter(
@@ -31,6 +32,7 @@ class Jt128DlioWatchdog(Node):
         self.started_at = time.monotonic()
         self.last_odom_at: float | None = None
         self.faulted = False
+        self.pending_fault_count = 0
         self.last_status = ""
         self.last_logged_state = ""
         self.last_ok_log_at = 0.0
@@ -60,10 +62,19 @@ class Jt128DlioWatchdog(Node):
         elif speed_norm > self.max_linear_speed:
             reason = f"speed_norm={speed_norm:.2f}>{self.max_linear_speed:.2f}"
         if reason is None:
+            self.pending_fault_count = 0
             self.publish_status(
                 "ok",
                 True,
                 f"position_norm={position_norm:.3f};z={p.z:.3f};speed={speed_norm:.3f}",
+            )
+            return
+        self.pending_fault_count += 1
+        if self.pending_fault_count < self.fault_sample_count:
+            self.publish_status(
+                state="suspect",
+                ready=True,
+                reason=f"{reason};sample={self.pending_fault_count}/{self.fault_sample_count}",
             )
             return
         self.faulted = True

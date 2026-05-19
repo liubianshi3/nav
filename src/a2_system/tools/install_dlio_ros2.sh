@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 DLIO_REPO="${A2_DLIO_REPO:-https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git}"
 DLIO_BRANCH="${A2_DLIO_BRANCH:-feature/ros2}"
 DLIO_DIR="${WORKSPACE}/src/third_party/direct_lidar_inertial_odometry"

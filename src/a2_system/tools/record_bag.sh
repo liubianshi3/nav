@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 OUT_DIR="${WORKSPACE}/runtime/bags/$(date +%Y%m%d_%H%M%S)"
 TOPIC_FILE="${WORKSPACE}/src/a2_system/config/rosbag_topics.txt"
 mkdir -p "${OUT_DIR}"

@@ -8,9 +8,8 @@ pose_goal_controller_3d:
     localization_ok_topic: /a2/localization_ok
     map_frame: map
 
-    # Safety default: dry-run until the operator explicitly enables motion in
-    # the launch command after verifying localization and clear surroundings.
-    dry_run: true
+    # Docker/live startup defaults to the real Unitree control chain.
+    dry_run: false
     require_localization_ok: true
     require_obstacle_cloud: true
     obstacle_cloud_topic: /jt128/front/points

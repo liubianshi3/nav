@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
@@ -19,9 +20,14 @@ def _launch_setup(context, *args, **kwargs):
     start_dlio = _as_bool(LaunchConfiguration("start_dlio").perform(context))
     start_map_manager = _as_bool(LaunchConfiguration("start_map_manager").perform(context))
     start_watchdog = _as_bool(LaunchConfiguration("start_watchdog").perform(context))
+    start_pointcloud_previews = _as_bool(LaunchConfiguration("start_pointcloud_previews").perform(context))
     use_sim_time = _as_bool(LaunchConfiguration("use_sim_time").perform(context))
     pointcloud_topic = LaunchConfiguration("pointcloud_topic").perform(context)
+    raw_imu_topic = LaunchConfiguration("raw_imu_topic").perform(context)
     imu_topic = LaunchConfiguration("imu_topic").perform(context)
+    start_imu_si_converter = _as_bool(LaunchConfiguration("start_imu_si_converter").perform(context))
+    imu_acceleration_scale = float(LaunchConfiguration("imu_acceleration_scale").perform(context))
+    imu_angular_velocity_scale = float(LaunchConfiguration("imu_angular_velocity_scale").perform(context))
     dlio_config = LaunchConfiguration("dlio_config").perform(context)
     map_root = LaunchConfiguration("map_root").perform(context)
 
@@ -40,6 +46,25 @@ def _launch_setup(context, *args, **kwargs):
             ],
         )
     ]
+
+    if start_imu_si_converter and raw_imu_topic != imu_topic:
+        actions.append(
+            Node(
+                package="a2_system",
+                executable="imu_to_si_converter.py",
+                name="jt128_imu_to_si_converter",
+                parameters=[
+                    {
+                        "input_topic": raw_imu_topic,
+                        "output_topic": imu_topic,
+                        "acceleration_scale": imu_acceleration_scale,
+                        "angular_velocity_scale": imu_angular_velocity_scale,
+                        "use_sim_time": use_sim_time,
+                    }
+                ],
+                output="screen",
+            )
+        )
 
     if start_dlio:
         try:
@@ -81,6 +106,23 @@ def _launch_setup(context, *args, **kwargs):
                             ("save_pcd", "/jt128/dlio/save_pcd"),
                         ],
                     ),
+                    Node(
+                        package="a2_system",
+                        executable="odometry_tf_broadcaster.py",
+                        name="jt128_dlio_odom_tf_broadcaster",
+                        output="screen",
+                        parameters=[
+                            {
+                                "odom_topic": "/jt128/dlio/odom",
+                                "parent_frame": "odom",
+                                "child_frame": "base_link",
+                                "use_msg_frame_ids": False,
+                                "flatten_z": True,
+                                "planarize_orientation": True,
+                                "use_sim_time": use_sim_time,
+                            }
+                        ],
+                    ),
                 ]
             )
         except PackageNotFoundError:
@@ -106,14 +148,62 @@ def _launch_setup(context, *args, **kwargs):
                         "odom_topic": "/jt128/dlio/odom",
                         "max_position_norm": 50.0,
                         "max_abs_z": 5.0,
-                        "max_linear_speed": 2.0,
+                        "max_linear_speed": 8.0,
+                        "fault_sample_count": 10,
                         "startup_grace_sec": 8.0,
-                        "stop_on_fault": True,
+                        "stop_on_fault": False,
                         "use_sim_time": use_sim_time,
                     }
                 ],
             )
         )
+
+    if start_pointcloud_previews:
+        actions.append(
+            Node(
+                package="a2_system",
+                executable="pointcloud_preview_node.py",
+                name="jt128_front_points_preview",
+                output="screen",
+                parameters=[
+                    {
+                        "input_topic": "/jt128/front/points",
+                        "output_topic": "/jt128/front/points_preview",
+                        "preview_rate_hz": 5.0,
+                        "voxel_size_m": 0.05,
+                        "min_range_m": 0.2,
+                        "max_range_m": 20.0,
+                        "max_points": 30000,
+                        "include_intensity": True,
+                        "qos_reliability": "best_effort",
+                        "use_sim_time": use_sim_time,
+                    }
+                ],
+            )
+        )
+        if start_dlio:
+            actions.append(
+                Node(
+                    package="a2_system",
+                    executable="pointcloud_preview_node.py",
+                    name="jt128_dlio_map_points_preview",
+                    output="screen",
+                    parameters=[
+                        {
+                            "input_topic": "/jt128/dlio/map_points",
+                            "output_topic": "/jt128/dlio/map_points_preview",
+                            "preview_rate_hz": 2.0,
+                            "voxel_size_m": 0.05,
+                            "min_range_m": 0.0,
+                            "max_range_m": 0.0,
+                            "max_points": 60000,
+                            "include_intensity": True,
+                            "qos_reliability": "best_effort",
+                            "use_sim_time": use_sim_time,
+                        }
+                    ],
+                )
+            )
 
     if start_map_manager:
         actions.append(
@@ -141,15 +231,22 @@ def _launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
     bringup_share = get_package_share_directory("a2_bringup")
+    workspace = os.environ.get("A2_WORKSPACE", str(Path.home() / "ws" / "device-navigation"))
     return LaunchDescription(
         [
             DeclareLaunchArgument("start_driver", default_value="true"),
             DeclareLaunchArgument("start_dlio", default_value="true"),
             DeclareLaunchArgument("start_map_manager", default_value="true"),
             DeclareLaunchArgument("start_watchdog", default_value="true"),
+            DeclareLaunchArgument("start_pointcloud_previews", default_value="true"),
+            DeclareLaunchArgument("start_imu_si_converter", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("pointcloud_topic", default_value="/jt128/front/points"),
-            DeclareLaunchArgument("imu_topic", default_value="/jt128/front/imu"),
+            DeclareLaunchArgument("raw_imu_topic", default_value="/jt128/front/imu"),
+            DeclareLaunchArgument("imu_topic", default_value="/jt128/front/imu_si"),
+            DeclareLaunchArgument("imu_acceleration_scale", default_value="9.80665"),
+            # JT128 IMU reports gyro in degrees/sec; DLIO expects radians/sec.
+            DeclareLaunchArgument("imu_angular_velocity_scale", default_value="0.017453292519943295"),
             DeclareLaunchArgument(
                 "jt128_config",
                 default_value=f"{a2_system_share}/config/jt128_front_hesai.yaml",
@@ -159,7 +256,7 @@ def generate_launch_description():
                 default_value=f"{a2_system_share}/config/dlio_jt128.yaml",
             ),
             DeclareLaunchArgument(
-                "map_root", default_value=str(Path.home() / "a2_system_ws" / "runtime" / "maps")
+                "map_root", default_value=f"{workspace}/runtime/maps"
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(f"{bringup_share}/launch/jt128_driver.launch.py"),

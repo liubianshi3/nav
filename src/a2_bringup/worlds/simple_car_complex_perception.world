@@ -1,0 +1,173 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="simple_car_complex_perception">
+
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
+
+    <!-- ====== Corridor walls (x: 0–8m) ====== -->
+    <model name="wall_left">
+      <pose>4.0 1.8 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>8.0 0.10 1.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>8.0 0.10 1.0</size></box></geometry>
+          <material>
+            <ambient>0.7 0.7 0.6 1</ambient>
+            <diffuse>0.7 0.7 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="wall_right">
+      <pose>4.0 -1.8 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>8.0 0.10 1.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>8.0 0.10 1.0</size></box></geometry>
+          <material>
+            <ambient>0.7 0.7 0.6 1</ambient>
+            <diffuse>0.7 0.7 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Low bar obstacle at 2m ahead ====== -->
+    <model name="low_bar">
+      <pose>2.0 0.0 0.06 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 0.12 0.12</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 0.12 0.12</size></box></geometry>
+          <material>
+            <ambient>0.9 0.3 0.1 1</ambient>
+            <diffuse>0.9 0.3 0.1 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Box front-right ====== -->
+    <model name="box_front">
+      <pose>3.0 0.6 0.25 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.5 0.5 0.5</size></box></geometry>
+          <material>
+            <ambient>0.5 0.4 0.2 1</ambient>
+            <diffuse>0.5 0.4 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Narrow pillar left ====== -->
+    <model name="pillar_left">
+      <pose>2.5 1.0 0.5 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.12 0.12 1.0</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.12 0.12 1.0</size></box></geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.4 0.4 0.4 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Tall box right ====== -->
+    <model name="tall_box_right">
+      <pose>3.5 -1.0 0.40 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.35 0.35 0.80</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.35 0.35 0.80</size></box></geometry>
+          <material>
+            <ambient>0.6 0.2 0.2 1</ambient>
+            <diffuse>0.6 0.2 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Narrow passage (gap between walls) ====== -->
+    <!-- wall_left and wall_right already form a corridor -->
+
+    <!-- ====== Step box ====== -->
+    <model name="step_box">
+      <pose>4.5 -0.5 0.08 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 0.6 0.16</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 0.6 0.16</size></box></geometry>
+          <material>
+            <ambient>0.3 0.7 0.3 1</ambient>
+            <diffuse>0.3 0.7 0.3 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Slope plate (tilted for traversability height test) ====== -->
+    <model name="slope_plate">
+      <pose>5.5 0.7 0.08 0 0.15 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>1.0 0.6 0.08</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>1.0 0.6 0.08</size></box></geometry>
+          <material>
+            <ambient>0.8 0.6 0.2 1</ambient>
+            <diffuse>0.8 0.6 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Far obstacle at 7m ====== -->
+    <model name="far_box">
+      <pose>7.0 0.3 0.35 0 0 0</pose>
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.6 0.6 0.7</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.6 0.6 0.7</size></box></geometry>
+          <material>
+            <ambient>0.3 0.3 0.7 1</ambient>
+            <diffuse>0.3 0.3 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
