@@ -5,12 +5,10 @@ from ament_index_python.packages import PackageNotFoundError, get_package_share_
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    ExecuteProcess,
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
     SetLaunchConfiguration,
-    TimerAction,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
@@ -26,10 +24,7 @@ def _unitree_ddsc_env():
         # PreconditionNotMetError("Failed to create domain explicitly").
         # Keep this process isolated while the rest of the ROS graph stays on
         # CycloneDDS.
-        "RMW_IMPLEMENTATION": os.environ.get(
-            "A2_UNITREE_RMW_IMPLEMENTATION",
-            "rmw_fastrtps_cpp",
-        ),
+        "RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
     }
     candidates = [
         "/opt/unitree_robotics/lib/x86_64/libddsc.so.0",
@@ -297,26 +292,18 @@ def generate_launch_description():
                 ],
                 output="screen",
             ),
-            TimerAction(
-                period=18.0,
-                actions=[
-                    ExecuteProcess(
-                        cmd=[
-                            "bash",
-                            "-lc",
-                            (
-                                "for i in $(seq 1 20); do "
-                                "ros2 lifecycle get /collision_monitor 2>/dev/null | grep -q '^active' && exit 0; "
-                                "ros2 lifecycle set /collision_monitor configure || true; "
-                                "ros2 lifecycle set /collision_monitor activate || true; "
-                                "sleep 1; "
-                                "done; "
-                                "ros2 lifecycle get /collision_monitor || true"
-                            ),
-                        ],
-                        output="screen",
-                    )
+            Node(
+                package="nav2_lifecycle_manager",
+                executable="lifecycle_manager",
+                name="lifecycle_manager_collision_monitor",
+                parameters=[
+                    {
+                        "autostart": True,
+                        "node_names": ["collision_monitor"],
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    }
                 ],
+                output="screen",
             ),
             # ── Battery publisher → /a2/battery ──
             Node(

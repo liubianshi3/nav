@@ -423,6 +423,11 @@ class RosBridgeNode(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
+        pointcloud_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, latched_qos)
         self.create_subscription(OccupancyGrid, ros.map_topic, self._on_map, 10)
         pointcloud_topics: set[str] = set()
@@ -440,7 +445,7 @@ class RosBridgeNode(Node):
                     subscribed_topic,
                     primary=is_primary,
                 ),
-                10,
+                pointcloud_qos,
             )
 
         subscribe_pointcloud(ros.pointcloud_topic, primary=True)

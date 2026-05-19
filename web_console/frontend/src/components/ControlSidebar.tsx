@@ -121,7 +121,7 @@ export function ModeControlSection({
   return (
     <section className="panel">
       <h2>模式控制</h2>
-      <TaskStateChip state={stack?.mode ?? "stopped"} />
+      <StackModeChip mode={stack?.mode ?? "stopped"} />
       <StatusMini label="pid" value={formatNullable(stack?.pid)} />
       <StatusMini label="地图" value={formatNullable(stack?.selected_map_id)} />
       <p className="panel-message">
@@ -691,6 +691,15 @@ export function RecentNoticeSection({
 
 export function TaskStateChip({ state }: { state: string }) {
   return <div className={`task-chip task-chip-${state}`}>{state}</div>;
+}
+
+export function StackModeChip({ mode }: { mode: string }) {
+  const label = toStackModeLabel(mode);
+  return <div className={`task-chip task-chip-${label}`}>{label}</div>;
+}
+
+export function toStackModeLabel(mode: string) {
+  return mode === "stopped" ? "standby" : mode;
 }
 
 interface TaskRouteManagerSectionProps {

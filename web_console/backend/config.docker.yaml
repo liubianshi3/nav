@@ -13,10 +13,10 @@ grpc:
 
 ros:
   map_topic: /map
-  pointcloud_topic: /jt128/front/points
-  pointcloud_fallback_topic: /a2/map/pointcloud_3d
+  pointcloud_topic: /jt128/dlio/map_points_preview
+  pointcloud_fallback_topic: /jt128/front/points_preview
   pointcloud_map_topics:
-    - /jt128/dlio/map_points
+    - /jt128/dlio/map_points_preview
     - /a2/pointcloud_map_3d
     - /a2/map/pointcloud_3d
   pointcloud_primary_stale_sec: 2.0

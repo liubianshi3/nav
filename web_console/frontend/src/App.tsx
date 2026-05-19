@@ -38,6 +38,7 @@ import {
   RecentNoticeSection,
   SelectedGoalSection,
   TaskRouteManagerSection,
+  StackModeChip,
   TaskStateChip,
 } from "./components/ControlSidebar";
 import { MapCanvas } from "./components/MapCanvas";
@@ -1104,7 +1105,7 @@ export default function App() {
             <span className={`indicator ${localizationReady ? "indicator-ok" : "indicator-warn"}`}>
               localization={String(localizationReady)}
             </span>
-            <TaskStateChip state={stack?.mode ?? "stopped"} />
+            <StackModeChip mode={stack?.mode ?? "stopped"} />
           </div>
         </header>
 

@@ -236,6 +236,7 @@ stop_navigation_components() {
   local navigation_patterns=(
     "jt128_3d_navigation.launch.py"
     "pointcloud_guard"
+    "pointcloud_preview_node.py"
     "pointcloud_map_loader"
     "pcd_relocalizer_3d"
     "ndt_scan_matcher"

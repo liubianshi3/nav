@@ -105,7 +105,7 @@ source_ros() {
   set +u
   source /opt/ros/humble/setup.bash
   if [[ -n "${GRAPH_PID_WS}" && -z "${EFFECTIVE_GRAPH_PID_WS}" ]]; then
-    warn "Ignoring A2_GRAPH_PID_WS=${GRAPH_PID_WS}; set A2_ALLOW_GRAPH_PID_WS=1 only for explicit external overlay debugging"
+    warn "Ignoring A2_GRAPH_PID_WS=${GRAPH_PID_WS}; set A2_GRAPH_PID_WS explicitly with A2_ALLOW_GRAPH_PID_WS=1 only for external overlay debugging"
   fi
   if [[ -n "${EFFECTIVE_GRAPH_PID_WS}" && -f "${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash" ]]; then
     source "${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash"
@@ -191,6 +191,7 @@ stop_interference() {
     "navigation_mapping.py" \
     "dwa_obstacle_avoidance.py" \
     "point_cloud_fusion" \
+    "pointcloud_preview_node.py" \
     "dlio_mapping.launch.py" \
     "hesai_ros_driver_node" \
     "imu_to_si_converter.py" \
@@ -223,6 +224,7 @@ stop_interference() {
     "navigation_mapping.py" \
     "dwa_obstacle_avoidance.py" \
     "point_cloud_fusion" \
+    "pointcloud_preview_node.py" \
     "dlio_mapping.launch.py" \
     "hesai_ros_driver_node" \
     "imu_to_si_converter.py" \
@@ -295,6 +297,7 @@ source_ros
 configure_ros_transport
 require_cmd ros2
 require_a2_system_executable "octomap_mapping_node.py"
+require_a2_system_executable "pointcloud_preview_node.py"
 run_privileged sysctl -w net.core.rmem_max=2147483647 >/dev/null 2>&1 || true
 stop_interference
 check_network
@@ -406,9 +409,11 @@ log "Log file: ${LOG_FILE}"
 log "Verify:"
 log "  ros2 topic hz /jt128/front/points"
 log "  ros2 topic hz /jt128/front/imu"
+log "  ros2 topic hz /jt128/front/points_preview"
 if [[ "$START_DLIO" == "true" ]]; then
   log "  ros2 topic info /jt128/dlio/odom"
   log "  ros2 topic info /jt128/dlio/map_points"
+  log "  ros2 topic hz /jt128/dlio/map_points_preview"
   log "  ros2 topic info /octomap_binary"
   log "  ros2 topic info /octomap_full"
   log "  ros2 topic info /projected_map"

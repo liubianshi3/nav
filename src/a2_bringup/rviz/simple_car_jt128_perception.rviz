@@ -109,8 +109,8 @@ Visualization Manager:
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /jt128/front/points
+        Reliability Policy: Best Effort
+        Value: /jt128/front/points_preview
       Use Fixed Frame: true
       Use rainbow: true
       Value: true

@@ -121,6 +121,87 @@ start_standby_sdk_bridge() {
   log "standby sdk bridge log=${log_file}"
 }
 
+start_standby_lidar_preview() {
+  local enabled="${A2_STANDBY_LIDAR_AUTOSTART:-true}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+
+  local mode="${A2_DOCKER_START_MODE:-auto}"
+  if [[ "$mode" != "standby" ]]; then
+    log "standby lidar preview skipped mode=${mode}"
+    return 0
+  fi
+
+  local lidar_iface="${A2_JT128_INTERFACE:-${A2_NETWORK_INTERFACE:-net1}}"
+  local lidar_ip="${A2_JT128_IP:-192.168.124.20}"
+  local log_file="${A2_WORKSPACE}/runtime/logs/jt128_lidar_standby.log"
+  local iface_ip=""
+
+  if ! ip link show "$lidar_iface" >/dev/null 2>&1; then
+    log "standby lidar preview skipped; interface not found: ${lidar_iface}"
+    return 0
+  fi
+  iface_ip="$(ip -4 -o addr show dev "$lidar_iface" scope global | awk '{print $4}' | cut -d/ -f1 | head -1)"
+  if [[ -z "$iface_ip" ]]; then
+    log "standby lidar preview skipped; ${lidar_iface} has no IPv4 address"
+    return 0
+  fi
+  ip route replace "${lidar_ip}/32" dev "$lidar_iface" src "$iface_ip" >/dev/null 2>&1 || true
+  if ! ping -I "$lidar_iface" -c 1 -W 1 "$lidar_ip" >/dev/null 2>&1; then
+    log "standby lidar preview skipped; JT128 ${lidar_ip} is not reachable on ${lidar_iface}"
+    return 0
+  fi
+  if ss -H -lun | grep -Eq '(^|[[:space:]])[^[:space:]]*:2368[[:space:]]'; then
+    log "standby lidar preview skipped; UDP port 2368 is already bound"
+    return 0
+  fi
+
+  log "autostarting standby JT128 lidar driver iface=${lidar_iface} ip=${lidar_ip}"
+  nohup bash -lc "
+    set -e
+    source /opt/ros/humble/setup.bash
+    source '${A2_WORKSPACE}/install/setup.bash'
+    export A2_WORKSPACE='${A2_WORKSPACE}'
+    export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
+    ros2 launch a2_bringup jt128_driver.launch.py use_sim_time:=false
+  " >"$log_file" 2>&1 &
+  log "standby JT128 lidar log=${log_file}"
+
+  start_standby_pointcloud_preview
+}
+
+start_standby_pointcloud_preview() {
+  local enabled="${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}"
+  if ! is_true "$enabled"; then
+    return 0
+  fi
+  if [[ ! -x "${A2_WORKSPACE}/install/a2_system/lib/a2_system/pointcloud_preview_node.py" ]]; then
+    log "standby pointcloud preview skipped; pointcloud_preview_node.py is not installed"
+    return 0
+  fi
+
+  local log_file="${A2_WORKSPACE}/runtime/logs/jt128_front_points_preview_standby.log"
+  log "autostarting standby pointcloud preview /jt128/front/points_preview"
+  nohup bash -lc "
+    set -e
+    source /opt/ros/humble/setup.bash
+    source '${A2_WORKSPACE}/install/setup.bash'
+    export A2_WORKSPACE='${A2_WORKSPACE}'
+    ros2 run a2_system pointcloud_preview_node.py --ros-args \
+      -p input_topic:=/jt128/front/points \
+      -p output_topic:=/jt128/front/points_preview \
+      -p preview_rate_hz:=5.0 \
+      -p voxel_size_m:=0.05 \
+      -p min_range_m:=0.2 \
+      -p max_range_m:=20.0 \
+      -p max_points:=30000 \
+      -p include_intensity:=true \
+      -p qos_reliability:=best_effort
+  " >"$log_file" 2>&1 &
+  log "standby pointcloud preview log=${log_file}"
+}
+
 find_latest_3d_map() {
   python3 - "${A2_WORKSPACE}" "${A2_REQUIRE_NAV2_MAP:-true}" <<'PY'
 from pathlib import Path
@@ -236,6 +317,7 @@ start_a2_stack() {
 
 start_standby_sdk_bridge
 start_standby_control_bridge
+start_standby_lidar_preview
 start_a2_stack
 
 # Keep the container alive with the Web console backend in the foreground.

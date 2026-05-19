@@ -20,6 +20,7 @@ def _launch_setup(context, *args, **kwargs):
     start_dlio = _as_bool(LaunchConfiguration("start_dlio").perform(context))
     start_map_manager = _as_bool(LaunchConfiguration("start_map_manager").perform(context))
     start_watchdog = _as_bool(LaunchConfiguration("start_watchdog").perform(context))
+    start_pointcloud_previews = _as_bool(LaunchConfiguration("start_pointcloud_previews").perform(context))
     use_sim_time = _as_bool(LaunchConfiguration("use_sim_time").perform(context))
     pointcloud_topic = LaunchConfiguration("pointcloud_topic").perform(context)
     raw_imu_topic = LaunchConfiguration("raw_imu_topic").perform(context)
@@ -157,6 +158,53 @@ def _launch_setup(context, *args, **kwargs):
             )
         )
 
+    if start_pointcloud_previews:
+        actions.append(
+            Node(
+                package="a2_system",
+                executable="pointcloud_preview_node.py",
+                name="jt128_front_points_preview",
+                output="screen",
+                parameters=[
+                    {
+                        "input_topic": "/jt128/front/points",
+                        "output_topic": "/jt128/front/points_preview",
+                        "preview_rate_hz": 5.0,
+                        "voxel_size_m": 0.05,
+                        "min_range_m": 0.2,
+                        "max_range_m": 20.0,
+                        "max_points": 30000,
+                        "include_intensity": True,
+                        "qos_reliability": "best_effort",
+                        "use_sim_time": use_sim_time,
+                    }
+                ],
+            )
+        )
+        if start_dlio:
+            actions.append(
+                Node(
+                    package="a2_system",
+                    executable="pointcloud_preview_node.py",
+                    name="jt128_dlio_map_points_preview",
+                    output="screen",
+                    parameters=[
+                        {
+                            "input_topic": "/jt128/dlio/map_points",
+                            "output_topic": "/jt128/dlio/map_points_preview",
+                            "preview_rate_hz": 2.0,
+                            "voxel_size_m": 0.05,
+                            "min_range_m": 0.0,
+                            "max_range_m": 0.0,
+                            "max_points": 60000,
+                            "include_intensity": True,
+                            "qos_reliability": "best_effort",
+                            "use_sim_time": use_sim_time,
+                        }
+                    ],
+                )
+            )
+
     if start_map_manager:
         actions.append(
             Node(
@@ -190,6 +238,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_dlio", default_value="true"),
             DeclareLaunchArgument("start_map_manager", default_value="true"),
             DeclareLaunchArgument("start_watchdog", default_value="true"),
+            DeclareLaunchArgument("start_pointcloud_previews", default_value="true"),
             DeclareLaunchArgument("start_imu_si_converter", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("pointcloud_topic", default_value="/jt128/front/points"),

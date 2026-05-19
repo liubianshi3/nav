@@ -1,6 +1,6 @@
 services:
   a2-system-ws:
-    container_name: ${A2_CONTAINER_NAME:-a2-nav:dev}
+    container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}
     image: ${A2_DOCKER_IMAGE:-a2-nav:dev}
     platform: ${A2_DOCKER_PLATFORM:-linux/amd64}
     init: true
@@ -18,9 +18,9 @@ services:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       # Default to real robot startup: latest map -> navigation, otherwise mapping.
-      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}
+      A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
-      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-eth0}
+      A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}
       A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
       A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
       A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}
@@ -39,6 +39,9 @@ services:
       A2_CONTROL_BRIDGE_AUTOSTART: ${A2_CONTROL_BRIDGE_AUTOSTART:-true}
       A2_CONTROL_BRIDGE_LD_PRELOAD: ${A2_CONTROL_BRIDGE_LD_PRELOAD:-/opt/unitree_robotics/lib/x86_64/libddsc.so.0}
       A2_CONTROL_CMD_TOPIC: ${A2_CONTROL_CMD_TOPIC:-/cmd_vel_safe}
+      A2_STANDBY_LIDAR_AUTOSTART: ${A2_STANDBY_LIDAR_AUTOSTART:-true}
+      A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART: ${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}
+      A2_JT128_IP: ${A2_JT128_IP:-192.168.124.20}
       A2_CONTROL_ALLOW_WITHOUT_MAP: ${A2_CONTROL_ALLOW_WITHOUT_MAP:-true}
       A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION: ${A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION:-true}
       A2_CONTROL_MAX_LINEAR_X: ${A2_CONTROL_MAX_LINEAR_X:-0.35}

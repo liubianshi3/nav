@@ -58,9 +58,9 @@ def test_default_config_exposes_camera_topics():
     assert config.native_slam.request_topic == "/api/slam_operate/request"
     assert config.native_slam.response_topic == "/api/slam_operate/response"
     assert config.native_slam.response_timeout_sec >= 1.0
-    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points"]
+    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
     assert config.ros.task_manager_service == "/a2/task_manager/command"
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
@@ -80,6 +80,9 @@ def test_3d_config_uses_source_workspace_defaults():
     assert config.stack.map_root == "/home/unitree/ws/device-navigation/runtime/maps"
     assert config.stack.start_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh"
     assert config.stack.stop_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh"
+    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
     assert config.ros.pointcloud_preview_max_points >= 60000
     assert config.ros.websocket_pointcloud_max_points >= 48000
 
@@ -95,6 +98,19 @@ def test_a2_workspace_env_overrides_3d_stack_paths(monkeypatch):
     assert config.stack.start_script == "/tmp/a2_ws/src/a2_system/tools/start_jt128_3d_stack.sh"
     assert config.stack.stop_script == "/tmp/a2_ws/src/a2_system/tools/stop_jt128_stack.sh"
     assert config.stack.network_interface == "enp3s0"
+
+
+def test_jt128_interface_env_overrides_stack_lidar_interface(monkeypatch):
+    monkeypatch.setenv("A2_WORKSPACE", "/tmp/a2_ws")
+    monkeypatch.setenv("A2_NETWORK_INTERFACE", "eth0")
+    monkeypatch.setenv("A2_JT128_INTERFACE", "net1")
+
+    config = load_config(Path(__file__).resolve().parents[1] / "config.docker.yaml")
+    command = StackController(config)._start_script_command("navigation", "a2_map")
+
+    assert config.stack.network_interface == "net1"
+    assert "--lidar-iface" in command
+    assert command[command.index("--lidar-iface") + 1] == "net1"
 
 
 def test_web_systemd_service_targets_current_a2_source_workspace():
@@ -116,9 +132,9 @@ def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     assert config.camera.enabled is True
     assert config.camera.prefer_compressed is False
     assert config.ros.camera_image_topic == "/camera/image_raw"
-    assert config.ros.pointcloud_topic == "/jt128/front/points"
-    assert config.ros.pointcloud_fallback_topic == "/a2/map/pointcloud_3d"
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points"
+    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -132,9 +148,9 @@ def test_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.stack.stop_script.endswith("stop_jt128_stack.sh")
     assert config.stack.command_timeout_sec >= 60.0
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
-    assert config.ros.pointcloud_topic == "/jt128/front/points"
-    assert config.ros.pointcloud_fallback_topic == "/a2/map/pointcloud_3d"
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points"
+    assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -198,7 +214,7 @@ def test_default_navigation_requests_are_live_motion():
     assert "dry_run" not in NAVIGATION_MOTION_MODES
 
 
-def test_a2_docker_defaults_start_real_live_motion():
+def test_a2_docker_defaults_start_standby_with_real_motion_available():
     repo_root = Path(__file__).resolve().parents[3]
     compose_source = (repo_root / "docker-compose.a2.yml").read_text(encoding="utf-8")
     entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
@@ -207,21 +223,32 @@ def test_a2_docker_defaults_start_real_live_motion():
     assert legacy_special_suffix not in compose_source.lower()
     assert not (repo_root / "docker/docker-compose.a2.yml").exists()
     assert not (repo_root / f"web_console/backend/config.docker.{legacy_special_suffix}.yaml").exists()
-    assert "A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-auto}" in compose_source
+    assert "A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}" in compose_source
     assert "A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-true}" in compose_source
     assert "A2_LIVE_MOTION: ${A2_LIVE_MOTION:-true}" in compose_source
-    assert "image: ${A2_DOCKER_IMAGE:-a2-system-ws:dev}" in compose_source
+    assert "image: ${A2_DOCKER_IMAGE:-a2-nav:dev}" in compose_source
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
     assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
     assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}" in compose_source
+    assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
+    assert "A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}" in compose_source
+    assert "A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}" in compose_source
+    assert "A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}" in compose_source
     assert "A2_SDK_BRIDGE_AUTOSTART: ${A2_SDK_BRIDGE_AUTOSTART:-true}" in compose_source
     assert "A2_CONTROL_BRIDGE_AUTOSTART: ${A2_CONTROL_BRIDGE_AUTOSTART:-true}" in compose_source
+    assert "A2_STANDBY_LIDAR_AUTOSTART: ${A2_STANDBY_LIDAR_AUTOSTART:-true}" in compose_source
+    assert "A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART: ${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}" in compose_source
     assert "A2_CONTROL_ALLOW_WITHOUT_MAP: ${A2_CONTROL_ALLOW_WITHOUT_MAP:-true}" in compose_source
     assert "A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION: ${A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION:-true}" in compose_source
     assert "${A2_HOST_MAP_ROOT:-/home/unitree/ws/device-navigation/runtime/maps}" in compose_source
     assert 'local enable_motion="${A2_ENABLE_MOTION:-true}"' in entrypoint_source
     assert 'local live_motion="${A2_LIVE_MOTION:-true}"' in entrypoint_source
+    assert "start_standby_lidar_preview" in entrypoint_source
+    assert 'A2_STANDBY_LIDAR_AUTOSTART:-true' in entrypoint_source
+    assert 'ros2 launch a2_bringup jt128_driver.launch.py' in entrypoint_source
+    assert 'ros2 run a2_system pointcloud_preview_node.py' in entrypoint_source
+    assert 'start_standby_lidar_preview' in entrypoint_source.split("start_a2_stack")[0]
 
 
 def test_unitree_bridge_nodes_use_fastrtps_rmw():
@@ -285,6 +312,10 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "suppressClickRef" not in controls_source
     assert "onClick={() =>" in controls_source
     assert "按住方向键持续发布" in controls_source
+    assert "StackModeChip" in controls_source
+    assert 'toStackModeLabel(mode)' in controls_source
+    assert 'return mode === "stopped" ? "standby" : mode' in controls_source
+    assert ".task-chip-standby" in styles_source
     assert "manual-auth-grid" in controls_source
     assert "motionAlreadyAuthorized" in controls_source
     assert 'motionAlreadyAuthorized ? "已授权" : "启动运动授权"' in controls_source
@@ -622,6 +653,8 @@ def test_websocket_pointcloud_uses_lightweight_preview():
     assert "round(float(point[0]), 3)" in bridge
     assert "_preview_sample_indices(len(snapshot.points), max_points)" in bridge
     assert "_preview_sample_indices(total_points, max_points)" in bridge
+    assert "pointcloud_qos = QoSProfile" in bridge
+    assert "reliability=ReliabilityPolicy.BEST_EFFORT" in bridge
     assert 'self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))' in bridge
     assert "snapshot.pointcloud = node._websocket_pointcloud_snapshot(snapshot.pointcloud)" in main
 

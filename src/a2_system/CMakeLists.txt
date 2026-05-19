@@ -29,6 +29,7 @@ install(PROGRAMS
   scripts/ndt_adapter_dry_run_check.py
   scripts/odometry_tf_broadcaster.py
   scripts/preflight_check.py
+  scripts/pointcloud_preview_node.py
   scripts/sim_validate_perception_pipeline.py
   scripts/sim_validate_gazebo_perception.py
   scripts/sim_validate_simple_car_perception.py
@@ -71,6 +72,7 @@ install(PROGRAMS
   scripts/odometry_tf_broadcaster.py
   scripts/octomap_mapping_node.py
   scripts/octomap_to_2d_grid.py
+  scripts/pointcloud_preview_node.py
   scripts/sensor_covariance_injector.py
   scripts/task_manager.py
   scripts/nav2_corridor_gate.py

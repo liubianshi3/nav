@@ -28,11 +28,11 @@ class GrpcConfig:
 @dataclass
 class RosTopicConfig:
     map_topic: str = "/map"
-    pointcloud_topic: str = "/jt128/dlio/map_points"
-    pointcloud_fallback_topic: str = ""
+    pointcloud_topic: str = "/jt128/dlio/map_points_preview"
+    pointcloud_fallback_topic: str = "/jt128/front/points_preview"
     pointcloud_map_topics: list[str] = field(
         default_factory=lambda: [
-            "/jt128/dlio/map_points",
+            "/jt128/dlio/map_points_preview",
         ]
     )
     pointcloud_primary_stale_sec: float = 2.0
@@ -230,5 +230,6 @@ def _apply_environment_overrides(config: AppConfig) -> None:
             "A2_STACK_STOP_SCRIPT",
             f"{workspace}/src/a2_system/tools/stop_jt128_stack.sh",
         )
-    if os.environ.get("A2_NETWORK_INTERFACE"):
-        config.stack.network_interface = os.environ["A2_NETWORK_INTERFACE"]
+    stack_interface = os.environ.get("A2_JT128_INTERFACE") or os.environ.get("A2_NETWORK_INTERFACE")
+    if stack_interface:
+        config.stack.network_interface = stack_interface

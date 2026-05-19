@@ -38,6 +38,7 @@ STACK_PATTERNS=(
   "octomap_saver_node"
   "map_manager_node"
   "pointcloud_guard"
+  "pointcloud_preview_node.py"
   "pointcloud_map_loader"
   "pcd_relocalizer_3d"
   "ndt_scan_matcher"
