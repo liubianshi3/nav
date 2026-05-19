@@ -230,7 +230,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
     assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
-    assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}" in compose_source
+    assert 'ROS_DOMAIN_ID: "0"' in compose_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
     assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
     assert "A2_ROS_PEERS: ${A2_ROS_PEERS:-}" in compose_source

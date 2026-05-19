@@ -15,7 +15,7 @@ services:
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
       CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       # Default to real robot startup: latest map -> navigation, otherwise mapping.
       A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
