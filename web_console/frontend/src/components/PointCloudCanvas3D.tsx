@@ -72,7 +72,7 @@ export function PointCloudCanvas3D({
   const poseFrameRef = useRef<string | null>(null);
   const pointcloudFrameRef = useRef<string | null>(null);
   const onSelectGoalRef = useRef(onSelectGoal);
-  const lastRobotPoseRef = useRef<{ x: number; y: number; yaw: number } | null>(null);
+  const lastRobotPoseRef = useRef<{ x: number; y: number; yaw: number }>({ x: 0, y: 0, yaw: 0 });
   const [artifactState, setArtifactState] = useState("等待 3D 资产");
   const [showSavedMap, setShowSavedMap] = useState(true);
   const [showLiveOverlay, setShowLiveOverlay] = useState(false);
@@ -421,8 +421,8 @@ export function PointCloudCanvas3D({
     const markerPose = lastRobotPoseRef.current;
     updateMarker(
       current?.robotMarker ?? null,
-      markerPose ? markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false) : null,
-      markerPose?.yaw ?? 0,
+      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false),
+      markerPose.yaw,
     );
   }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw, sceneOriginVersion]);
 

@@ -440,8 +440,10 @@ def test_3d_yellow_robot_marker_follows_pose_without_static_origin_marker():
     source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
 
     assert "lastRobotPoseRef" in source
+    assert "useRef<{ x: number; y: number; yaw: number }>({ x: 0, y: 0, yaw: 0 })" in source
     assert "lastRobotPoseRef.current = {" in source
     assert "const markerPose = lastRobotPoseRef.current;" in source
+    assert "updateMarker(\n      current?.robotMarker ?? null,\n      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false)," in source
     assert "scene.add(robotMarker, selectedGoalMarker, activeGoalMarker);" in source
     assert "originMarker" not in source
     assert "createOriginMarker" not in source
