@@ -93,6 +93,13 @@ warn() {
   printf '[WARN] %s\n' "$*" >&2
 }
 
+export_child_ros_env() {
+  printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+  fi
+}
+
 die() {
   printf '[ERROR] %s\n' "$*" >&2
   exit 1
@@ -338,7 +345,7 @@ nohup bash -lc "
   if [ -n '${EFFECTIVE_GRAPH_PID_WS}' ] && [ -f '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash' ]; then source '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash'; fi
   source '${WORKSPACE}/install/setup.bash'
   export A2_WORKSPACE='${WORKSPACE}'
-  export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
+  $(export_child_ros_env)
   unset FASTDDS_BUILTIN_TRANSPORTS
   ros2 launch a2_bringup dlio_mapping.launch.py \
     start_driver:=true \
@@ -389,6 +396,7 @@ if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
     if [ -n '${EFFECTIVE_GRAPH_PID_WS}' ] && [ -f '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash' ]; then source '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash'; fi
     source '${WORKSPACE}/install/setup.bash'
     export A2_WORKSPACE='${WORKSPACE}'
+    $(export_child_ros_env)
     ros2 launch a2_bringup octomap_mapping.launch.py \
       use_sim_time:=false \
       odom_topic:=/jt128/dlio/odom \

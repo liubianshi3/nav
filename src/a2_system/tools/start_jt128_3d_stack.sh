@@ -217,6 +217,13 @@ configure_ros_transport() {
   log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
 }
 
+export_child_ros_env() {
+  printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+  fi
+}
+
 require_a2_system_executable() {
   local name="$1"
   local install_path="${WORKSPACE}/install/a2_system/lib/a2_system/${name}"
@@ -343,6 +350,7 @@ setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
+  $(export_child_ros_env)
   export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
   ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \

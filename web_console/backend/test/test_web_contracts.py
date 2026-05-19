@@ -230,7 +230,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
     assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
-    assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}" in compose_source
+    assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}" in compose_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
     assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
     assert "A2_ROS_PEERS: ${A2_ROS_PEERS:-}" in compose_source
@@ -254,7 +254,24 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "configure_cyclonedds_interface" in entrypoint_source
     assert 'local iface="${A2_ROS_INTERFACE:-}"' in entrypoint_source
     assert 'local peers="${A2_ROS_PEERS:-}"' in entrypoint_source
+    assert 'export CYCLONEDDS_URI="<CycloneDDS xmlns=' in entrypoint_source
+    assert '<Domain Id=\\"any\\">' in entrypoint_source
+    assert '<AllowMulticast>spdp</AllowMulticast>' in entrypoint_source
     assert '<Peer Address=\\"${peer}\\" />' in entrypoint_source
+
+
+def test_docker_ros_children_preserve_cyclonedds_uri_for_rviz_peers():
+    repo_root = Path(__file__).resolve().parents[3]
+    entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
+    stack_source = (repo_root / "src/a2_system/tools/start_jt128_3d_stack.sh").read_text(encoding="utf-8")
+    mapping_source = (repo_root / "src/a2_system/tools/start_jt128_dlio_mapping.sh").read_text(encoding="utf-8")
+
+    assert "export_child_ros_env" in entrypoint_source
+    assert "export_child_ros_env" in stack_source
+    assert "export_child_ros_env" in mapping_source
+    assert "export CYCLONEDDS_URI=" in entrypoint_source
+    assert "export CYCLONEDDS_URI=" in stack_source
+    assert "export CYCLONEDDS_URI=" in mapping_source
 
 
 def test_unitree_bridge_nodes_use_fastrtps_rmw():
