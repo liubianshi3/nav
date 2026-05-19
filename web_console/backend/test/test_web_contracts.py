@@ -59,7 +59,7 @@ def test_default_config_exposes_camera_topics():
     assert config.native_slam.response_topic == "/api/slam_operate/response"
     assert config.native_slam.response_timeout_sec >= 1.0
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_fallback_topic == ""
     assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
     assert config.ros.task_manager_service == "/a2/task_manager/command"
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
@@ -81,7 +81,7 @@ def test_3d_config_uses_source_workspace_defaults():
     assert config.stack.start_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh"
     assert config.stack.stop_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_fallback_topic == ""
     assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
     assert config.ros.pointcloud_preview_max_points >= 60000
     assert config.ros.websocket_pointcloud_max_points >= 48000
@@ -133,7 +133,7 @@ def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     assert config.camera.prefer_compressed is False
     assert config.ros.camera_image_topic == "/camera/image_raw"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_fallback_topic == ""
     assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
@@ -149,7 +149,7 @@ def test_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.stack.command_timeout_sec >= 60.0
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_fallback_topic == ""
     assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
