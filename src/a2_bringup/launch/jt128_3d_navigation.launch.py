@@ -304,15 +304,9 @@ def generate_launch_description():
                 actions=[
                     ExecuteProcess(
                         cmd=[
-                            "ros2", "lifecycle", "set",
-                            "/collision_monitor", "configure",
-                        ],
-                        output="screen",
-                    ),
-                    ExecuteProcess(
-                        cmd=[
-                            "ros2", "lifecycle", "set",
-                            "/collision_monitor", "activate",
+                            "bash", "-lc",
+                            "ros2 lifecycle set /collision_monitor configure || true && "
+                            "ros2 lifecycle set /collision_monitor activate || true",
                         ],
                         output="screen",
                     ),
