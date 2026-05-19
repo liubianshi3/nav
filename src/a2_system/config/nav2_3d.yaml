@@ -213,6 +213,9 @@ lifecycle_manager_navigation:
       - waypoint_follower
       - velocity_smoother
       - collision_monitor
+      - waypoint_follower
+      - velocity_smoother
+      - collision_monitor
 
 lifecycle_manager_localization:
   ros__parameters:
