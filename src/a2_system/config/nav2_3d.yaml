@@ -103,7 +103,11 @@ behavior_server:
     costmap_topic: local_costmap/costmap_raw
     footprint_topic: local_costmap/published_footprint
     cycle_frequency: 10.0
-    behavior_plugins: ["wait"]
+    behavior_plugins: ["spin", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
     wait:
       plugin: "nav2_behaviors/Wait"
     global_frame: odom
@@ -134,8 +138,10 @@ bt_navigator:
       - nav2_compute_path_through_poses_action_bt_node
       - nav2_smooth_path_action_bt_node
       - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
       - nav2_wait_action_bt_node
       - nav2_assisted_teleop_action_bt_node
+      - nav2_drive_on_heading_bt_node
       - nav2_clear_costmap_service_bt_node
       - nav2_is_stuck_condition_bt_node
       - nav2_goal_reached_condition_bt_node
@@ -248,19 +254,14 @@ global_costmap:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       global_traversability_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        plugin: "nav2_costmap_2d::StaticLayer"
         enabled: true
-        observation_sources: "global_traversability_cloud"
-        global_traversability_cloud:
-          topic: /a2/global_traversability/obstacle_points
-          data_type: "PointCloud2"
-          max_obstacle_height: 1.0
-          min_obstacle_height: 0.0
-          marking: true
-          clearing: false
-          obstacle_max_range: 100.0
-          obstacle_min_range: 0.0
-          expected_update_rate: 0.0
+        map_subscribe_transient_local: true
+        subscribe_to_updates: true
+        topic: /a2/global_traversability/costmap
+        trinary_costmap: false
+        lethal_cost_threshold: 100
+        track_unknown_space: false
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -304,9 +305,11 @@ local_costmap:
           max_obstacle_height: 0.5
           min_obstacle_height: 0.0
           marking: true
-          clearing: false
-          obstacle_max_range: 6.0
-
+          clearing: true
+          obstacle_max_range: 4.0
+          raytrace_max_range: 5.0
+          raytrace_min_range: 0.0
+          observation_persistence: 0.0
           obstacle_min_range: 0.85
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"

@@ -33,7 +33,7 @@ Usage:
   $(basename "$0") [--mode auto] [--lidar-iface net1]
   $(basename "$0") --mode auto [--lidar-iface net1] [--sdk-iface eth0]
   $(basename "$0") --mode mapping [--lidar-iface net1]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-motion] [--live-motion]
 
 Auto behavior:
   Finds the newest 3D pointcloud map under runtime/maps.
@@ -42,8 +42,7 @@ Auto behavior:
   - Runs preflight and appends a CSV test record when navigation starts.
 
 Safety:
-  --mode navigation starts the real a2_control_bridge by default.
-  Send goals only after LiDAR, map, NDT, safety, and real readiness are all ready.
+  Navigation defaults to real /cmd_vel output. Keep the robot supervised.
   live-validation collision profile is only for supervised open-space tests.
 
 Global traversability feedback is enabled by default.
@@ -89,7 +88,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --enable-motion)
-      warn "--enable-motion is deprecated; real motion is now the default"
       ENABLE_MOTION=true
       shift
       ;;
@@ -102,7 +100,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --live-motion)
-      warn "--live-motion is deprecated; live motion is now the default"
       LIVE_MOTION=true
       ENABLE_MOTION=true
       shift
@@ -142,6 +139,9 @@ done
 [[ "$COLLISION_MONITOR_PROFILE" == "strict" || "$COLLISION_MONITOR_PROFILE" == "live-validation" ]] || die "collision profile must be strict or live-validation"
 if [[ "$MODE" == "navigation" && -z "$MAP_ID" ]]; then
   die "--map-id is required for navigation mode"
+fi
+if [[ "$LIVE_MOTION" == "true" && "$ENABLE_MOTION" != "true" ]]; then
+  die "--live-motion requires --enable-motion"
 fi
 
 source_ros() {
@@ -277,6 +277,8 @@ stop_owned_robot_stack() {
     "pose_goal_controller_3d"
     "ground_segmentation_cpp_node"
     "traversability_to_obstacle_cloud.py"
+    "global_traversability_integrator.py"
+    "global_traversability_integrator"
     "collision_monitor"
     "controller_server"
     "planner_server"
@@ -345,6 +347,18 @@ start_stack_mode() {
       "--localization-mode" "$LOCALIZATION_MODE"
       "--collision-profile" "$COLLISION_MONITOR_PROFILE"
     )
+    if [[ "$ENABLE_MOTION" == "true" ]]; then
+      args+=("--enable-motion")
+    fi
+    if [[ "$LIVE_MOTION" == "true" ]]; then
+      args+=("--live-motion")
+    fi
+  fi
+
+  if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
+    args+=("--enable-global-traversability-layer")
+  else
+    args+=("--no-global-traversability-layer")
   fi
 
   if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
@@ -424,7 +438,7 @@ run_navigation_preflight_and_record() {
 
   if [[ "$LIVE_MOTION" == "true" && "$result" != "PASS" ]]; then
     stop_owned_robot_stack
-    die "Real-motion navigation requested but preflight/corridor gate failed; robot stack stopped. Review ${preflight_log} and ${corridor_log}."
+    die "Live motion requested but preflight/corridor gate failed; robot stack stopped. Review ${preflight_log} and ${corridor_log}."
   fi
 }
 

@@ -23,10 +23,10 @@ def generate_launch_description():
             DeclareLaunchArgument("occupancy_min_z", default_value="0.12"),
             DeclareLaunchArgument("occupancy_max_z", default_value="1.2"),
             DeclareLaunchArgument("self_filter_enabled", default_value="true"),
-            DeclareLaunchArgument("self_filter_min_x", default_value="-0.70"),
-            DeclareLaunchArgument("self_filter_max_x", default_value="0.70"),
-            DeclareLaunchArgument("self_filter_min_y", default_value="-0.45"),
-            DeclareLaunchArgument("self_filter_max_y", default_value="0.45"),
+            DeclareLaunchArgument("self_filter_min_x", default_value="-1.20"),
+            DeclareLaunchArgument("self_filter_max_x", default_value="1.20"),
+            DeclareLaunchArgument("self_filter_min_y", default_value="-0.80"),
+            DeclareLaunchArgument("self_filter_max_y", default_value="0.80"),
             DeclareLaunchArgument("self_filter_min_z", default_value="-0.30"),
             DeclareLaunchArgument("self_filter_max_z", default_value="0.80"),
             DeclareLaunchArgument("min_range_m", default_value="0.20"),
@@ -39,7 +39,7 @@ def generate_launch_description():
                 default_value=(
                     "[0.0, 0.0, 1.0, "
                     "1.0, 0.0, 0.0, "
-                    "0.0, -1.0, 0.0]"
+                    "0.0, 1.0, 0.0]"
                 ),
             ),
             Node(

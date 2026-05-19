@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-/home/unitree/ws/device-navigation}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
 LIDAR_IFACE="${A2_JT128_INTERFACE:-net1}"
 SDK_IFACE="${A2_SDK_INTERFACE:-eth0}"
 CONTROL_IFACE="${A2_CONTROL_INTERFACE:-$SDK_IFACE}"
@@ -26,7 +26,6 @@ WEB_BACKEND_PYTHON="${WORKSPACE}/web_console/.venv/bin/python"
 WEB_BACKEND_CONFIG="${WORKSPACE}/web_console/backend/config.3d.yaml"
 WEB_FALLBACK_LOG="${LOG_DIR}/web_console_fallback.log"
 FAST_DDS_TRANSPORTS="${A2_FASTDDS_BUILTIN_TRANSPORTS:-${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}}"
-ROS_RMW_IMPLEMENTATION="${A2_RMW_IMPLEMENTATION:-${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}}"
 
 usage() {
   cat <<EOF
@@ -48,9 +47,12 @@ Starts the 3D-first JT128 stack:
     Nav2 3D global/local navigation -> collision_monitor -> /cmd_vel_safe
     a2_control_bridge -> Unitree motion
 
-Motion defaults:
-  - navigation starts the real a2_control_bridge by default.
-  - do not send goals until LiDAR, map, NDT, safety, and real readiness are all ready.
+Default:
+  Navigation starts the real Unitree control chain. Keep the robot supervised.
+
+Global traversability feedback:
+  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
+  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
 
 Global traversability feedback:
   Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
@@ -109,12 +111,10 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --enable-motion)
-      warn "--enable-motion is deprecated; real motion is now the default"
       ENABLE_MOTION=true
       shift
       ;;
     --live-motion)
-      warn "--live-motion is deprecated; live motion is now the default"
       ENABLE_MOTION=true
       DRY_RUN=false
       shift
@@ -200,11 +200,6 @@ if [[ "$MODE" == "navigation" && "$ENABLE_NAV2_3D" == "true" && -z "$NAV2_3D_MAP
   fi
 fi
 
-COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor.yaml"
-if [[ "$COLLISION_MONITOR_PROFILE" == "live-validation" ]]; then
-  COLLISION_MONITOR_CONFIG="${WORKSPACE}/install/a2_system/share/a2_system/config/collision_monitor_live_validation.yaml"
-fi
-
 
 mkdir -p "$LOG_DIR"
 
@@ -218,9 +213,8 @@ source_ros() {
 }
 
 configure_ros_transport() {
-  export RMW_IMPLEMENTATION="${ROS_RMW_IMPLEMENTATION}"
-  unset FASTDDS_BUILTIN_TRANSPORTS
-  log "Using ROS RMW implementation: ${RMW_IMPLEMENTATION}"
+  export FASTDDS_BUILTIN_TRANSPORTS="${FAST_DDS_TRANSPORTS}"
+  log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
 }
 
 require_a2_system_executable() {
@@ -256,6 +250,8 @@ stop_navigation_components() {
     "pose_goal_controller_3d"
     "ground_segmentation_cpp_node"
     "traversability_to_obstacle_cloud.py"
+    "global_traversability_integrator.py"
+    "global_traversability_integrator"
     "collision_monitor"
     "controller_server"
     "planner_server"
@@ -267,7 +263,7 @@ stop_navigation_components() {
     "lifecycle_manager"
     "local_costmap"
     "global_costmap"
-    "nav2_map_server/map_server"
+    "map_server"
     "jt128_navigation_static_tf_manager"
     "auto_scan_mission.py"
     "task_manager.py"
@@ -315,6 +311,9 @@ configure_ros_transport
 command -v ros2 >/dev/null 2>&1 || die "ros2 not found after sourcing workspace"
 require_a2_system_executable "traversability_to_obstacle_cloud.py"
 require_a2_system_executable "octomap_mapping_node.py"
+if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
+  require_a2_system_executable "global_traversability_integrator.py"
+fi
 
 log "Starting JT128 DLIO mapping base stack"
 DLIO_MAPPING_SCRIPT="${WORKSPACE}/install/a2_system/share/a2_system/start_jt128_dlio_mapping.sh"
@@ -342,8 +341,7 @@ setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
-  export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
-  unset FASTDDS_BUILTIN_TRANSPORTS
+  export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
   ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
     start_static_tf:=true \
