@@ -41,39 +41,9 @@ from .models import (
 )
 from .motion_control import ensure_manual_motion_authorized, get_manual_motion_authorization
 from .ros_bridge import RosBridgeError, RosRuntime
-from .stack_control import StackControlError, StackController
+from .stack_control import StackControlError, StackController, pcd_to_2d_map_args
 from .utils import is_lan_or_loopback
 from .ws import WebSocketManager
-
-
-def _pcd_to_2d_map_args(tool_path: Path, pcd_path: Path, map_dir: Path) -> list[str]:
-    """Argument list for the 3D-first map projection pipeline.
-
-    Centralised so both the mapping→navigation transition and the explicit
-    ``/api/maps/project-2d`` endpoint apply the same self-filter and dilation
-    policy:
-
-    * ``--dilate 0``: do not double-inflate against Nav2 global/local costmap
-      inflation. The static map only expresses true occupancy; safety margin
-      is the costmap's job.
-    * ``--ignore-obstacles-within-radius 0.85``: drop near-origin self-shell /
-      legs / near-field noise the SLAM build kept around the start pose.
-    * ``--clear-radius-around-origin 0.85``: force a real free patch around
-      the build origin so the corridor gate does not fail on
-      ``static_clearance_low`` at startup.
-    """
-    return [
-        "python3", str(tool_path), str(pcd_path),
-        "--output", str(map_dir),
-        "--resolution", "0.05",
-        "--ground-threshold", "0.08",
-        "--ceiling-threshold", "2.0",
-        "--min-obstacle-points", "2",
-        "--min-ground-points", "1",
-        "--dilate", "0",
-        "--ignore-obstacles-within-radius", "0.85",
-        "--clear-radius-around-origin", "0.85",
-    ]
 
 
 def _route_updated_at(route_path: str | None) -> str | None:
@@ -553,10 +523,10 @@ def create_app(config_path: str | None = None) -> FastAPI:
             }
 
         # Optional Step 2: Evaluate map quality (PCD) → JSON report
-        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
+        maps_dir = Path(stack_controller.config.stack.map_root).expanduser().resolve()
         map_dir = maps_dir / map_id
         pcd_path = map_dir / "pointcloud_map_3d.pcd"
-        workspace = Path(stack_controller.config.workspace).expanduser().resolve()
+        workspace = Path(stack_controller.config.stack.workspace).expanduser().resolve()
         quality_tool = workspace / "install" / "a2_system" / "lib" / "a2_system" / "check_map_quality.py"
 
         if pcd_path.exists() and quality_tool.exists():
@@ -588,7 +558,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
             ok = await _step(
                 "project_pcd_to_2d",
                 lambda: subprocess.run(
-                    _pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
+                    pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
                     capture_output=True, text=True, timeout=60,
                 ),
                 timeout=65.0,
@@ -671,29 +641,14 @@ def create_app(config_path: str | None = None) -> FastAPI:
     @app.post("/api/maps/project-2d")
     async def project_pcd_to_2d(request: SaveMapRequest):
         """Run pcd_to_2d_map.py to generate Nav2-compatible 2D map from saved PCD."""
-        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
-        map_dir = maps_dir / request.map_id
-        if not map_dir.exists():
-            raise HTTPException(status_code=404, detail=f"地图目录不存在: {map_dir}")
-        pcd_path = map_dir / "pointcloud_map_3d.pcd"
-        if not pcd_path.exists():
-            raise HTTPException(status_code=404, detail=f"PCD文件不存在: {pcd_path}")
-        tool_path = Path(stack_controller.config.workspace).expanduser().resolve() / "install" / "a2_system" / "lib" / "a2_system" / "pcd_to_2d_map.py"
-        if not tool_path.exists():
-            raise HTTPException(status_code=503, detail=f"投影工具未找到: {tool_path}")
+        map_info = stack_controller.get_map(request.map_id, include_incompatible=True)
+        if map_info is None:
+            raise HTTPException(status_code=404, detail=f"地图不存在: {request.map_id}")
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                _pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except subprocess.TimeoutExpired:
-            raise HTTPException(status_code=500, detail="投影超时（>60秒）")
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"投影失败: {result.stderr.strip() or result.stdout.strip()}")
-        map_yaml = map_dir / "map.yaml"
+            result = await asyncio.to_thread(stack_controller.project_pcd_to_2d_map, map_info)
+        except StackControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        map_yaml = Path(stack_controller.config.stack.map_root).expanduser().resolve() / request.map_id / "map.yaml"
         return {
             "ok": True,
             "map_id": request.map_id,
@@ -705,14 +660,14 @@ def create_app(config_path: str | None = None) -> FastAPI:
     @app.post("/api/maps/quality")
     async def evaluate_map_quality(request: SaveMapRequest):
         """Run check_map_quality.py on saved PCD and return JSON report content."""
-        maps_dir = Path(stack_controller.config.map_root).expanduser().resolve()
+        maps_dir = Path(stack_controller.config.stack.map_root).expanduser().resolve()
         map_dir = maps_dir / request.map_id
         if not map_dir.exists():
             raise HTTPException(status_code=404, detail=f"地图目录不存在: {map_dir}")
         pcd_path = map_dir / "pointcloud_map_3d.pcd"
         if not pcd_path.exists():
             raise HTTPException(status_code=404, detail=f"PCD文件不存在: {pcd_path}")
-        tool_path = Path(stack_controller.config.workspace).expanduser().resolve() / "install" / "a2_system" / "lib" / "a2_system" / "check_map_quality.py"
+        tool_path = Path(stack_controller.config.stack.workspace).expanduser().resolve() / "install" / "a2_system" / "lib" / "a2_system" / "check_map_quality.py"
         if not tool_path.exists():
             raise HTTPException(status_code=503, detail=f"质量评估工具未找到: {tool_path}")
 

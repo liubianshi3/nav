@@ -33,9 +33,6 @@ class RosTopicConfig:
     pointcloud_map_topics: list[str] = field(
         default_factory=lambda: [
             "/jt128/dlio/map_points_preview",
-            "/jt128/dlio/map_points",
-            "/a2/pointcloud_map_3d",
-            "/a2/map/pointcloud_3d",
         ]
     )
     pointcloud_primary_stale_sec: float = 2.0

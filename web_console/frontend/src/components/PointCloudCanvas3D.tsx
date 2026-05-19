@@ -421,7 +421,7 @@ export function PointCloudCanvas3D({
     const markerPose = lastRobotPoseRef.current;
     updateMarker(
       current?.robotMarker ?? null,
-      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false),
+      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }),
       markerPose.yaw,
     );
   }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw, sceneOriginVersion]);
@@ -430,7 +430,7 @@ export function PointCloudCanvas3D({
     const current = sceneRef.current;
     updateMarker(
       current?.selectedGoalMarker ?? null,
-      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true) : null,
+      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }) : null,
       selectedGoal?.yaw ?? 0,
     );
   }, [sceneOriginVersion, selectedGoal]);
@@ -439,7 +439,7 @@ export function PointCloudCanvas3D({
     const current = sceneRef.current;
     updateMarker(
       current?.activeGoalMarker ?? null,
-      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true) : null,
+      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }) : null,
       activeGoal?.yaw ?? 0,
     );
   }, [activeGoal, sceneOriginVersion]);
@@ -476,7 +476,7 @@ export function PointCloudCanvas3D({
       setSceneOriginLabel,
     );
     lastRobotPoseRef.current = { x: pose.x, y: pose.y, yaw: pose.yaw ?? 0 };
-    updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }, false), pose.yaw ?? 0);
+    updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }), pose.yaw ?? 0);
   };
 
   return (
@@ -654,13 +654,8 @@ function setSceneOriginFromPose(
   bumpSceneOriginVersion();
 }
 
-function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }, snapToSurface: boolean) {
-  const position = rosToThree(point, context?.sceneOrigin ?? null);
-  const surfaceY = snapToSurface && context ? groundSurfaceY(context, position.x, position.z) : null;
-  if (surfaceY !== null) {
-    position.y = surfaceY;
-  }
-  return position;
+function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }) {
+  return rosToThree(point, context?.sceneOrigin ?? null);
 }
 
 function groundSurfaceY(context: SceneContext, x: number, z: number): number | null {

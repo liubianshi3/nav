@@ -62,10 +62,8 @@ def test_default_config_exposes_camera_topics():
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
     assert config.ros.pointcloud_map_topics == [
         "/jt128/dlio/map_points_preview",
-        "/jt128/dlio/map_points",
-        "/a2/pointcloud_map_3d",
-        "/a2/map/pointcloud_3d",
     ]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.task_manager_service == "/a2/task_manager/command"
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
@@ -89,10 +87,8 @@ def test_3d_config_uses_source_workspace_defaults():
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
     assert config.ros.pointcloud_map_topics == [
         "/jt128/dlio/map_points_preview",
-        "/jt128/dlio/map_points",
-        "/a2/pointcloud_map_3d",
-        "/a2/map/pointcloud_3d",
     ]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.pointcloud_preview_max_points >= 60000
     assert config.ros.websocket_pointcloud_max_points >= 48000
 
@@ -144,7 +140,8 @@ def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     assert config.ros.camera_image_topic == "/camera/image_raw"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
-    assert config.ros.pointcloud_map_topics[:2] == ["/jt128/dlio/map_points_preview", "/jt128/dlio/map_points"]
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -160,7 +157,8 @@ def test_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
     assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
-    assert config.ros.pointcloud_map_topics[:2] == ["/jt128/dlio/map_points_preview", "/jt128/dlio/map_points"]
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -430,9 +428,11 @@ def test_3d_robot_marker_does_not_snap_pose_to_pointcloud_surface():
     root = Path(__file__).resolve().parents[2]
     source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
 
-    assert "markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false)" in source
-    assert "markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true)" in source
-    assert "markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true)" in source
+    assert "markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 })" in source
+    assert "markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 })" in source
+    assert "markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 })" in source
+    assert "function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number })" in source
+    assert "snapToSurface" not in source
 
 
 def test_3d_yellow_robot_marker_follows_pose_without_static_origin_marker():
@@ -443,7 +443,7 @@ def test_3d_yellow_robot_marker_follows_pose_without_static_origin_marker():
     assert "useRef<{ x: number; y: number; yaw: number }>({ x: 0, y: 0, yaw: 0 })" in source
     assert "lastRobotPoseRef.current = {" in source
     assert "const markerPose = lastRobotPoseRef.current;" in source
-    assert "updateMarker(\n      current?.robotMarker ?? null,\n      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false)," in source
+    assert "updateMarker(\n      current?.robotMarker ?? null,\n      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 })," in source
     assert "scene.add(robotMarker, selectedGoalMarker, activeGoalMarker);" in source
     assert "originMarker" not in source
     assert "createOriginMarker" not in source
@@ -722,6 +722,8 @@ def test_websocket_pointcloud_uses_lightweight_preview():
     assert "round(float(point[0]), 3)" in bridge
     assert "_preview_sample_indices(len(snapshot.points), max_points)" in bridge
     assert "_preview_sample_indices(total_points, max_points)" in bridge
+    assert "def _is_web_visualization_pointcloud_topic" in bridge
+    assert "not _is_web_visualization_pointcloud_topic(topic)" in bridge
     assert "pointcloud_qos = QoSProfile" in bridge
     assert "reliability=ReliabilityPolicy.BEST_EFFORT" in bridge
     assert 'self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))' in bridge
@@ -745,6 +747,15 @@ def test_mapping_mode_can_open_3d_view_before_projected_map_exists():
 
     has_3d_viewer_data = app[app.index("const has3DViewerData") : app.index("const directNavigationBackend")]
     assert 'stack?.mode === "mapping"' in has_3d_viewer_data
+
+
+def test_frontend_map_signature_tracks_projected_map_yaml():
+    root = Path(__file__).resolve().parents[3]
+    app = (root / "web_console/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    maps_signature = app[app.index("function mapsSignature") : app.index("function setMapsIfChanged")]
+
+    assert "map.map_yaml ??" in maps_signature
 
 
 def test_initial_pose_readiness_waits_for_localization_pose_not_odom_fallback():

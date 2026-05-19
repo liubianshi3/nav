@@ -241,6 +241,7 @@ function mapsSignature(items: SavedMapInfo[]): string {
         .join("|");
       return [
         map.map_id,
+        map.map_yaml ?? "",
         map.created_at ?? "",
         map.representation ?? "",
         map.pointcloud_topic_3d ?? "",
@@ -568,6 +569,8 @@ export default function App() {
       : stack?.mode === "mapping"
         ? "当前已经在建图模式"
         : "会停止当前栈并切到建图链";
+  const selectedMapNeedsNav2Projection =
+    enableNav2_3d && selectedMap?.has_pointcloud_3d === true && !selectedMap.map_yaml;
   const startNavigationReason =
     stackTransitioning
       ? "栈正在启动或停止，暂时不能切换模式"
@@ -575,9 +578,11 @@ export default function App() {
         ? "请先选择一张导航地图"
         : selectedMapCompatibilityReason
           ? selectedMapCompatibilityReason
-        : stack?.mode === "navigation"
-          ? "当前已经在导航模式"
-          : "会停止当前栈并加载所选地图进入导航";
+          : stack?.mode === "navigation"
+            ? "当前已经在导航模式"
+            : selectedMapNeedsNav2Projection
+              ? "会先生成 Nav2 2D 投影，再加载所选地图进入导航"
+              : "会停止当前栈并加载所选地图进入导航";
   const saveMapReason =
     stackTransitioning
       ? "栈正在启动或停止，暂时不能保存地图"
@@ -684,9 +689,10 @@ export default function App() {
       motionMode === "live_motion"
         ? "LIVE-MOTION 真机运动"
         : "只跑规划/定位";
+    const projectionText = selectedMapNeedsNav2Projection ? "，会先自动生成 Nav2 2D 投影" : "";
     if (
       !window.confirm(
-        `启动导航模式会停止当前栈并加载地图 ${selectedMapId}，模式=${localizationMode}/${motionText}，collision=${collisionMonitorProfile}。确认继续？`,
+        `启动导航模式会停止当前栈并加载地图 ${selectedMapId}，模式=${localizationMode}/${motionText}，collision=${collisionMonitorProfile}${projectionText}。确认继续？`,
       )
     ) {
       return;

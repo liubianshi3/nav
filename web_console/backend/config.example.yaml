@@ -17,9 +17,6 @@ ros:
   pointcloud_fallback_topic: /jt128/front/points_preview
   pointcloud_map_topics:
     - /jt128/dlio/map_points_preview
-    - /jt128/dlio/map_points
-    - /a2/pointcloud_map_3d
-    - /a2/map/pointcloud_3d
   pointcloud_primary_stale_sec: 2.0
   pointcloud_preview_max_points: 20000
   task_manager_service: /a2/task_manager/command

@@ -73,27 +73,47 @@ def _snapshot(topic: str, stamp: str) -> PointCloudSnapshot:
     )
 
 
-def test_display_pointcloud_prefers_freshest_configured_map_topic_over_raw_fallback() -> None:
+def test_display_pointcloud_prefers_fresh_preview_map_topic_over_fallback() -> None:
     selected = _select_display_pointcloud_snapshot(
         snapshots_by_topic={
             "/jt128/dlio/map_points_preview": _snapshot("/jt128/dlio/map_points_preview", "t1"),
-            "/a2/pointcloud_map_3d": _snapshot("/a2/pointcloud_map_3d", "t2"),
             "/jt128/front/points_preview": _snapshot("/jt128/front/points_preview", "t3"),
         },
         timestamps_by_topic={
             "/jt128/dlio/map_points_preview": 1.0,
-            "/a2/pointcloud_map_3d": 5.0,
             "/jt128/front/points_preview": 6.0,
         },
         primary_topic="/jt128/dlio/map_points_preview",
-        map_topics=["/jt128/dlio/map_points_preview", "/a2/pointcloud_map_3d"],
+        map_topics=["/jt128/dlio/map_points_preview"],
         fallback_topic="/jt128/front/points_preview",
         stale_sec=2.0,
-        now=6.0,
+        now=2.0,
     )
 
     assert selected is not None
-    assert selected.source_topic == "/a2/pointcloud_map_3d"
+    assert selected.source_topic == "/jt128/dlio/map_points_preview"
+
+
+def test_display_pointcloud_ignores_non_preview_topics_for_web() -> None:
+    selected = _select_display_pointcloud_snapshot(
+        snapshots_by_topic={
+            "/jt128/dlio/map_points": _snapshot("/jt128/dlio/map_points", "raw-map"),
+            "/a2/map/pointcloud_3d": _snapshot("/a2/map/pointcloud_3d", "raw-web-map"),
+            "/jt128/front/points": _snapshot("/jt128/front/points", "raw-fallback"),
+        },
+        timestamps_by_topic={
+            "/jt128/dlio/map_points": 5.0,
+            "/a2/map/pointcloud_3d": 5.0,
+            "/jt128/front/points": 5.0,
+        },
+        primary_topic="/jt128/dlio/map_points",
+        map_topics=["/jt128/dlio/map_points", "/a2/map/pointcloud_3d"],
+        fallback_topic="/jt128/front/points",
+        stale_sec=2.0,
+        now=5.0,
+    )
+
+    assert selected is None
 
 
 def test_display_pointcloud_uses_raw_fallback_only_until_a_map_topic_is_available() -> None:
@@ -105,7 +125,7 @@ def test_display_pointcloud_uses_raw_fallback_only_until_a_map_topic_is_availabl
             "/jt128/front/points_preview": 1.0,
         },
         primary_topic="/jt128/dlio/map_points_preview",
-        map_topics=["/jt128/dlio/map_points_preview", "/a2/pointcloud_map_3d"],
+        map_topics=["/jt128/dlio/map_points_preview"],
         fallback_topic="/jt128/front/points_preview",
         stale_sec=2.0,
         now=1.5,
@@ -126,7 +146,7 @@ def test_display_pointcloud_returns_to_standby_preview_when_map_topics_go_stale(
             "/jt128/front/points_preview": 8.0,
         },
         primary_topic="/jt128/dlio/map_points_preview",
-        map_topics=["/jt128/dlio/map_points_preview", "/a2/pointcloud_map_3d"],
+        map_topics=["/jt128/dlio/map_points_preview"],
         fallback_topic="/jt128/front/points_preview",
         stale_sec=2.0,
         now=8.5,

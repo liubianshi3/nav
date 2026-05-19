@@ -210,9 +210,13 @@ def _ordered_pointcloud_topics(primary_topic: str, map_topics: list[str]) -> lis
     topics: list[str] = []
     for topic in [primary_topic, *(map_topics or [])]:
         normalized = str(topic or "").strip()
-        if normalized and normalized not in topics:
+        if normalized and _is_web_visualization_pointcloud_topic(normalized) and normalized not in topics:
             topics.append(normalized)
     return topics
+
+
+def _is_web_visualization_pointcloud_topic(topic: str) -> bool:
+    return str(topic or "").strip().endswith("_preview")
 
 
 def _select_display_pointcloud_snapshot(
@@ -243,7 +247,7 @@ def _select_display_pointcloud_snapshot(
         return max(fresh_map_candidates, key=lambda candidate: (candidate[2], -topic_order.get(candidate[0], 0)))[1]
 
     fallback = str(fallback_topic or "").strip()
-    if fallback:
+    if fallback and _is_web_visualization_pointcloud_topic(fallback):
         snapshot = snapshots_by_topic.get(fallback)
         if snapshot is not None and snapshot.loaded:
             return snapshot
@@ -481,7 +485,7 @@ class RosBridgeNode(Node):
 
         def subscribe_pointcloud(topic: str, *, primary: bool) -> None:
             topic = str(topic or "").strip()
-            if not topic or topic in pointcloud_topics:
+            if not topic or topic in pointcloud_topics or not _is_web_visualization_pointcloud_topic(topic):
                 return
             pointcloud_topics.add(topic)
             self.create_subscription(
