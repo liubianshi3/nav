@@ -37,8 +37,20 @@ configure_cyclonedds_interface() {
     return 0
   fi
 
-  export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
-  log "CycloneDDS ROS traffic bound to iface=${iface}"
+  local peers_xml=""
+  local peer
+  local peers="${A2_ROS_PEERS:-}"
+  if [[ -n "$peers" ]]; then
+    peers_xml="<Discovery><Peers>"
+    peers="${peers//,/ }"
+    for peer in $peers; do
+      peers_xml="${peers_xml}<Peer Address=\"${peer}\" />"
+    done
+    peers_xml="${peers_xml}</Peers></Discovery>"
+  fi
+
+  export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" /></Interfaces></General>${peers_xml}</Domain></CycloneDDS>"
+  log "CycloneDDS ROS traffic bound to iface=${iface} peers=${peers:-<none>}"
 }
 
 is_true() {

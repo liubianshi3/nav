@@ -233,6 +233,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}" in compose_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
     assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
+    assert "A2_ROS_PEERS: ${A2_ROS_PEERS:-}" in compose_source
     assert "A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}" in compose_source
     assert "A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}" in compose_source
     assert "A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}" in compose_source
@@ -252,6 +253,8 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert 'start_standby_lidar_preview' in entrypoint_source.split("start_a2_stack")[0]
     assert "configure_cyclonedds_interface" in entrypoint_source
     assert 'local iface="${A2_ROS_INTERFACE:-}"' in entrypoint_source
+    assert 'local peers="${A2_ROS_PEERS:-}"' in entrypoint_source
+    assert '<Peer Address=\\"${peer}\\" />' in entrypoint_source
 
 
 def test_unitree_bridge_nodes_use_fastrtps_rmw():
