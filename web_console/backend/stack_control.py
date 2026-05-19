@@ -67,6 +67,7 @@ MAPPING_NODES: list[tuple[str, str, PatternSpec]] = [
     ("octomap_server", "OctoMap server", "octomap_server_node"),
     ("map_manager", "map_manager", "map_manager_node"),
 ]
+OCTOMAP_MAPPING_NODE_KEYS = {"octomap_gate", "octomap_server"}
 
 NAVIGATION_NODES: list[tuple[str, str, PatternSpec]] = [
     ("bringup", "bringup.launch.py", "bringup.launch.py"),
@@ -682,7 +683,25 @@ class StackController:
             if use_3d_navigation:
                 return NAVIGATION_NODES_3D
             return NAVIGATION_NODES
-        return MAPPING_NODES
+        return self._expected_mapping_nodes()
+
+    def _expected_mapping_nodes(self) -> list[tuple[str, str, PatternSpec]]:
+        if self._mapping_requires_octomap():
+            return MAPPING_NODES
+        return [node for node in MAPPING_NODES if node[0] not in OCTOMAP_MAPPING_NODE_KEYS]
+
+    def _mapping_requires_octomap(self) -> bool:
+        return self.start_script.name != "start_jt128_3d_stack.sh"
+
+    def _expected_nodes_running(
+        self,
+        processes: list[ProcessInfo],
+        expected: list[tuple[str, str, PatternSpec]],
+    ) -> bool:
+        return bool(expected) and all(
+            any(self._matches_pattern(proc.args, pattern) for proc in processes)
+            for _, _, pattern in expected
+        )
 
     def _wait_for_expected_nodes(self, mode: str, *, use_3d_navigation: bool | None = None) -> None:
         expected = self._expected_nodes_for_mode(mode, use_3d_navigation=use_3d_navigation)
@@ -1324,10 +1343,16 @@ class StackController:
         inferred_mode = self._infer_mode(processes)
         runtime_mode = str(runtime_state.get("mode") or "")
         target_mode = str(runtime_state.get("target_mode") or "")
+        promoted_startup = False
 
         if runtime_mode in {"starting", "stopping"}:
             mode = runtime_mode
             expected_mode = target_mode or inferred_mode
+            if runtime_mode == "starting" and expected_mode == "mapping":
+                expected = self._expected_nodes_for_mode("mapping")
+                if self._expected_nodes_running(processes, expected):
+                    mode = "mapping"
+                    promoted_startup = True
         elif runtime_mode in {"mapping", "navigation"}:
             mode = runtime_mode
             expected_mode = runtime_mode
@@ -1365,7 +1390,7 @@ class StackController:
             collision_monitor_config=runtime_state.get("collision_monitor_config"),
             nodes=nodes,
             maps=self.list_maps(include_incompatible=True),
-            message=runtime_state.get("message"),
+            message=None if promoted_startup else runtime_state.get("message"),
         )
 
     def _infer_mode(self, processes: list[ProcessInfo]) -> str:

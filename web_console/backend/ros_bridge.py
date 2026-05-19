@@ -206,6 +206,52 @@ def _coprime_preview_stride(total_points: int) -> int:
     return 1
 
 
+def _ordered_pointcloud_topics(primary_topic: str, map_topics: list[str]) -> list[str]:
+    topics: list[str] = []
+    for topic in [primary_topic, *(map_topics or [])]:
+        normalized = str(topic or "").strip()
+        if normalized and normalized not in topics:
+            topics.append(normalized)
+    return topics
+
+
+def _select_display_pointcloud_snapshot(
+    *,
+    snapshots_by_topic: dict[str, PointCloudSnapshot],
+    timestamps_by_topic: dict[str, float],
+    primary_topic: str,
+    map_topics: list[str],
+    fallback_topic: str,
+    stale_sec: float,
+    now: float,
+) -> PointCloudSnapshot | None:
+    ordered_map_topics = _ordered_pointcloud_topics(primary_topic, map_topics)
+    topic_order = {topic: index for index, topic in enumerate(ordered_map_topics)}
+    map_candidates: list[tuple[str, PointCloudSnapshot, float]] = []
+    for topic in ordered_map_topics:
+        snapshot = snapshots_by_topic.get(topic)
+        if snapshot is not None and snapshot.loaded:
+            map_candidates.append((topic, snapshot, timestamps_by_topic.get(topic, 0.0)))
+
+    max_stale_sec = max(0.0, float(stale_sec))
+    fresh_map_candidates = [
+        candidate
+        for candidate in map_candidates
+        if now - candidate[2] <= max_stale_sec
+    ]
+    if fresh_map_candidates:
+        return max(fresh_map_candidates, key=lambda candidate: (candidate[2], -topic_order.get(candidate[0], 0)))[1]
+
+    fallback = str(fallback_topic or "").strip()
+    if fallback:
+        snapshot = snapshots_by_topic.get(fallback)
+        if snapshot is not None and snapshot.loaded:
+            return snapshot
+    if map_candidates:
+        return max(map_candidates, key=lambda candidate: (candidate[2], -topic_order.get(candidate[0], 0)))[1]
+    return None
+
+
 def _cell_has_clearance(
     map_snapshot: MapSnapshot,
     grid_x: int,
@@ -285,6 +331,7 @@ class RosBridgeNode(Node):
         self.map_snapshot = MapSnapshot()
         self.pointcloud_snapshot = PointCloudSnapshot()
         self.pointcloud_snapshots_by_topic: dict[str, PointCloudSnapshot] = {}
+        self.pointcloud_snapshot_times_by_topic: dict[str, float] = {}
         self.pose = RobotPose()
         self.status = RobotStatus(
             planner_type="SmacPlannerHybrid",
@@ -917,16 +964,30 @@ class RosBridgeNode(Node):
         now = time.monotonic()
         should_publish = False
         with self._lock:
+            previous_topic = self.pointcloud_snapshot.source_topic
+            previous_stamp = self.pointcloud_snapshot.stamp
             self.pointcloud_snapshots_by_topic[topic] = pointcloud_snapshot
+            self.pointcloud_snapshot_times_by_topic[topic] = now
             if primary:
                 self._last_primary_pointcloud_monotonic = now
-                self.pointcloud_snapshot = pointcloud_snapshot
-                should_publish = True
-            else:
+            elif topic == str(self.config.ros.pointcloud_fallback_topic or "").strip():
                 self._last_fallback_pointcloud_monotonic = now
-                if self._should_use_fallback_pointcloud(now):
-                    self.pointcloud_snapshot = pointcloud_snapshot
-                    should_publish = True
+            selected = _select_display_pointcloud_snapshot(
+                snapshots_by_topic=self.pointcloud_snapshots_by_topic,
+                timestamps_by_topic=self.pointcloud_snapshot_times_by_topic,
+                primary_topic=self.config.ros.pointcloud_topic,
+                map_topics=self.config.ros.pointcloud_map_topics,
+                fallback_topic=self.config.ros.pointcloud_fallback_topic,
+                stale_sec=self.config.ros.pointcloud_primary_stale_sec,
+                now=now,
+            )
+            if selected is not None:
+                self.pointcloud_snapshot = selected
+                should_publish = (
+                    selected.source_topic == topic
+                    or selected.source_topic != previous_topic
+                    or selected.stamp != previous_stamp
+                )
             if not self.map_snapshot.loaded and pointcloud_snapshot.loaded:
                 self.health.map_received = True
                 self.health.last_map_update = pointcloud_snapshot.stamp

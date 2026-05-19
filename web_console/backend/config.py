@@ -29,10 +29,13 @@ class GrpcConfig:
 class RosTopicConfig:
     map_topic: str = "/map"
     pointcloud_topic: str = "/jt128/dlio/map_points_preview"
-    pointcloud_fallback_topic: str = ""
+    pointcloud_fallback_topic: str = "/jt128/front/points_preview"
     pointcloud_map_topics: list[str] = field(
         default_factory=lambda: [
             "/jt128/dlio/map_points_preview",
+            "/jt128/dlio/map_points",
+            "/a2/pointcloud_map_3d",
+            "/a2/map/pointcloud_3d",
         ]
     )
     pointcloud_primary_stale_sec: float = 2.0

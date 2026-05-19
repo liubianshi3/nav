@@ -6,17 +6,12 @@ lidar:
       correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
       firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"
       source_type: 1
-      device_ip_address: 192.168.124.20
-      udp_port: 2368
-      is_use_ptc: false
-      ptc_port: 9347
-      multicast_ip_address: ""
       lidar_udp_type:
         device_ip_address: 192.168.124.20
         udp_port: 2368
         ptc_port: 9347
         multicast_ip_address: ""
-        use_ptc_connected: false
+        use_ptc_connected: true
         host_ptc_port: 0
         correction_file_path: "config_files/hs_lidar_jt128/JT128_Angle Correction File.csv"
         firetimes_path: "config_files/hs_lidar_jt128/JT128_Firetime Correction File.csv"

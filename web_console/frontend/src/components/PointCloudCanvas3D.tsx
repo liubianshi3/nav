@@ -72,6 +72,7 @@ export function PointCloudCanvas3D({
   const poseFrameRef = useRef<string | null>(null);
   const pointcloudFrameRef = useRef<string | null>(null);
   const onSelectGoalRef = useRef(onSelectGoal);
+  const lastRobotPoseRef = useRef<{ x: number; y: number; yaw: number } | null>(null);
   const [artifactState, setArtifactState] = useState("等待 3D 资产");
   const [showSavedMap, setShowSavedMap] = useState(true);
   const [showLiveOverlay, setShowLiveOverlay] = useState(false);
@@ -222,12 +223,18 @@ export function PointCloudCanvas3D({
         const intersections = raycaster.intersectObjects(targets, false);
         const hit = intersections.find((item: THREE.Intersection<THREE.Object3D>) => Boolean(item.point));
         if (!hit?.point) {
-          return;
-        }
-        hitPoint = hit.point.clone();
-        const surfaceY = groundSurfaceY(current, hitPoint.x, hitPoint.z);
-        if (surfaceY !== null) {
-          hitPoint.y = surfaceY;
+          raycaster.setFromCamera(mouse, current.camera);
+          const planeHit = pickGroundPlanePoint(raycaster);
+          if (!planeHit) {
+            return;
+          }
+          hitPoint = planeHit;
+        } else {
+          hitPoint = hit.point.clone();
+          const surfaceY = groundSurfaceY(current, hitPoint.x, hitPoint.z);
+          if (surfaceY !== null) {
+            hitPoint.y = surfaceY;
+          }
         }
       }
       const world = threeToRos(hitPoint, current.sceneOrigin);
@@ -399,6 +406,11 @@ export function PointCloudCanvas3D({
     const current = sceneRef.current;
     const hasPose = Boolean(pose?.available && pose.x !== null && pose.y !== null);
     if (current && hasPose && pose) {
+      lastRobotPoseRef.current = {
+        x: pose.x ?? 0,
+        y: pose.y ?? 0,
+        yaw: pose.yaw ?? 0,
+      };
       ensureSceneOriginFromPose(
         current,
         pose,
@@ -406,12 +418,13 @@ export function PointCloudCanvas3D({
         setSceneOriginLabel,
       );
     }
+    const markerPose = lastRobotPoseRef.current;
     updateMarker(
       current?.robotMarker ?? null,
-      hasPose && pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false) : null,
-      pose?.yaw ?? 0,
+      markerPose ? markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false) : null,
+      markerPose?.yaw ?? 0,
     );
-  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw]);
+  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw, sceneOriginVersion]);
 
   useEffect(() => {
     const current = sceneRef.current;
@@ -462,6 +475,7 @@ export function PointCloudCanvas3D({
       () => setSceneOriginVersion((value) => value + 1),
       setSceneOriginLabel,
     );
+    lastRobotPoseRef.current = { x: pose.x, y: pose.y, yaw: pose.yaw ?? 0 };
     updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }, false), pose.yaw ?? 0);
   };
 
@@ -720,6 +734,12 @@ function pickGroundPointFromScreen(context: SceneContext, mouse: THREE.Vector2, 
     picked.y = surfaceY;
   }
   return picked;
+}
+
+function pickGroundPlanePoint(raycaster: THREE.Raycaster): THREE.Vector3 | null {
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hit = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
 }
 
 function quantile(values: number[], q: number): number | null {

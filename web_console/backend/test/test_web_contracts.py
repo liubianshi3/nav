@@ -59,8 +59,13 @@ def test_default_config_exposes_camera_topics():
     assert config.native_slam.response_topic == "/api/slam_operate/response"
     assert config.native_slam.response_timeout_sec >= 1.0
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == [
+        "/jt128/dlio/map_points_preview",
+        "/jt128/dlio/map_points",
+        "/a2/pointcloud_map_3d",
+        "/a2/map/pointcloud_3d",
+    ]
     assert config.ros.task_manager_service == "/a2/task_manager/command"
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
@@ -81,8 +86,13 @@ def test_3d_config_uses_source_workspace_defaults():
     assert config.stack.start_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh"
     assert config.stack.stop_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == [
+        "/jt128/dlio/map_points_preview",
+        "/jt128/dlio/map_points",
+        "/a2/pointcloud_map_3d",
+        "/a2/map/pointcloud_3d",
+    ]
     assert config.ros.pointcloud_preview_max_points >= 60000
     assert config.ros.websocket_pointcloud_max_points >= 48000
 
@@ -133,8 +143,8 @@ def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     assert config.camera.prefer_compressed is False
     assert config.ros.camera_image_topic == "/camera/image_raw"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics[:2] == ["/jt128/dlio/map_points_preview", "/jt128/dlio/map_points"]
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -149,8 +159,8 @@ def test_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.stack.command_timeout_sec >= 60.0
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics[:2] == ["/jt128/dlio/map_points_preview", "/jt128/dlio/map_points"]
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -420,9 +430,39 @@ def test_3d_robot_marker_does_not_snap_pose_to_pointcloud_surface():
     root = Path(__file__).resolve().parents[2]
     source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
 
-    assert "markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false)" in source
+    assert "markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }, false)" in source
     assert "markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true)" in source
     assert "markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true)" in source
+
+
+def test_3d_yellow_robot_marker_follows_pose_without_static_origin_marker():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
+
+    assert "lastRobotPoseRef" in source
+    assert "lastRobotPoseRef.current = {" in source
+    assert "const markerPose = lastRobotPoseRef.current;" in source
+    assert "scene.add(robotMarker, selectedGoalMarker, activeGoalMarker);" in source
+    assert "originMarker" not in source
+    assert "createOriginMarker" not in source
+
+
+def test_3d_double_click_can_select_ground_plane_without_point_hit():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
+
+    assert "const planeHit = pickGroundPlanePoint(raycaster);" in source
+    assert "function pickGroundPlanePoint(raycaster: THREE.Raycaster): THREE.Vector3 | null" in source
+
+
+def test_mapping_3d_view_ignores_selected_saved_pointcloud():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    assert 'const viewerSelectedMap = stack?.mode === "mapping" ? null : selectedMap;' in source
+    assert 'const viewerSelectedPointcloudPath = stack?.mode === "mapping" ? null : selectedPointcloudPath;' in source
+    assert "selectedMap={viewerSelectedMap}" in source
+    assert "selectedPointcloudPath={viewerSelectedPointcloudPath}" in source
 
 
 def test_direct_navigation_command_turns_then_drives_to_goal():

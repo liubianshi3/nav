@@ -524,6 +524,8 @@ export default function App() {
   }, [websocketError]);
 
   const selectedMap = maps.find((map) => map.map_id === selectedMapId) ?? null;
+  const viewerSelectedMap = stack?.mode === "mapping" ? null : selectedMap;
+  const viewerSelectedPointcloudPath = stack?.mode === "mapping" ? null : selectedPointcloudPath;
   const selectedMapCompatibilityReason =
     selectedMap?.navigation_compatible === false
       ? selectedMap.navigation_compatibility_reason || "所选地图不兼容当前导航链"
@@ -1326,8 +1328,8 @@ export default function App() {
                 <Suspense fallback={<ThreeViewLoadingCard />}>
                   <PointCloudCanvas3D
                     pointcloud={snapshot.pointcloud.loaded ? snapshot.pointcloud : null}
-                    selectedMap={selectedMap}
-                    selectedPointcloudPath={selectedPointcloudPath}
+                    selectedMap={viewerSelectedMap}
+                    selectedPointcloudPath={viewerSelectedPointcloudPath}
                     pose={snapshot.pose.available ? snapshot.pose : null}
                     obstacles={obstacles}
                     selectedGoal={selectedGoal}
