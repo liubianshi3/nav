@@ -123,7 +123,7 @@ def generate_launch_description():
             DeclareLaunchArgument("map_root", default_value=os.environ.get("A2_WORKSPACE", str(Path.home() / "ws/device-navigation")) + "/runtime/maps"),
             DeclareLaunchArgument("start_static_tf", default_value="true"),
             DeclareLaunchArgument("start_robot_state", default_value="true"),
-            DeclareLaunchArgument("start_task_manager", default_value="true"),
+            DeclareLaunchArgument("start_task_manager", default_value="false"),
             DeclareLaunchArgument("start_scan_mission", default_value="false"),
             DeclareLaunchArgument("start_ekf_local", default_value="true"),
             DeclareLaunchArgument(
@@ -297,7 +297,28 @@ def generate_launch_description():
                 ],
                 output="screen",
             ),
-            # collision_monitor lifecycle is managed by lifecycle_manager_navigation (nav2_3d.yaml)
+            # collision_monitor lifecycle: managed by lifecycle_manager_navigation when Nav2 3D
+            # is enabled; manually activated via TimerAction when enable_nav2_3d:=false.
+            TimerAction(
+                period=5.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "ros2", "lifecycle", "set",
+                            "/collision_monitor", "configure",
+                        ],
+                        output="screen",
+                    ),
+                    ExecuteProcess(
+                        cmd=[
+                            "ros2", "lifecycle", "set",
+                            "/collision_monitor", "activate",
+                        ],
+                        output="screen",
+                    ),
+                ],
+                condition=UnlessCondition(LaunchConfiguration("enable_nav2_3d")),
+            ),
             # ── Battery publisher → /a2/battery ──
             Node(
                 package="a2_system",

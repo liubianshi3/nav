@@ -64,7 +64,7 @@ controller_server:
       min_vel_y: -0.12
       max_vel_x: 0.30
       max_vel_y: 0.15
-      max_vel_theta: 0.60
+      max_vel_theta: 0.50
       min_speed_xy: 0.0
       max_speed_xy: 0.30
       min_speed_theta: 0.0
@@ -228,8 +228,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.30, 0.15, 0.60]
-    min_velocity: [0.0, -0.15, -0.60]
+    max_velocity: [0.30, 0.15, 0.50]
+    min_velocity: [0.0, -0.15, -0.50]
     max_accel: [0.8, 0.5, 1.2]
     max_decel: [-1.0, -0.6, -1.6]
     odom_topic: /odometry/local

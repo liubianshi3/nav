@@ -323,7 +323,8 @@ fi
 [[ -x "$DLIO_MAPPING_SCRIPT" ]] || die "DLIO mapping script not found: ${DLIO_MAPPING_SCRIPT}"
 "$DLIO_MAPPING_SCRIPT" \
   --iface "$LIDAR_IFACE" \
-  --no-web
+  --no-web \
+  --no-octomap
 
 start_web
 

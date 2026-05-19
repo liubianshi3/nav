@@ -10,6 +10,7 @@ UNITREE_SLAM_SERVICE="${A2_UNITREE_SLAM_SERVICE:-unitree_slam.service}"
 START_WEB=1
 DRIVER_ONLY=0
 ALLOW_MISSING_DLIO=0
+OCTOMAP_REQUESTED=true
 MAP_ROOT="${A2_MAP_ROOT:-${WORKSPACE}/runtime/maps}"
 LOG_DIR="${WORKSPACE}/runtime/logs"
 STATE_FILE="${WORKSPACE}/runtime/jt128_dlio_stack_state.yaml"
@@ -25,7 +26,7 @@ esac
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--iface net1] [--driver-only] [--no-web] [--allow-missing-dlio]
+  $(basename "$0") [--iface net1] [--driver-only] [--no-web] [--allow-missing-dlio] [--no-octomap] [--start-octomap]
 
 Starts the JT128 + DLIO mapping stack:
   - stops Unitree native SLAM/DWA and old 2D mapping/localization interference
@@ -36,7 +37,9 @@ Starts the JT128 + DLIO mapping stack:
   - launches map_manager so Web/CLI can save pointcloud_map_3d.pcd
 
 Notes:
-  - normal mapping mode starts OctoMap because dlio_mapping.launch.py defaults start_octomap:=true
+  - normal mapping mode starts OctoMap by default (pass --no-octomap to skip)
+  - --no-octomap disables OctoMap launch (used by navigation mode to save CPU)
+  - --start-octomap explicitly enables OctoMap launch (default for standalone mapping)
   - --driver-only, or missing DLIO with --allow-missing-dlio, disables both DLIO and OctoMap
 
 Install DLIO first when needed:
@@ -60,6 +63,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --allow-missing-dlio)
       ALLOW_MISSING_DLIO=1
+      shift
+      ;;
+    --no-octomap)
+      OCTOMAP_REQUESTED=false
+      shift
+      ;;
+    --start-octomap)
+      OCTOMAP_REQUESTED=true
       shift
       ;;
     -h|--help)
@@ -310,9 +321,9 @@ START_DLIO=true
 if [[ "$DRIVER_ONLY" -eq 1 ]] || ! ros2 pkg prefix direct_lidar_inertial_odometry >/dev/null 2>&1; then
   START_DLIO=false
 fi
-REQUEST_START_OCTOMAP=true
+REQUEST_START_OCTOMAP="${OCTOMAP_REQUESTED}"
 EFFECTIVE_START_OCTOMAP=false
-if [[ "$START_DLIO" == "true" ]]; then
+if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
   EFFECTIVE_START_OCTOMAP=true
 fi
 
@@ -329,7 +340,6 @@ nohup bash -lc "
   ros2 launch a2_bringup dlio_mapping.launch.py \
     start_driver:=true \
     start_dlio:=${START_DLIO} \
-    start_octomap:=${REQUEST_START_OCTOMAP} \
     start_map_manager:=true \
     map_root:='${MAP_ROOT}' \
     use_sim_time:=false
@@ -367,7 +377,7 @@ fi
 
 OCTOMAP_PID=""
 OCTOMAP_LOG_FILE=""
-if [[ "$START_DLIO" == "true" ]]; then
+if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
   OCTOMAP_LOG_FILE="${LOG_DIR}/octomap_mapping_$(date +%Y%m%d_%H%M%S).log"
   log "Starting OctoMap mapping launch"
   nohup bash -lc "
@@ -391,8 +401,10 @@ if [[ "$START_DLIO" == "true" ]]; then
   fi
   log "Started OctoMap mapping pid=${OCTOMAP_PID}"
   log "OctoMap log file: ${OCTOMAP_LOG_FILE}"
-else
+elif [[ "$START_DLIO" != "true" ]]; then
   warn "Skipping OctoMap mapping because DLIO is disabled"
+else
+  log "Skipping OctoMap mapping because --no-octomap was requested"
 fi
 
 cat >> "$STATE_FILE" <<EOF
