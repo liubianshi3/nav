@@ -12,17 +12,15 @@ services:
     network_mode: host
     privileged: true
     restart: unless-stopped
+    env_file:
+      - ./docker/a2_ros.env
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
       CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
-      ROS_DOMAIN_ID: "0"
-      RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       # Default to real robot startup: latest map -> navigation, otherwise mapping.
       A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
       A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}
-      A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}
-      A2_ROS_PEERS: ${A2_ROS_PEERS:-}
       A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}
       A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
       A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}

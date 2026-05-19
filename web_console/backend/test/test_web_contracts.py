@@ -218,6 +218,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     repo_root = Path(__file__).resolve().parents[3]
     compose_source = (repo_root / "docker-compose.a2.yml").read_text(encoding="utf-8")
     entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
+    a2_ros_env_source = (repo_root / "docker/a2_ros.env").read_text(encoding="utf-8")
     legacy_special_suffix = "".join(("z", "be"))
 
     assert legacy_special_suffix not in compose_source.lower()
@@ -230,10 +231,13 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
     assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
-    assert 'ROS_DOMAIN_ID: "0"' in compose_source
+    assert "env_file:" in compose_source
+    assert "- ./docker/a2_ros.env" in compose_source
+    assert "ROS_DOMAIN_ID=0" in a2_ros_env_source
+    assert "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" in a2_ros_env_source
+    assert "A2_ROS_INTERFACE=wlxe865d4707bf8" in a2_ros_env_source
+    assert "A2_ROS_PEERS=" in a2_ros_env_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
-    assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
-    assert "A2_ROS_PEERS: ${A2_ROS_PEERS:-}" in compose_source
     assert "A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}" in compose_source
     assert "A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}" in compose_source
     assert "A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}" in compose_source
