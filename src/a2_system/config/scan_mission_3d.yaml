@@ -4,7 +4,7 @@ auto_scan_mission:
     navigation_representation: nav2_3d_projected_2d_costmap
     pose_topic: /a2/relocalization/pose
     pose_msg_type: geometry_msgs/msg/PoseWithCovarianceStamped
-    map_topic: /a2/map/pointcloud_3d
+    map_topic: /map
     odom_topic: /odometry/local
     pointcloud_topic: /jt128/front/points
     localization_ok_topic: /a2/localization_ok

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 STATE_FILE="${WORKSPACE}/runtime/jt128_dlio_stack_state.yaml"
 
 kill_pattern() {

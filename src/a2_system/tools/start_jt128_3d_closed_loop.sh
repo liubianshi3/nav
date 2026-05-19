@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 MODE="auto"
 REQUESTED_MODE="auto"
 MAP_ID=""

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-/home/unitree/ws/device-navigation}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 IFACE="${A2_NETWORK_INTERFACE:-eth0}"
 
 usage() {

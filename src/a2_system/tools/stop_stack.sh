@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 PID_FILE="${WORKSPACE}/runtime/bringup.pid"
 PATTERNS=(
   "bringup.launch.py"

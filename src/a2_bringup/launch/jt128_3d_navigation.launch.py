@@ -5,10 +5,12 @@ from ament_index_python.packages import PackageNotFoundError, get_package_share_
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
     SetLaunchConfiguration,
+    TimerAction,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition, UnlessCondition
@@ -115,11 +117,11 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("map_id", default_value=""),
             DeclareLaunchArgument("pcd_path", default_value=""),
-            DeclareLaunchArgument("map_root", default_value=os.environ.get("A2_WORKSPACE", str(Path.home() / "a2_system_ws")) + "/runtime/maps"),
+            DeclareLaunchArgument("map_root", default_value=os.environ.get("A2_WORKSPACE", str(Path.home() / "ws/device-navigation")) + "/runtime/maps"),
             DeclareLaunchArgument("start_static_tf", default_value="true"),
             DeclareLaunchArgument("start_robot_state", default_value="true"),
-            DeclareLaunchArgument("start_task_manager", default_value="true"),
-            DeclareLaunchArgument("start_scan_mission", default_value="true"),
+            DeclareLaunchArgument("start_task_manager", default_value="false"),
+            DeclareLaunchArgument("start_scan_mission", default_value="false"),
             DeclareLaunchArgument("start_ekf_local", default_value="true"),
             DeclareLaunchArgument(
                 "localization_mode",
@@ -292,18 +294,21 @@ def generate_launch_description():
                 ],
                 output="screen",
             ),
-            Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager_collision_monitor",
-                parameters=[
-                    {
-                        "autostart": True,
-                        "node_names": ["collision_monitor"],
-                        "use_sim_time": LaunchConfiguration("use_sim_time"),
-                    }
+            # collision_monitor lifecycle: managed by lifecycle_manager_navigation when Nav2 3D
+            # is enabled; manually activated via TimerAction when enable_nav2_3d:=false.
+            TimerAction(
+                period=5.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "bash", "-lc",
+                            "ros2 lifecycle set /collision_monitor configure || true && "
+                            "ros2 lifecycle set /collision_monitor activate || true",
+                        ],
+                        output="screen",
+                    ),
                 ],
-                output="screen",
+                condition=UnlessCondition(LaunchConfiguration("enable_nav2_3d")),
             ),
             # ── Battery publisher → /a2/battery ──
             Node(
@@ -325,7 +330,7 @@ def generate_launch_description():
                         "dry_run": ParameterValue(LaunchConfiguration("dry_run"), value_type=bool),
                         "waypoints_file": f"{a2_system_share}/config/scan_waypoints.example.yaml",
                         "reports_root": os.path.join(
-                            os.environ.get("A2_WORKSPACE", str(Path.home() / "a2_system_ws")),
+                            os.environ.get("A2_WORKSPACE", str(Path.home() / "ws/device-navigation")),
                             "runtime",
                             "reports",
                             "scan_mission",

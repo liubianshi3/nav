@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-/home/unitree/ws/device-navigation}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 IFACE="${A2_NETWORK_INTERFACE:-eth0}"
 WEB_SERVICE="${A2_WEB_SERVICE:-a2-web-console.service}"
 WEB_URL="${A2_WEB_URL:-http://127.0.0.1:8080}"

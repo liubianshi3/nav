@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE="${A2_WORKSPACE:-$HOME/a2_system_ws}"
+WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 LIDAR_IFACE="${A2_JT128_INTERFACE:-net1}"
 SDK_IFACE="${A2_SDK_INTERFACE:-eth0}"
 CONTROL_IFACE="${A2_CONTROL_INTERFACE:-$SDK_IFACE}"
@@ -324,7 +324,8 @@ fi
 [[ -x "$DLIO_MAPPING_SCRIPT" ]] || die "DLIO mapping script not found: ${DLIO_MAPPING_SCRIPT}"
 "$DLIO_MAPPING_SCRIPT" \
   --iface "$LIDAR_IFACE" \
-  --no-web
+  --no-web \
+  --no-octomap
 
 start_web
 

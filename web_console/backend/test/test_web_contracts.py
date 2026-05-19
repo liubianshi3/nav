@@ -701,9 +701,12 @@ def test_jt128_navigation_uses_relaxed_ndt_correction_limits_for_real_maps():
 def test_jt128_navigation_lifecycle_manages_collision_monitor():
     root = Path(__file__).resolve().parents[3]
     launch = (root / "src/a2_bringup/launch/jt128_3d_navigation.launch.py").read_text(encoding="utf-8")
+    nav2_3d = (root / "src/a2_system/config/nav2_3d.yaml").read_text(encoding="utf-8")
 
-    assert "lifecycle_manager_collision_monitor" in launch
-    assert '"node_names": ["collision_monitor"]' in launch
+    assert "collision_monitor lifecycle: managed by lifecycle_manager_navigation" in launch
+    assert "condition=UnlessCondition(LaunchConfiguration(\"enable_nav2_3d\"))" in launch
+    assert "lifecycle_manager_navigation:" in nav2_3d
+    assert "collision_monitor" in nav2_3d
 
 
 def test_stack_process_patterns_include_3d_ndt_navigation_nodes():

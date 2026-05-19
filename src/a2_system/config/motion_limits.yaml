@@ -12,9 +12,9 @@ a2_control_bridge:
     localization_ok_topic: /a2/localization_ok
     map_ready_topic: /a2/map_ready
     allow_motion_topic: /a2/allow_motion
-    max_linear_x: 0.4
+    max_linear_x: 0.40
     max_linear_y: 0.25
-    max_yaw_rate: 0.5
+    max_yaw_rate: 0.50
     linear_x_sign: 1.0
     linear_y_sign: 1.0
     yaw_sign: 1.0
