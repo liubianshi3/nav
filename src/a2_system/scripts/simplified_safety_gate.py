@@ -22,7 +22,11 @@ class SimplifiedSafetyGate(Node):
         self.timer = self.create_timer(2.0, self.try_activate)
 
     def try_activate(self):
+        # Always publish safety topics while active
         if self.activated:
+            self.allow_motion_pub.publish(Bool(data=True))
+            self.map_ready_pub.publish(Bool(data=True))
+            self.localization_ok_pub.publish(Bool(data=True))
             return
         client = self.create_client(ChangeState, "/collision_monitor/change_state")
         if not client.wait_for_service(timeout_sec=2.0):
@@ -52,7 +56,6 @@ class SimplifiedSafetyGate(Node):
         self.localization_ok_pub.publish(Bool(data=True))
         self.activated = True
         self.get_logger().info("Simplified safety gate: all done, allow_motion=true")
-        self.timer.cancel()
 
 
 def main():
