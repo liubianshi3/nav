@@ -42,6 +42,6 @@ ground_segmentation:
 
     # -- misc ------------------------------------------------------------
     frame_id: map
-    target_frame_id: base_link
+    target_frame_id: odom
     # Process 1 out of every N pointclouds (1 = every cloud).
     process_every_n: 1
