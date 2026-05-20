@@ -476,7 +476,11 @@ def generate_launch_description():
                         ]),
                         "network_interface": LaunchConfiguration("control_interface"),
                         "allow_motion_without_localization": ParameterValue(
-                            is_odom_only_localization,
+                            PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'odom_only' or '", LaunchConfiguration("start_safety"), "' != 'true'"]),
+                            value_type=bool,
+                        ),
+                        "allow_motion_without_map": ParameterValue(
+                            PythonExpression(["'", LaunchConfiguration("start_safety"), "' != 'true'"]),
                             value_type=bool,
                         ),
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
