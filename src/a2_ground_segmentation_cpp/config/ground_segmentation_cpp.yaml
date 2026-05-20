@@ -55,14 +55,14 @@
     # map-origin coordinates.
     classification_frame: base_link
     # GroundSegmenter thresholds assume classifier z=0 is the local ground
-    # plane. JT128/A2 field data shows the front floor plane is tilted/offset in
-    # base_link, so classify on height residual to this calibrated plane while
-    # keeping published cloud coordinates physical.
+    # plane. In base_link, the A2 floor is below the body/lidar, so the ground
+    # plane offset must be negative. Classify on height residual to this
+    # calibrated plane while keeping published cloud coordinates physical.
     classification_z_offset_m: 0.0
     classification_ground_plane_enabled: true
     classification_ground_plane_a: -0.1413
     classification_ground_plane_b: 0.0850
-    classification_ground_plane_c: 0.7545
+    classification_ground_plane_c: -0.7545
     frame_id: ""
     transform_timeout_sec: 0.2
 

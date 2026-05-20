@@ -22,7 +22,9 @@ a2_control_bridge:
     control_hz: 20.0
     allow_motion_without_map: false
     allow_motion_without_localization: false
-    gait_control_enabled: false
+    gait_control_enabled: true
+    prepare_balance_stand: true
+    prepare_balance_wait_sec: 1.5
     motion_command_service: /a2/control/command
     control_state_topic: /a2/control/state
     gait_type_topic: /a2/control/gait_type

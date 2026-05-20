@@ -670,6 +670,10 @@ private:
             "StopMove returned code %d on interface '%s'.",
             stop_code, resolved_interface_.c_str());
         }
+        if (prepare_balance_stand_) {
+          sport_client_->BalanceStand();
+          prepared_ = false;
+        }
         was_active_ = false;
       }
       return;
