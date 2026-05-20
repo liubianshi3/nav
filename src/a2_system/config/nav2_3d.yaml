@@ -285,7 +285,7 @@ local_costmap:
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
+        enabled: false
         observation_sources: "obstacle_cloud traversability_cloud"
         obstacle_cloud:
           topic: /a2/obstacle/points
