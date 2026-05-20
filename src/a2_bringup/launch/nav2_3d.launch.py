@@ -38,11 +38,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "enable_global_traversability_layer",
-            default_value="true",
+            default_value="false",
             description=(
                 "When true, launch global_traversability_integrator to feed "
                 "stable 2.5D traversability obstacles into global_costmap. "
-                "Default true; set false for field rollback."
+                "Default false; set true to enable 2.5D perception."
             ),
         ),
         DeclareLaunchArgument(

@@ -11,13 +11,13 @@ START_WEB=1
 ENABLE_MOTION=true
 DRY_RUN=false
 ENABLE_NAV2_3D=true
-ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-false}"
 NAV2_3D_MAP=""
 LOCALIZATION_MODE="${A2_REAL_LOCALIZATION_MODE:-ndt}"
 COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
 COLLISION_MONITOR_CONFIG=""
 START_ROBOT_STATE=true
-START_SAFETY=true
+START_SAFETY=false
 LOG_DIR="${WORKSPACE}/runtime/logs"
 NAV_STATE_FILE="${WORKSPACE}/runtime/jt128_3d_navigation_state.yaml"
 WEB_SERVICE="${A2_WEB_SERVICE:-a2-web-console.service}"
@@ -51,12 +51,12 @@ Default:
   Navigation starts the real Unitree control chain. Keep the robot supervised.
 
 Global traversability feedback:
-  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
-  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+  Disabled by default. Use --enable-global-traversability-layer or
+  A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true to enable for 2.5D perception.
 
 Global traversability feedback:
-  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
-  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+  Disabled by default. Use --enable-global-traversability-layer or
+  A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true to enable for 2.5D perception.
 
 EOF
 }

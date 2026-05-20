@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify global traversability layer is default-enabled in launch/config files.
+"""Verify global traversability layer defaults and switches in launch/config files.
 
 Run without ROS:
   python3 -m pytest src/a2_system/test/test_global_traversability_default_enabled.py -q
@@ -14,24 +14,24 @@ _WS = Path(__file__).resolve().parents[3]
 
 
 class TestLaunchDefaults(unittest.TestCase):
-    def test_jt128_3d_navigation_default_enabled(self):
+    def test_jt128_3d_navigation_default_disabled(self):
         path = _WS / "src" / "a2_bringup" / "launch" / "jt128_3d_navigation.launch.py"
         self.assertTrue(path.exists(), f"file not found: {path}")
         text = path.read_text()
         self.assertIn(
-            'enable_global_traversability_layer", default_value="true"',
+            'enable_global_traversability_layer", default_value="false"',
             text,
-            "jt128_3d_navigation.launch.py must default enable_global_traversability_layer to true",
+            "jt128_3d_navigation.launch.py must default enable_global_traversability_layer to false",
         )
 
-    def test_nav2_3d_default_enabled(self):
+    def test_nav2_3d_default_disabled(self):
         path = _WS / "src" / "a2_bringup" / "launch" / "nav2_3d.launch.py"
         self.assertTrue(path.exists(), f"file not found: {path}")
         text = path.read_text()
         self.assertIn(
-            'enable_global_traversability_layer",\n            default_value="true"',
+            'enable_global_traversability_layer",\n            default_value="false"',
             text,
-            "nav2_3d.launch.py must default enable_global_traversability_layer to true",
+            "nav2_3d.launch.py must default enable_global_traversability_layer to false",
         )
 
     def test_nav2_3d_config_path_not_empty_default(self):
@@ -50,9 +50,9 @@ class TestStackScript(unittest.TestCase):
         self.assertTrue(path.exists(), f"file not found: {path}")
         text = path.read_text()
         self.assertIn(
-            'ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"',
+            'ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-false}"',
             text,
-            "start_jt128_3d_stack.sh must default ENABLE_GLOBAL_TRAVERSABILITY_LAYER to true",
+            "start_jt128_3d_stack.sh must default ENABLE_GLOBAL_TRAVERSABILITY_LAYER to false",
         )
 
     def test_stack_script_has_no_flag(self):
@@ -89,9 +89,9 @@ class TestWebBackend(unittest.TestCase):
         self.assertTrue(path.exists(), f"file not found: {path}")
         text = path.read_text()
         self.assertIn(
-            "enable_global_traversability_layer: bool = True",
+            "enable_global_traversability_layer: bool = False",
             text,
-            "StartNavigationRequest must default enable_global_traversability_layer to True",
+            "StartNavigationRequest must default enable_global_traversability_layer to False",
         )
 
     def test_docker_compose_has_env(self):
