@@ -143,7 +143,7 @@ def generate_launch_description():
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
             DeclareLaunchArgument("enable_global_traversability_layer", default_value="false",
-                                  description="Feed stable 2.5D traversability obstacles into global_costmap. Default true; set false for field rollback."),
+                                  description="Feed stable 2.5D traversability obstacles into global_costmap. Default false; set true to enable explicitly."),
             DeclareLaunchArgument("global_traversability_config", default_value=f"{a2_system_share}/config/global_traversability_integrator.yaml",
                                   description="Path to global_traversability_integrator YAML"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",

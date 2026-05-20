@@ -45,6 +45,26 @@ class TestLaunchDefaults(unittest.TestCase):
 
 
 class TestStackScript(unittest.TestCase):
+    def test_stack_script_safety_default_and_opt_in(self):
+        path = _WS / "src" / "a2_system" / "tools" / "start_jt128_3d_stack.sh"
+        self.assertTrue(path.exists(), f"file not found: {path}")
+        text = path.read_text()
+        self.assertIn(
+            'START_SAFETY="${A2_START_SAFETY:-false}"',
+            text,
+            "start_jt128_3d_stack.sh must default START_SAFETY to false",
+        )
+        self.assertIn(
+            "--enable-safety",
+            text,
+            "start_jt128_3d_stack.sh must support --enable-safety",
+        )
+        self.assertIn(
+            "start_safety: ${START_SAFETY}",
+            text,
+            "NAV_STATE_FILE must record start_safety",
+        )
+
     def test_stack_script_has_env_default(self):
         path = _WS / "src" / "a2_system" / "tools" / "start_jt128_3d_stack.sh"
         self.assertTrue(path.exists(), f"file not found: {path}")
