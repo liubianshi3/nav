@@ -16,6 +16,8 @@ class SimplifiedSafetyGate(Node):
     def __init__(self):
         super().__init__("simplified_safety_gate")
         self.allow_motion_pub = self.create_publisher(Bool, "/a2/allow_motion", 10)
+        self.map_ready_pub = self.create_publisher(Bool, "/a2/map_ready", 10)
+        self.localization_ok_pub = self.create_publisher(Bool, "/a2/localization_ok", 10)
         self.activated = False
         self.timer = self.create_timer(2.0, self.try_activate)
 
@@ -44,8 +46,10 @@ class SimplifiedSafetyGate(Node):
         else:
             self.get_logger().warn(f"activate failed, retrying: {result2}")
             return
-        # Publish allow_motion
+        # Publish safety gate topics
         self.allow_motion_pub.publish(Bool(data=True))
+        self.map_ready_pub.publish(Bool(data=True))
+        self.localization_ok_pub.publish(Bool(data=True))
         self.activated = True
         self.get_logger().info("Simplified safety gate: all done, allow_motion=true")
         self.timer.cancel()
