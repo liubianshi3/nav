@@ -22,21 +22,32 @@ class SimplifiedSafetyGate(Node):
     def try_activate(self):
         if self.activated:
             return
-        # Activate collision_monitor
         client = self.create_client(ChangeState, "/collision_monitor/change_state")
-        if not client.wait_for_service(timeout_sec=1.0):
+        if not client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().info("collision_monitor change_state not ready, retrying...")
+            self.destroy_client(client)
             return
+        # Step 1: configure
         req = ChangeState.Request()
         req.transition = Transition(id=1, label="configure")
-        client.call(req)
+        result = client.call(req)
+        if not result.success:
+            self.get_logger().warn(f"configure failed: {result}")
+        time.sleep(0.5)
+        # Step 2: activate
         req2 = ChangeState.Request()
         req2.transition = Transition(id=3, label="activate")
-        client.call(req2)
+        result2 = client.call(req2)
         self.destroy_client(client)
+        if result2.success:
+            self.get_logger().info("collision_monitor activated")
+        else:
+            self.get_logger().warn(f"activate failed, retrying: {result2}")
+            return
         # Publish allow_motion
         self.allow_motion_pub.publish(Bool(data=True))
         self.activated = True
-        self.get_logger().info("Simplified safety gate: collision_monitor activated, allow_motion=true")
+        self.get_logger().info("Simplified safety gate: all done, allow_motion=true")
         self.timer.cancel()
 
 
