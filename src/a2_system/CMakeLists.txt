@@ -74,6 +74,7 @@ install(PROGRAMS
   scripts/octomap_to_2d_grid.py
   scripts/pointcloud_preview_node.py
   scripts/sensor_covariance_injector.py
+  scripts/simplified_safety_gate.py
   scripts/task_manager.py
   scripts/nav2_corridor_gate.py
   scripts/global_traversability_integrator.py

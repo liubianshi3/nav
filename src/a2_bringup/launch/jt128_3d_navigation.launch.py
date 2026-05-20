@@ -486,24 +486,14 @@ def generate_launch_description():
                     },
                 ],
             ),
-            # When safety_supervisor is not running, publish allow_motion=true
-            # so control_bridge does not wait forever for /a2/allow_motion.
-            TimerAction(
-                period=5.0,
-                actions=[
-                    ExecuteProcess(
-                        cmd=[
-                            "bash", "-lc",
-                            "source /opt/ros/humble/setup.bash && "
-                            "source ${A2_WORKSPACE:-$HOME/ws/device-navigation}/install/setup.bash && "
-                            "ros2 lifecycle set /collision_monitor configure 2>/dev/null || true && "
-                            "ros2 lifecycle set /collision_monitor activate 2>/dev/null || true && "
-                            "ros2 topic pub --once /a2/allow_motion std_msgs/msg/Bool 'data: true'",
-                        ],
-                        output="screen",
-                    ),
-                ],
+            # When safety_supervisor is off, run simplified gate that activates
+            # collision_monitor lifecycle and publishes allow_motion=true.
+            Node(
+                package="a2_system",
+                executable="simplified_safety_gate.py",
+                name="simplified_safety_gate",
                 condition=UnlessCondition(LaunchConfiguration("start_safety")),
+                output="screen",
             ),
         ]
     )
