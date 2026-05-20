@@ -31,6 +31,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Header
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 def _parse_pointcloud2(msg: PointCloud2) -> np.ndarray:
@@ -158,9 +159,12 @@ class GroundSegmentationNode(Node):
         )
 
         self.frame_id = self.declare_parameter("frame_id", "map").value
+        self.target_frame_id = self.declare_parameter("target_frame_id", "base_link").value
         self.process_every_n = int(
             self.declare_parameter("process_every_n", 1).value
         )
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # internal state
         self._skip_count = 0
@@ -203,15 +207,47 @@ class GroundSegmentationNode(Node):
         points = _parse_pointcloud2(msg)
         if points.shape[0] < 10:
             return
+        points, output_frame = self._transform_points(points, msg.header)
 
         ground_mask = self._classify_ground(points)
         ground = points[ground_mask]
         obstacle = points[~ground_mask]
         header = msg.header
+        header.frame_id = output_frame
 
-        self._ground_pub.publish(_build_pointcloud2(ground, header, self.frame_id))
-        self._obstacle_pub.publish(_build_pointcloud2(obstacle, header, self.frame_id))
+        self._ground_pub.publish(_build_pointcloud2(ground, header, output_frame))
+        self._obstacle_pub.publish(_build_pointcloud2(obstacle, header, output_frame))
         self._update_traversability(ground)
+
+    def _transform_points(self, points: np.ndarray, header: Header) -> Tuple[np.ndarray, str]:
+        if not self.target_frame_id or header.frame_id == self.target_frame_id:
+            return points, header.frame_id
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                self.target_frame_id,
+                header.frame_id,
+                rclpy.time.Time.from_msg(header.stamp),
+                timeout=rclpy.duration.Duration(seconds=0.1),
+            )
+        except TransformException as exc:
+            self.get_logger().warn(
+                f"TF {self.target_frame_id} <- {header.frame_id} unavailable, dropping cloud: {exc}",
+                throttle_duration_sec=2.0,
+            )
+            return np.empty((0, 3), dtype=np.float64), self.target_frame_id
+        q = tf.transform.rotation
+        t = tf.transform.translation
+        x, y, z, w = q.x, q.y, q.z, q.w
+        rot = np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ],
+            dtype=np.float64,
+        )
+        trans = np.array([t.x, t.y, t.z], dtype=np.float64)
+        return points @ rot.T + trans, self.target_frame_id
 
     # ------------------------------------------------------------------
     #  Ground classification
