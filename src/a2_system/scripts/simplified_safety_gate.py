@@ -8,7 +8,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool
-from lifecycle_msgs.srv import ChangeState
+from lifecycle_msgs.srv import ChangeState, GetState
 from lifecycle_msgs.msg import Transition
 
 
@@ -21,6 +21,16 @@ class SimplifiedSafetyGate(Node):
         self.activated = False
         self.timer = self.create_timer(2.0, self.try_activate)
 
+    def _get_state(self):
+        """Return collision_monitor lifecycle state id, or None on failure."""
+        get_client = self.create_client(GetState, "/collision_monitor/get_state")
+        if not get_client.wait_for_service(timeout_sec=2.0):
+            self.destroy_client(get_client)
+            return None
+        result = get_client.call(GetState.Request())
+        self.destroy_client(get_client)
+        return result.current_state.id if result else None
+
     def try_activate(self):
         # Always publish safety topics while active
         if self.activated:
@@ -28,19 +38,33 @@ class SimplifiedSafetyGate(Node):
             self.map_ready_pub.publish(Bool(data=True))
             self.localization_ok_pub.publish(Bool(data=True))
             return
+        # Query current state first
+        state_id = self._get_state()
+        if state_id is None:
+            self.get_logger().info("collision_monitor not ready, retrying...")
+            return
+        # State 3 = active: already running, skip lifecycle calls
+        if state_id == 3:
+            self.get_logger().info("collision_monitor already active, publishing allow_motion=true")
+            self.allow_motion_pub.publish(Bool(data=True))
+            self.map_ready_pub.publish(Bool(data=True))
+            self.localization_ok_pub.publish(Bool(data=True))
+            self.activated = True
+            return
         client = self.create_client(ChangeState, "/collision_monitor/change_state")
         if not client.wait_for_service(timeout_sec=2.0):
             self.get_logger().info("collision_monitor change_state not ready, retrying...")
             self.destroy_client(client)
             return
-        # Step 1: configure
-        req = ChangeState.Request()
-        req.transition = Transition(id=1, label="configure")
-        result = client.call(req)
-        if not result.success:
-            self.get_logger().warn(f"configure failed: {result}")
-        time.sleep(0.5)
-        # Step 2: activate
+        # State 1 = unconfigured: configure first
+        if state_id == 1:
+            req = ChangeState.Request()
+            req.transition = Transition(id=1, label="configure")
+            result = client.call(req)
+            if not result.success:
+                self.get_logger().warn(f"configure failed: {result}")
+            time.sleep(0.5)
+        # Activate (state 2 = inactive)
         req2 = ChangeState.Request()
         req2.transition = Transition(id=3, label="activate")
         result2 = client.call(req2)
