@@ -496,6 +496,8 @@ def generate_launch_description():
                             "bash", "-lc",
                             "source /opt/ros/humble/setup.bash && "
                             "source ${A2_WORKSPACE:-$HOME/ws/device-navigation}/install/setup.bash && "
+                            "ros2 lifecycle set /collision_monitor configure 2>/dev/null || true && "
+                            "ros2 lifecycle set /collision_monitor activate 2>/dev/null || true && "
                             "ros2 topic pub --once /a2/allow_motion std_msgs/msg/Bool 'data: true'",
                         ],
                         output="screen",
