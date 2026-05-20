@@ -7,7 +7,7 @@ grpc:
 ros:
   map_topic: /map
   pointcloud_topic: /jt128/dlio/map_points_preview
-  pointcloud_fallback_topic: ""
+  pointcloud_fallback_topic: /jt128/front/points_preview
   pointcloud_map_topics:
     - /jt128/dlio/map_points_preview
   pointcloud_preview_max_points: 60000

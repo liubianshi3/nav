@@ -9,7 +9,7 @@ services:
     stdin_open: true
     command: ${A2_SIM_MODE:-headless}
     environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       DISPLAY: ${DISPLAY:-}
       WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
@@ -43,7 +43,7 @@ services:
       - "${A2_RVIZ_WEB_PORT:-6080}:6080"
       - "${A2_RVIZ_VNC_HOST_PORT:-5901}:5900"
     environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       A2_RVIZ_DISPLAY: ${A2_RVIZ_DISPLAY:-:99}
       A2_RVIZ_GEOMETRY: ${A2_RVIZ_GEOMETRY:-1600x1000x24}
@@ -70,7 +70,7 @@ services:
       - "${A2_GAZEBO_WEB_PORT:-6081}:6080"
       - "${A2_GAZEBO_VNC_HOST_PORT:-5902}:5900"
     environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       A2_GAZEBO_WORLD: ${A2_GAZEBO_WORLD:-/opt/a2_system_ws/sim/worlds/empty_ground_gz.world}
       A2_GAZEBO_DISPLAY: ${A2_GAZEBO_DISPLAY:-:99}
@@ -104,7 +104,7 @@ services:
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
       CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.sim.yaml
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}
+      ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
       A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}

@@ -129,7 +129,7 @@ def generate_launch_description():
                 description="Localization mode for navigation: ndt for map localization, odom_only for short-range control-chain validation.",
             ),
 
-            DeclareLaunchArgument("start_safety", default_value="true"),
+            DeclareLaunchArgument("start_safety", default_value="false"),
             DeclareLaunchArgument("enable_motion", default_value="true"),
             DeclareLaunchArgument("dry_run", default_value="false"),
             DeclareLaunchArgument("sdk_interface", default_value="eth0"),
@@ -142,8 +142,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",
                                   description="Launch Nav2 3D planning stack instead of pose_goal_controller_3d"),
-            DeclareLaunchArgument("enable_global_traversability_layer", default_value="true",
-                                  description="Feed stable 2.5D traversability obstacles into global_costmap. Default true; set false for field rollback."),
+            DeclareLaunchArgument("enable_global_traversability_layer", default_value="false",
+                                  description="Feed stable 2.5D traversability obstacles into global_costmap. Default false; set true to enable explicitly."),
             DeclareLaunchArgument("global_traversability_config", default_value=f"{a2_system_share}/config/global_traversability_integrator.yaml",
                                   description="Path to global_traversability_integrator YAML"),
             DeclareLaunchArgument("nav2_3d_map", default_value="",
@@ -476,7 +476,11 @@ def generate_launch_description():
                         ]),
                         "network_interface": LaunchConfiguration("control_interface"),
                         "allow_motion_without_localization": ParameterValue(
-                            is_odom_only_localization,
+                            PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'odom_only' or '", LaunchConfiguration("start_safety"), "' != 'true'"]),
+                            value_type=bool,
+                        ),
+                        "allow_motion_without_map": ParameterValue(
+                            PythonExpression(["'", LaunchConfiguration("start_safety"), "' != 'true'"]),
                             value_type=bool,
                         ),
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
@@ -485,6 +489,15 @@ def generate_launch_description():
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],
+            ),
+            # When safety_supervisor is off, run simplified gate that activates
+            # collision_monitor lifecycle and publishes allow_motion=true.
+            Node(
+                package="a2_system",
+                executable="simplified_safety_gate.py",
+                name="simplified_safety_gate",
+                condition=UnlessCondition(LaunchConfiguration("start_safety")),
+                output="screen",
             ),
         ]
     )

@@ -179,6 +179,7 @@ def _launch_setup(context, *args, **kwargs):
                 "allow_loopback": False,
                 "network_interface": network_interface,
                 "runtime_mode": runtime_mode,
+                "require_allow_motion_topic": True,
                 "sim_cmd_topic": "",
                 "use_sim_time": use_sim_time,
                 },

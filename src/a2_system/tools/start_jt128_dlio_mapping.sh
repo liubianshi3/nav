@@ -93,6 +93,13 @@ warn() {
   printf '[WARN] %s\n' "$*" >&2
 }
 
+export_child_ros_env() {
+  printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+  fi
+}
+
 die() {
   printf '[ERROR] %s\n' "$*" >&2
   exit 1
@@ -192,65 +199,78 @@ stop_interference() {
     run_privileged systemctl stop "$UNITREE_SLAM_SERVICE" >/dev/null 2>&1 || true
   fi
   local pattern
-  for pattern in \
-    "rosmaster" \
-    "roslaunch x_nav_control" \
-    "foxglove_bridge" \
-    "foxglove_nodelet_manager" \
-    "livox_ros_driver2_node" \
-    "a2_ros1_sdk" \
-    "navigation_mapping.py" \
-    "dwa_obstacle_avoidance.py" \
-    "point_cloud_fusion" \
-    "pointcloud_preview_node.py" \
-    "dlio_mapping.launch.py" \
-    "hesai_ros_driver_node" \
-    "imu_to_si_converter.py" \
-    "unitree_slam" \
-    "pointcloud_to_laserscan" \
-    "slam_toolbox" \
-    "amcl" \
-    "map_server" \
-    "controller_server" \
-    "planner_server" \
-    "bt_navigator" \
-    "pointcloud_accumulator" \
-    "octomap_server" \
-    "octomap_mapping_node.py" \
-    "dlio_odom_node" \
-    "dlio_map_node" \
-    "odometry_tf_broadcaster.py" \
-    "jt128_dlio_watchdog.py" \
-    "map_manager_node"; do
+  local INTERFERENCE_PATTERNS=(
+    "rosmaster"
+    "roslaunch x_nav_control"
+    "foxglove_bridge"
+    "foxglove_nodelet_manager"
+    "livox_ros_driver2_node"
+    "a2_ros1_sdk"
+    "navigation_mapping.py"
+    "dwa_obstacle_avoidance.py"
+    "point_cloud_fusion"
+    "pointcloud_preview_node.py"
+    "dlio_mapping.launch.py"
+    "jt128_driver.launch.py"
+    "jt128_3d_navigation.launch.py"
+    "hesai_ros_driver_node"
+    "imu_to_si_converter.py"
+    "unitree_slam"
+    "pointcloud_to_laserscan"
+    "slam_toolbox"
+    "amcl"
+    "map_server"
+    "controller_server"
+    "planner_server"
+    "bt_navigator"
+    "smoother_server"
+    "behavior_server"
+    "waypoint_follower"
+    "velocity_smoother"
+    "lifecycle_manager"
+    "local_costmap"
+    "global_costmap"
+    "pointcloud_accumulator"
+    "pointcloud_guard"
+    "pointcloud_map_loader"
+    "octomap_server"
+    "octomap_server_node"
+    "octomap_saver_node"
+    "octomap_mapping_node.py"
+    "dlio_odom_node"
+    "dlio_map_node"
+    "odometry_tf_broadcaster.py"
+    "jt128_dlio_watchdog.py"
+    "map_manager_node"
+    "static_tf_manager"
+    "ndt_scan_matcher"
+    "autoware_ndt_scan_matcher_node"
+    "ndt_adapter"
+    "ndt_health_monitor"
+    "pcd_relocalizer_3d"
+    "sensor_covariance_injector.py"
+    "body_imu_covariance_injector"
+    "ekf_node"
+    "localization_gate"
+    "goal_bridge"
+    "pose_goal_controller_3d"
+    "ground_segmentation_cpp_node"
+    "traversability_to_obstacle_cloud.py"
+    "global_traversability_integrator"
+    "collision_monitor"
+    "auto_scan_mission.py"
+    "task_manager.py"
+    "real_readiness_monitor"
+    "safety_supervisor"
+    "a2_sdk_bridge_node"
+    "a2_state_publisher_node"
+    "a2_control_bridge_node"
+  )
+  for pattern in "${INTERFERENCE_PATTERNS[@]}"; do
     kill_pattern TERM "$pattern"
   done
   sleep 1
-  for pattern in \
-    "rosmaster" \
-    "roslaunch x_nav_control" \
-    "foxglove_bridge" \
-    "foxglove_nodelet_manager" \
-    "livox_ros_driver2_node" \
-    "a2_ros1_sdk" \
-    "navigation_mapping.py" \
-    "dwa_obstacle_avoidance.py" \
-    "point_cloud_fusion" \
-    "pointcloud_preview_node.py" \
-    "dlio_mapping.launch.py" \
-    "hesai_ros_driver_node" \
-    "imu_to_si_converter.py" \
-    "unitree_slam" \
-    "pointcloud_to_laserscan" \
-    "slam_toolbox" \
-    "amcl" \
-    "pointcloud_accumulator" \
-    "octomap_server" \
-    "octomap_mapping_node.py" \
-    "dlio_odom_node" \
-    "dlio_map_node" \
-    "odometry_tf_broadcaster.py" \
-    "jt128_dlio_watchdog.py" \
-    "map_manager_node"; do
+  for pattern in "${INTERFERENCE_PATTERNS[@]}"; do
     kill_pattern KILL "$pattern"
   done
 }
@@ -338,7 +358,7 @@ nohup bash -lc "
   if [ -n '${EFFECTIVE_GRAPH_PID_WS}' ] && [ -f '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash' ]; then source '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash'; fi
   source '${WORKSPACE}/install/setup.bash'
   export A2_WORKSPACE='${WORKSPACE}'
-  export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
+  $(export_child_ros_env)
   unset FASTDDS_BUILTIN_TRANSPORTS
   ros2 launch a2_bringup dlio_mapping.launch.py \
     start_driver:=true \
@@ -389,6 +409,7 @@ if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
     if [ -n '${EFFECTIVE_GRAPH_PID_WS}' ] && [ -f '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash' ]; then source '${EFFECTIVE_GRAPH_PID_WS}/install/setup.bash'; fi
     source '${WORKSPACE}/install/setup.bash'
     export A2_WORKSPACE='${WORKSPACE}'
+    $(export_child_ros_env)
     ros2 launch a2_bringup octomap_mapping.launch.py \
       use_sim_time:=false \
       odom_topic:=/jt128/dlio/odom \

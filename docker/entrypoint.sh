@@ -23,13 +23,12 @@ configure_cyclonedds_interface() {
   if [[ "${RMW_IMPLEMENTATION:-}" != "rmw_cyclonedds_cpp" ]]; then
     return 0
   fi
-  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
-    log "CycloneDDS URI provided by environment"
-    return 0
-  fi
 
   local iface="${A2_ROS_INTERFACE:-}"
   if [[ -z "$iface" ]]; then
+    if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+      log "CycloneDDS URI provided by environment"
+    fi
     return 0
   fi
   if ! ip link show "$iface" >/dev/null 2>&1; then
@@ -49,8 +48,25 @@ configure_cyclonedds_interface() {
     peers_xml="${peers_xml}</Peers></Discovery>"
   fi
 
-  export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" /></Interfaces></General>${peers_xml}</Domain></CycloneDDS>"
+  export CYCLONEDDS_URI="<CycloneDDS xmlns=\"https://cdds.io/config\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd\">
+  <Domain Id=\"any\">
+    <General>
+      <Interfaces>
+        <NetworkInterface name=\"${iface}\" priority=\"default\" multicast=\"default\" />
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+    ${peers_xml}
+  </Domain>
+</CycloneDDS>"
   log "CycloneDDS ROS traffic bound to iface=${iface} peers=${peers:-<none>}"
+}
+
+export_child_ros_env() {
+  printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+  fi
 }
 
 is_true() {
@@ -197,7 +213,7 @@ start_standby_lidar_preview() {
     source /opt/ros/humble/setup.bash
     source '${A2_WORKSPACE}/install/setup.bash'
     export A2_WORKSPACE='${A2_WORKSPACE}'
-    export RMW_IMPLEMENTATION='${RMW_IMPLEMENTATION}'
+    $(export_child_ros_env)
     ros2 launch a2_bringup jt128_driver.launch.py use_sim_time:=false
   " >"$log_file" 2>&1 &
   log "standby JT128 lidar log=${log_file}"
@@ -222,6 +238,7 @@ start_standby_pointcloud_preview() {
     source /opt/ros/humble/setup.bash
     source '${A2_WORKSPACE}/install/setup.bash'
     export A2_WORKSPACE='${A2_WORKSPACE}'
+    $(export_child_ros_env)
     ros2 run a2_system pointcloud_preview_node.py --ros-args \
       -p input_topic:=/jt128/front/points \
       -p output_topic:=/jt128/front/points_preview \

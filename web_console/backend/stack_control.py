@@ -42,6 +42,8 @@ START_STABILITY_POLLS = 3
 LOG_TAIL_LINE_LIMIT = 80
 LOG_HIGHLIGHT_LIMIT = 12
 LOG_TEXT_LIMIT = 1800
+CANONICAL_POINTCLOUD_MAP = "pointcloud_map_3d.pcd"
+POINTCLOUD_MAP_ARTIFACT_KINDS = {"pointcloud_snapshot_3d", "native_pointcloud_map_3d", "pointcloud_map_3d"}
 # Legacy 2D AMCL removed from primary lifecycle nodes; 3D NDT adapter is not lifecycle-managed.
 NAV_LIFECYCLE_NODES = ("map_server",)
 THREE_D_NAVIGATION_REPRESENTATIONS = {"pointcloud_map_3d", "nav2_3d_projected_2d_costmap"}
@@ -58,6 +60,22 @@ LOG_HIGHLIGHT_MARKERS = (
 )
 PatternSpec = str | tuple[str, ...]
 
+
+def pcd_to_2d_map_args(tool_path: Path, pcd_path: Path, map_dir: Path) -> list[str]:
+    """Argument list shared by automatic and explicit PCD -> 2D projection."""
+    return [
+        "python3", str(tool_path), str(pcd_path),
+        "--output", str(map_dir),
+        "--resolution", "0.05",
+        "--ground-threshold", "0.08",
+        "--ceiling-threshold", "2.0",
+        "--min-obstacle-points", "2",
+        "--min-ground-points", "1",
+        "--dilate", "0",
+        "--ignore-obstacles-within-radius", "0.85",
+        "--clear-radius-around-origin", "0.85",
+    ]
+
 MAPPING_NODES: list[tuple[str, str, PatternSpec]] = [
     ("driver", "JT128 Hesai driver", ("jt128_hesai_driver", "hesai_ros_driver_node")),
     ("dlio_odom", "JT128 DLIO odom", ("jt128_dlio_odom", "dlio_odom_node")),
@@ -67,6 +85,7 @@ MAPPING_NODES: list[tuple[str, str, PatternSpec]] = [
     ("octomap_server", "OctoMap server", "octomap_server_node"),
     ("map_manager", "map_manager", "map_manager_node"),
 ]
+OCTOMAP_MAPPING_NODE_KEYS = {"octomap_gate", "octomap_server"}
 
 NAVIGATION_NODES: list[tuple[str, str, PatternSpec]] = [
     ("bringup", "bringup.launch.py", "bringup.launch.py"),
@@ -537,6 +556,12 @@ class StackController:
                 map_info.navigation_compatibility_reason or f"地图不兼容当前导航链: {map_id}"
             )
 
+        use_3d_navigation = self._is_3d_navigation_map(map_info)
+        if use_3d_navigation:
+            self.ensure_canonical_pointcloud_map(map_info)
+            if enable_nav2_3d:
+                map_info = self.ensure_nav2_projected_map(map_info)
+
         self.stop_if_running()
         self._write_runtime_state(
             mode="starting",
@@ -553,7 +578,6 @@ class StackController:
             message=f"导航模式启动中: {map_info.map_id}",
         )
 
-        use_3d_navigation = self._is_3d_navigation_map(map_info)
         try:
             result = self._run(
                 self._start_script_command(
@@ -682,7 +706,25 @@ class StackController:
             if use_3d_navigation:
                 return NAVIGATION_NODES_3D
             return NAVIGATION_NODES
-        return MAPPING_NODES
+        return self._expected_mapping_nodes()
+
+    def _expected_mapping_nodes(self) -> list[tuple[str, str, PatternSpec]]:
+        if self._mapping_requires_octomap():
+            return MAPPING_NODES
+        return [node for node in MAPPING_NODES if node[0] not in OCTOMAP_MAPPING_NODE_KEYS]
+
+    def _mapping_requires_octomap(self) -> bool:
+        return self.start_script.name != "start_jt128_3d_stack.sh"
+
+    def _expected_nodes_running(
+        self,
+        processes: list[ProcessInfo],
+        expected: list[tuple[str, str, PatternSpec]],
+    ) -> bool:
+        return bool(expected) and all(
+            any(self._matches_pattern(proc.args, pattern) for proc in processes)
+            for _, _, pattern in expected
+        )
 
     def _wait_for_expected_nodes(self, mode: str, *, use_3d_navigation: bool | None = None) -> None:
         expected = self._expected_nodes_for_mode(mode, use_3d_navigation=use_3d_navigation)
@@ -838,6 +880,73 @@ class StackController:
             if any(pattern in proc.args for pattern in STACK_CLEANUP_PATTERNS)
         ]
 
+    def _pcd_to_2d_tool_path(self) -> Path:
+        workspace = Path(self.config.stack.workspace).expanduser().resolve()
+        candidates = [
+            workspace / "install" / "a2_system" / "lib" / "a2_system" / "pcd_to_2d_map.py",
+            workspace / "src" / "a2_system" / "scripts" / "pcd_to_2d_map.py",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
+    def _artifact_path(self, map_info: SavedMapInfo, artifact: MapArtifactInfo) -> Path:
+        map_dir = self._resolve_map_dir(map_info.map_id)
+        candidate = (map_dir / artifact.path).resolve()
+        if candidate != map_dir and map_dir not in candidate.parents:
+            raise StackControlError(f"地图资产路径非法: {artifact.path}")
+        return candidate
+
+    def ensure_canonical_pointcloud_map(self, map_info: SavedMapInfo) -> Path:
+        map_dir = self._resolve_map_dir(map_info.map_id)
+        canonical = map_dir / CANONICAL_POINTCLOUD_MAP
+        if canonical.exists() and canonical.is_file() and canonical.stat().st_size > 0:
+            return canonical
+
+        for artifact in map_info.artifacts:
+            if artifact.kind not in POINTCLOUD_MAP_ARTIFACT_KINDS:
+                continue
+            source = self._artifact_path(map_info, artifact)
+            if not source.exists() or not source.is_file() or source.stat().st_size <= 0:
+                continue
+            if source.resolve() != canonical.resolve():
+                shutil.copy2(source, canonical)
+            return canonical
+
+        raise StackControlError(
+            f"地图缺少 {CANONICAL_POINTCLOUD_MAP}，也未找到可用的 3D 点云资产: {map_info.map_id}"
+        )
+
+    def project_pcd_to_2d_map(self, map_info: SavedMapInfo) -> subprocess.CompletedProcess[str]:
+        map_dir = self._resolve_map_dir(map_info.map_id)
+        pcd_path = self.ensure_canonical_pointcloud_map(map_info)
+        tool_path = self._pcd_to_2d_tool_path()
+        if not tool_path.exists():
+            raise StackControlError(f"投影工具未找到: {tool_path}")
+        try:
+            result = subprocess.run(
+                pcd_to_2d_map_args(tool_path, pcd_path, map_dir),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise StackControlError("投影超时（>60秒）") from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit={result.returncode}"
+            raise StackControlError(f"投影失败: {detail}")
+        map_yaml = map_dir / "map.yaml"
+        if not map_yaml.exists():
+            raise StackControlError(f"投影未生成 map.yaml: {map_yaml}")
+        return result
+
+    def ensure_nav2_projected_map(self, map_info: SavedMapInfo) -> SavedMapInfo:
+        if map_info.map_yaml and Path(map_info.map_yaml).exists():
+            return map_info
+        self.project_pcd_to_2d_map(map_info)
+        return self.get_map(map_info.map_id, include_incompatible=True) or map_info
+
     def list_maps(self, *, include_incompatible: bool = False) -> list[SavedMapInfo]:
         if not self.map_root.exists():
             return []
@@ -861,10 +970,8 @@ class StackController:
                 representation=metadata.get("representation"),
                 source_topic=metadata.get("source_topic"),
                 pointcloud_topic_3d=metadata.get("pointcloud_topic_3d"),
-                has_pointcloud_3d=any(
-                    artifact.kind in {"pointcloud_snapshot_3d", "native_pointcloud_map_3d"}
-                    for artifact in artifact_models
-                ),
+                has_pointcloud_3d=(item / CANONICAL_POINTCLOUD_MAP).exists()
+                or any(artifact.kind in POINTCLOUD_MAP_ARTIFACT_KINDS for artifact in artifact_models),
                 width=metadata.get("width"),
                 height=metadata.get("height"),
                 resolution=metadata.get("resolution"),
@@ -1054,7 +1161,7 @@ class StackController:
 
         map_dir = self.map_root / map_id
         map_dir.mkdir(parents=True, exist_ok=True)
-        target_path = map_dir / "native_map.pcd"
+        target_path = map_dir / CANONICAL_POINTCLOUD_MAP
         shutil.copy2(source_path, target_path)
 
         metadata_path = map_dir / "metadata.yaml"
@@ -1324,10 +1431,16 @@ class StackController:
         inferred_mode = self._infer_mode(processes)
         runtime_mode = str(runtime_state.get("mode") or "")
         target_mode = str(runtime_state.get("target_mode") or "")
+        promoted_startup = False
 
         if runtime_mode in {"starting", "stopping"}:
             mode = runtime_mode
             expected_mode = target_mode or inferred_mode
+            if runtime_mode == "starting" and expected_mode == "mapping":
+                expected = self._expected_nodes_for_mode("mapping")
+                if self._expected_nodes_running(processes, expected):
+                    mode = "mapping"
+                    promoted_startup = True
         elif runtime_mode in {"mapping", "navigation"}:
             mode = runtime_mode
             expected_mode = runtime_mode
@@ -1365,7 +1478,7 @@ class StackController:
             collision_monitor_config=runtime_state.get("collision_monitor_config"),
             nodes=nodes,
             maps=self.list_maps(include_incompatible=True),
-            message=runtime_state.get("message"),
+            message=None if promoted_startup else runtime_state.get("message"),
         )
 
     def _infer_mode(self, processes: list[ProcessInfo]) -> str:

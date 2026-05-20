@@ -72,6 +72,7 @@ export function PointCloudCanvas3D({
   const poseFrameRef = useRef<string | null>(null);
   const pointcloudFrameRef = useRef<string | null>(null);
   const onSelectGoalRef = useRef(onSelectGoal);
+  const lastRobotPoseRef = useRef<{ x: number; y: number; yaw: number }>({ x: 0, y: 0, yaw: 0 });
   const [artifactState, setArtifactState] = useState("等待 3D 资产");
   const [showSavedMap, setShowSavedMap] = useState(true);
   const [showLiveOverlay, setShowLiveOverlay] = useState(false);
@@ -222,12 +223,18 @@ export function PointCloudCanvas3D({
         const intersections = raycaster.intersectObjects(targets, false);
         const hit = intersections.find((item: THREE.Intersection<THREE.Object3D>) => Boolean(item.point));
         if (!hit?.point) {
-          return;
-        }
-        hitPoint = hit.point.clone();
-        const surfaceY = groundSurfaceY(current, hitPoint.x, hitPoint.z);
-        if (surfaceY !== null) {
-          hitPoint.y = surfaceY;
+          raycaster.setFromCamera(mouse, current.camera);
+          const planeHit = pickGroundPlanePoint(raycaster);
+          if (!planeHit) {
+            return;
+          }
+          hitPoint = planeHit;
+        } else {
+          hitPoint = hit.point.clone();
+          const surfaceY = groundSurfaceY(current, hitPoint.x, hitPoint.z);
+          if (surfaceY !== null) {
+            hitPoint.y = surfaceY;
+          }
         }
       }
       const world = threeToRos(hitPoint, current.sceneOrigin);
@@ -399,6 +406,11 @@ export function PointCloudCanvas3D({
     const current = sceneRef.current;
     const hasPose = Boolean(pose?.available && pose.x !== null && pose.y !== null);
     if (current && hasPose && pose) {
+      lastRobotPoseRef.current = {
+        x: pose.x ?? 0,
+        y: pose.y ?? 0,
+        yaw: pose.yaw ?? 0,
+      };
       ensureSceneOriginFromPose(
         current,
         pose,
@@ -406,18 +418,19 @@ export function PointCloudCanvas3D({
         setSceneOriginLabel,
       );
     }
+    const markerPose = lastRobotPoseRef.current;
     updateMarker(
       current?.robotMarker ?? null,
-      hasPose && pose ? markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false) : null,
-      pose?.yaw ?? 0,
+      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 }),
+      markerPose.yaw,
     );
-  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw]);
+  }, [pose?.available, pose?.source, pose?.stamp, pose?.stale, pose?.x, pose?.y, pose?.yaw, sceneOriginVersion]);
 
   useEffect(() => {
     const current = sceneRef.current;
     updateMarker(
       current?.selectedGoalMarker ?? null,
-      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true) : null,
+      selectedGoal ? markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }) : null,
       selectedGoal?.yaw ?? 0,
     );
   }, [sceneOriginVersion, selectedGoal]);
@@ -426,7 +439,7 @@ export function PointCloudCanvas3D({
     const current = sceneRef.current;
     updateMarker(
       current?.activeGoalMarker ?? null,
-      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true) : null,
+      activeGoal ? markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }) : null,
       activeGoal?.yaw ?? 0,
     );
   }, [activeGoal, sceneOriginVersion]);
@@ -462,7 +475,8 @@ export function PointCloudCanvas3D({
       () => setSceneOriginVersion((value) => value + 1),
       setSceneOriginLabel,
     );
-    updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }, false), pose.yaw ?? 0);
+    lastRobotPoseRef.current = { x: pose.x, y: pose.y, yaw: pose.yaw ?? 0 };
+    updateMarker(current.robotMarker, markerPositionFromRos(current, { x: pose.x, y: pose.y, z: 0 }), pose.yaw ?? 0);
   };
 
   return (
@@ -640,13 +654,8 @@ function setSceneOriginFromPose(
   bumpSceneOriginVersion();
 }
 
-function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }, snapToSurface: boolean) {
-  const position = rosToThree(point, context?.sceneOrigin ?? null);
-  const surfaceY = snapToSurface && context ? groundSurfaceY(context, position.x, position.z) : null;
-  if (surfaceY !== null) {
-    position.y = surfaceY;
-  }
-  return position;
+function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number }) {
+  return rosToThree(point, context?.sceneOrigin ?? null);
 }
 
 function groundSurfaceY(context: SceneContext, x: number, z: number): number | null {
@@ -720,6 +729,12 @@ function pickGroundPointFromScreen(context: SceneContext, mouse: THREE.Vector2, 
     picked.y = surfaceY;
   }
   return picked;
+}
+
+function pickGroundPlanePoint(raycaster: THREE.Raycaster): THREE.Vector3 | null {
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hit = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
 }
 
 function quantile(values: number[], q: number): number | null {

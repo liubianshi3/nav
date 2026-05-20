@@ -11,13 +11,13 @@ START_WEB=1
 ENABLE_MOTION=true
 DRY_RUN=false
 ENABLE_NAV2_3D=true
-ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-true}"
+ENABLE_GLOBAL_TRAVERSABILITY_LAYER="${A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER:-false}"
 NAV2_3D_MAP=""
 LOCALIZATION_MODE="${A2_REAL_LOCALIZATION_MODE:-ndt}"
 COLLISION_MONITOR_PROFILE="${A2_COLLISION_MONITOR_PROFILE:-strict}"
 COLLISION_MONITOR_CONFIG=""
 START_ROBOT_STATE=true
-START_SAFETY=true
+START_SAFETY="${A2_START_SAFETY:-false}"
 LOG_DIR="${WORKSPACE}/runtime/logs"
 NAV_STATE_FILE="${WORKSPACE}/runtime/jt128_3d_navigation_state.yaml"
 WEB_SERVICE="${A2_WEB_SERVICE:-a2-web-console.service}"
@@ -31,7 +31,7 @@ usage() {
   cat <<EOF
 Usage:
   $(basename "$0") --mode mapping [--lidar-iface net1] [--no-web]
-  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-global-traversability-layer|--no-global-traversability-layer]
+  $(basename "$0") --mode navigation --map-id MAP_ID [--lidar-iface net1] [--sdk-iface eth0] [--localization-mode ndt|odom_only] [--collision-profile strict|live-validation] [--enable-safety|--no-safety] [--enable-global-traversability-layer|--no-global-traversability-layer]
 
 Starts the 3D-first JT128 stack:
   mapping:
@@ -50,13 +50,13 @@ Starts the 3D-first JT128 stack:
 Default:
   Navigation starts the real Unitree control chain. Keep the robot supervised.
 
-Global traversability feedback:
-  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
-  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+Safety:
+  Disabled by default. Use --enable-safety or A2_START_SAFETY=true
+  to start safety_supervisor and real_readiness_monitor.
 
 Global traversability feedback:
-  Enabled by default. It feeds stable 2.5D traversability obstacles into global_costmap.
-  Use --no-global-traversability-layer or A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=false for field rollback.
+  Disabled by default. Use --enable-global-traversability-layer or
+  A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER=true to enable for 2.5D perception.
 
 EOF
 }
@@ -153,6 +153,10 @@ while [[ $# -gt 0 ]]; do
       START_ROBOT_STATE=false
       shift
       ;;
+    --enable-safety)
+      START_SAFETY=true
+      shift
+      ;;
     --no-safety)
       START_SAFETY=false
       shift
@@ -167,6 +171,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+START_SAFETY="$(normalize_bool "$START_SAFETY")" || die "A2_START_SAFETY must be true/false"
 ENABLE_GLOBAL_TRAVERSABILITY_LAYER="$(normalize_bool "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER")" || die "A2_ENABLE_GLOBAL_TRAVERSABILITY_LAYER must be true/false"
 
 [[ "$MODE" == "mapping" || "$MODE" == "navigation" ]] || die "mode must be mapping or navigation"
@@ -215,6 +220,13 @@ source_ros() {
 configure_ros_transport() {
   export FASTDDS_BUILTIN_TRANSPORTS="${FAST_DDS_TRANSPORTS}"
   log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
+}
+
+export_child_ros_env() {
+  printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
+    printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
+  fi
 }
 
 require_a2_system_executable() {
@@ -343,6 +355,7 @@ setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
+  $(export_child_ros_env)
   export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
   ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
@@ -371,6 +384,7 @@ sdk_interface: ${SDK_IFACE}
 control_interface: ${CONTROL_IFACE}
 enable_motion: ${ENABLE_MOTION}
 dry_run: ${DRY_RUN}
+start_safety: ${START_SAFETY}
 localization_mode: ${LOCALIZATION_MODE}
 collision_monitor_profile: ${COLLISION_MONITOR_PROFILE}
 collision_monitor_config: ${COLLISION_MONITOR_CONFIG}

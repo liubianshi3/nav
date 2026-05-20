@@ -59,8 +59,11 @@ def test_default_config_exposes_camera_topics():
     assert config.native_slam.response_topic == "/api/slam_operate/response"
     assert config.native_slam.response_timeout_sec >= 1.0
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == [
+        "/jt128/dlio/map_points_preview",
+    ]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.task_manager_service == "/a2/task_manager/command"
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"  # 3D-first
     assert config.ros.localization_pose_msg_type == "geometry_msgs/msg/PoseWithCovarianceStamped"
@@ -81,8 +84,11 @@ def test_3d_config_uses_source_workspace_defaults():
     assert config.stack.start_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/start_jt128_3d_stack.sh"
     assert config.stack.stop_script == "/home/unitree/ws/device-navigation/src/a2_system/tools/stop_jt128_stack.sh"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == [
+        "/jt128/dlio/map_points_preview",
+    ]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.pointcloud_preview_max_points >= 60000
     assert config.ros.websocket_pointcloud_max_points >= 48000
 
@@ -133,8 +139,9 @@ def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     assert config.camera.prefer_compressed is False
     assert config.ros.camera_image_topic == "/camera/image_raw"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -149,8 +156,9 @@ def test_docker_config_uses_jt128_3d_stack_and_keeps_manual_control():
     assert config.stack.command_timeout_sec >= 60.0
     assert config.ros.localization_pose_topic == "/a2/relocalization/pose"
     assert config.ros.pointcloud_topic == "/jt128/dlio/map_points_preview"
-    assert config.ros.pointcloud_fallback_topic == ""
-    assert config.ros.pointcloud_map_topics[0] == "/jt128/dlio/map_points_preview"
+    assert config.ros.pointcloud_fallback_topic == "/jt128/front/points_preview"
+    assert config.ros.pointcloud_map_topics == ["/jt128/dlio/map_points_preview"]
+    assert all(topic.endswith("_preview") for topic in [config.ros.pointcloud_topic, config.ros.pointcloud_fallback_topic, *config.ros.pointcloud_map_topics])
     assert config.ros.odom_topic == "/odometry/local"
     assert config.navigation.backend == "nav2"
     assert config.navigation.goal_topic == "/a2/nav3/goal_pose"
@@ -218,6 +226,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     repo_root = Path(__file__).resolve().parents[3]
     compose_source = (repo_root / "docker-compose.a2.yml").read_text(encoding="utf-8")
     entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
+    a2_ros_env_source = (repo_root / "docker/a2_ros.env").read_text(encoding="utf-8")
     legacy_special_suffix = "".join(("z", "be"))
 
     assert legacy_special_suffix not in compose_source.lower()
@@ -230,10 +239,13 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
     assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
-    assert "ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-88}" in compose_source
+    assert "env_file:" in compose_source
+    assert "- ./docker/a2_ros.env" in compose_source
+    assert "ROS_DOMAIN_ID=0" in a2_ros_env_source
+    assert "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" in a2_ros_env_source
+    assert "A2_ROS_INTERFACE=wlxe865d4707bf8" in a2_ros_env_source
+    assert "A2_ROS_PEERS=" in a2_ros_env_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
-    assert "A2_ROS_INTERFACE: ${A2_ROS_INTERFACE:-wlxe865d4707bf8}" in compose_source
-    assert "A2_ROS_PEERS: ${A2_ROS_PEERS:-}" in compose_source
     assert "A2_JT128_INTERFACE: ${A2_JT128_INTERFACE:-net1}" in compose_source
     assert "A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}" in compose_source
     assert "A2_CONTROL_INTERFACE: ${A2_CONTROL_INTERFACE:-eth0}" in compose_source
@@ -254,7 +266,24 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "configure_cyclonedds_interface" in entrypoint_source
     assert 'local iface="${A2_ROS_INTERFACE:-}"' in entrypoint_source
     assert 'local peers="${A2_ROS_PEERS:-}"' in entrypoint_source
+    assert 'export CYCLONEDDS_URI="<CycloneDDS xmlns=' in entrypoint_source
+    assert '<Domain Id=\\"any\\">' in entrypoint_source
+    assert '<AllowMulticast>spdp</AllowMulticast>' in entrypoint_source
     assert '<Peer Address=\\"${peer}\\" />' in entrypoint_source
+
+
+def test_docker_ros_children_preserve_cyclonedds_uri_for_rviz_peers():
+    repo_root = Path(__file__).resolve().parents[3]
+    entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
+    stack_source = (repo_root / "src/a2_system/tools/start_jt128_3d_stack.sh").read_text(encoding="utf-8")
+    mapping_source = (repo_root / "src/a2_system/tools/start_jt128_dlio_mapping.sh").read_text(encoding="utf-8")
+
+    assert "export_child_ros_env" in entrypoint_source
+    assert "export_child_ros_env" in stack_source
+    assert "export_child_ros_env" in mapping_source
+    assert "export CYCLONEDDS_URI=" in entrypoint_source
+    assert "export CYCLONEDDS_URI=" in stack_source
+    assert "export CYCLONEDDS_URI=" in mapping_source
 
 
 def test_unitree_bridge_nodes_use_fastrtps_rmw():
@@ -399,9 +428,43 @@ def test_3d_robot_marker_does_not_snap_pose_to_pointcloud_surface():
     root = Path(__file__).resolve().parents[2]
     source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
 
-    assert "markerPositionFromRos(current, { x: pose.x ?? 0, y: pose.y ?? 0, z: 0 }, false)" in source
-    assert "markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 }, true)" in source
-    assert "markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 }, true)" in source
+    assert "markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 })" in source
+    assert "markerPositionFromRos(current, { x: selectedGoal.x, y: selectedGoal.y, z: 0 })" in source
+    assert "markerPositionFromRos(current, { x: activeGoal.x, y: activeGoal.y, z: 0 })" in source
+    assert "function markerPositionFromRos(context: SceneContext | null, point: { x: number; y: number; z: number })" in source
+    assert "snapToSurface" not in source
+
+
+def test_3d_yellow_robot_marker_follows_pose_without_static_origin_marker():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
+
+    assert "lastRobotPoseRef" in source
+    assert "useRef<{ x: number; y: number; yaw: number }>({ x: 0, y: 0, yaw: 0 })" in source
+    assert "lastRobotPoseRef.current = {" in source
+    assert "const markerPose = lastRobotPoseRef.current;" in source
+    assert "updateMarker(\n      current?.robotMarker ?? null,\n      markerPositionFromRos(current, { x: markerPose.x, y: markerPose.y, z: 0 })," in source
+    assert "scene.add(robotMarker, selectedGoalMarker, activeGoalMarker);" in source
+    assert "originMarker" not in source
+    assert "createOriginMarker" not in source
+
+
+def test_3d_double_click_can_select_ground_plane_without_point_hit():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
+
+    assert "const planeHit = pickGroundPlanePoint(raycaster);" in source
+    assert "function pickGroundPlanePoint(raycaster: THREE.Raycaster): THREE.Vector3 | null" in source
+
+
+def test_mapping_3d_view_ignores_selected_saved_pointcloud():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    assert 'const viewerSelectedMap = stack?.mode === "mapping" ? null : selectedMap;' in source
+    assert 'const viewerSelectedPointcloudPath = stack?.mode === "mapping" ? null : selectedPointcloudPath;' in source
+    assert "selectedMap={viewerSelectedMap}" in source
+    assert "selectedPointcloudPath={viewerSelectedPointcloudPath}" in source
 
 
 def test_direct_navigation_command_turns_then_drives_to_goal():
@@ -659,6 +722,8 @@ def test_websocket_pointcloud_uses_lightweight_preview():
     assert "round(float(point[0]), 3)" in bridge
     assert "_preview_sample_indices(len(snapshot.points), max_points)" in bridge
     assert "_preview_sample_indices(total_points, max_points)" in bridge
+    assert "def _is_web_visualization_pointcloud_topic" in bridge
+    assert "not _is_web_visualization_pointcloud_topic(topic)" in bridge
     assert "pointcloud_qos = QoSProfile" in bridge
     assert "reliability=ReliabilityPolicy.BEST_EFFORT" in bridge
     assert 'self._publish("pointcloud", dump_model(self._websocket_pointcloud_snapshot(self.pointcloud_snapshot)))' in bridge
@@ -682,6 +747,15 @@ def test_mapping_mode_can_open_3d_view_before_projected_map_exists():
 
     has_3d_viewer_data = app[app.index("const has3DViewerData") : app.index("const directNavigationBackend")]
     assert 'stack?.mode === "mapping"' in has_3d_viewer_data
+
+
+def test_frontend_map_signature_tracks_projected_map_yaml():
+    root = Path(__file__).resolve().parents[3]
+    app = (root / "web_console/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    maps_signature = app[app.index("function mapsSignature") : app.index("function setMapsIfChanged")]
+
+    assert "map.map_yaml ??" in maps_signature
 
 
 def test_initial_pose_readiness_waits_for_localization_pose_not_odom_fallback():
