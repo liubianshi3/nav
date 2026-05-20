@@ -479,16 +479,29 @@ def generate_launch_description():
                             is_odom_only_localization,
                             value_type=bool,
                         ),
-                        "require_allow_motion_topic": ParameterValue(
-                            LaunchConfiguration("start_safety"),
-                            value_type=bool,
-                        ),
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
                         "linear_y_sign": float(os.environ.get("A2_CONTROL_LINEAR_Y_SIGN", "1.0")),
                         "yaw_sign": float(os.environ.get("A2_CONTROL_YAW_SIGN", "1.0")),
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],
+            ),
+            # When safety_supervisor is not running, publish allow_motion=true
+            # so control_bridge does not wait forever for /a2/allow_motion.
+            TimerAction(
+                period=5.0,
+                actions=[
+                    ExecuteProcess(
+                        cmd=[
+                            "bash", "-lc",
+                            "source /opt/ros/humble/setup.bash && "
+                            "source ${A2_WORKSPACE:-$HOME/ws/device-navigation}/install/setup.bash && "
+                            "ros2 topic pub --once /a2/allow_motion std_msgs/msg/Bool 'data: true'",
+                        ],
+                        output="screen",
+                    ),
+                ],
+                condition=UnlessCondition(LaunchConfiguration("start_safety")),
             ),
         ]
     )

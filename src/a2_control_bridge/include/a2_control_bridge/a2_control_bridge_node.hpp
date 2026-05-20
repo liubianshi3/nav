@@ -51,7 +51,6 @@ public:
     control_hz_ = declare_parameter<double>("control_hz", 20.0);
     allow_motion_without_map_ = declare_parameter<bool>("allow_motion_without_map", false);
     allow_motion_without_localization_ = declare_parameter<bool>("allow_motion_without_localization", false);
-    require_allow_motion_topic_ = declare_parameter<bool>("require_allow_motion_topic", true);
     prepare_balance_stand_ = declare_parameter<bool>("prepare_balance_stand", runtime_mode_ == "real");
     prepare_balance_wait_sec_ = declare_parameter<double>(
       "prepare_balance_wait_sec", runtime_mode_ == "real" ? 2.0 : 0.0);
@@ -179,7 +178,7 @@ public:
     if (estop_) {
       return false;
     }
-    if (require_allow_motion_topic_ && !allow_motion_) {
+    if (!allow_motion_) {
       return false;
     }
     if (!allow_motion_without_localization_ && !localization_ok_) {
@@ -315,7 +314,7 @@ private:
     if (estop_) {
       return "estop";
     }
-    if (require_allow_motion_topic_ && !allow_motion_) {
+    if (!allow_motion_) {
       return "allow_motion_false";
     }
     return "";
