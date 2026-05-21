@@ -144,9 +144,9 @@
   <rect x="1164" y="431" width="74" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
   <text x="1201" y="447" text-anchor="middle" class="small">robot state</text>
 
-  <path d="M912 444 C858 444, 824 448, 780 448" fill="none" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrow-green)"/>
-  <rect x="807" y="421" width="76" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
-  <text x="845" y="437" text-anchor="middle" class="small">STATE / HEALTH</text>
+  <path d="M1006 382 C1006 360, 1008 344, 1012 330" fill="none" stroke="#16a34a" stroke-width="2.2" marker-end="url(#arrow-green)"/>
+  <rect x="935" y="342" width="68" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="969" y="358" text-anchor="middle" class="small">SDK state</text>
 
   <path d="M542 448 C489 448, 456 469, 410 469" fill="none" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrow-green)"/>
   <rect x="433" y="430" width="84" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
