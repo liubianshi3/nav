@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>a2_unitree_agent</name>
+  <version>0.1.0</version>
+  <description>Non-ROS Unitree SDK owner process for A2 DDS isolation.</description>
+
+  <maintainer email="dell@example.com">dell</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>a2_unitree_ipc</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
