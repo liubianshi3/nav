@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" role="img" aria-label="A2 Unitree DDS isolation architecture with protobuf over Unix Domain Socket">
+  <style>
+    text {
+      font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif;
+      fill: #111827;
+    }
+    .title { font-size: 27px; font-weight: 700; }
+    .subtitle { font-size: 14px; fill: #6b7280; }
+    .lane-title { font-size: 13px; font-weight: 700; fill: #374151; letter-spacing: 0.04em; }
+    .node-title { font-size: 15px; font-weight: 700; }
+    .node-sub { font-size: 12px; fill: #4b5563; }
+    .mono { font-family: Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; fill: #374151; }
+    .small { font-size: 11px; fill: #6b7280; }
+    .label { font-size: 12px; font-weight: 600; fill: #374151; }
+    .pill { font-size: 11px; font-weight: 700; fill: #374151; }
+    .host { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; stroke-dasharray: 8 6; rx: 12; ry: 12; }
+    .ros-zone { fill: #f8fbff; stroke: #bfdbfe; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; ry: 12; }
+    .ipc-zone { fill: #f0fdfa; stroke: #99f6e4; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; ry: 12; }
+    .agent-zone { fill: #fffaf5; stroke: #fed7aa; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; ry: 12; }
+    .robot-zone { fill: #f0fdf4; stroke: #bbf7d0; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; ry: 12; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; rx: 8; ry: 8; }
+    .ros-node { fill: #eff6ff; stroke: #93c5fd; }
+    .ipc-node { fill: #ccfbf1; stroke: #2dd4bf; }
+    .agent-node { fill: #fff7ed; stroke: #fb923c; }
+    .sdk-node { fill: #fef2f2; stroke: #fca5a5; }
+    .robot-node { fill: #f0fdf4; stroke: #86efac; }
+    .contract { fill: #f9fafb; stroke: #e5e7eb; stroke-width: 1.2; rx: 8; ry: 8; }
+    .forbidden { fill: #fef2f2; stroke: #fecaca; stroke-width: 1.2; rx: 8; ry: 8; }
+  </style>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="900" fill="#ffffff"/>
+
+  <text x="44" y="48" class="title">A2 Unitree DDS Isolation Architecture</text>
+  <text x="44" y="73" class="subtitle">ROS Domain 0 stays pure CycloneDDS; Unitree SDK2 is isolated inside unitree_agent; IPC uses protobuf frames over a local UDS socket.</text>
+
+  <rect x="34" y="102" width="1332" height="640" class="host"/>
+  <text x="54" y="127" class="lane-title">A2 HOST / DOCKER HOST - host network, shared /run/a2 volume</text>
+
+  <rect x="58" y="154" width="390" height="506" class="ros-zone"/>
+  <text x="78" y="180" class="lane-title">ROS BRIDGE CONTAINER</text>
+  <text x="78" y="202" class="small">ROS_DOMAIN_ID=0, RMW_IMPLEMENTATION=rmw_cyclonedds_cpp</text>
+
+  <rect x="506" y="154" width="310" height="506" class="ipc-zone"/>
+  <text x="526" y="180" class="lane-title">UDS IPC BOUNDARY</text>
+  <text x="526" y="202" class="small">Local socket only; no DDS discovery</text>
+  <text x="526" y="220" class="small">no network exposure</text>
+
+  <rect x="874" y="154" width="304" height="506" class="agent-zone"/>
+  <text x="894" y="180" class="lane-title">UNITREE AGENT CONTAINER</text>
+  <text x="894" y="202" class="small">Non-ROS process; only SDK2/libddsc owner</text>
+
+  <rect x="1224" y="154" width="118" height="506" class="robot-zone"/>
+  <text x="1241" y="180" class="lane-title">ROBOT</text>
+
+  <rect x="90" y="234" width="320" height="86" class="node ros-node"/>
+  <text x="250" y="262" text-anchor="middle" class="node-title">a2_control_bridge_ros</text>
+  <text x="250" y="284" text-anchor="middle" class="node-sub">ROS node, subscribes /cmd_vel_safe</text>
+  <text x="250" y="304" text-anchor="middle" class="mono">no Unitree SDK2, no libddsc</text>
+
+  <rect x="90" y="426" width="320" height="86" class="node ros-node"/>
+  <text x="250" y="454" text-anchor="middle" class="node-title">a2_sdk_bridge_ros</text>
+  <text x="250" y="476" text-anchor="middle" class="node-sub">ROS node, publishes A2 state topics</text>
+  <text x="250" y="496" text-anchor="middle" class="mono">/a2/raw_state / battery / status</text>
+
+  <rect x="90" y="550" width="320" height="74" class="forbidden"/>
+  <text x="250" y="577" text-anchor="middle" class="node-title">Forbidden in ROS bridge</text>
+  <text x="250" y="599" text-anchor="middle" class="small">rmw_fastrtps_cpp, LD_PRELOAD=libddsc.so.0</text>
+  <text x="250" y="616" text-anchor="middle" class="small">Unitree SDK2 symbols</text>
+
+  <rect x="542" y="244" width="238" height="88" class="node ipc-node"/>
+  <text x="661" y="273" text-anchor="middle" class="node-title">/run/a2/unitree_agent.sock</text>
+  <text x="661" y="296" text-anchor="middle" class="node-sub">Unix Domain Socket</text>
+  <text x="661" y="316" text-anchor="middle" class="mono">not a growing file</text>
+
+  <rect x="542" y="388" width="238" height="118" class="node ipc-node"/>
+  <text x="661" y="418" text-anchor="middle" class="node-title">protobuf IPC frame</text>
+  <text x="661" y="441" text-anchor="middle" class="mono">uint32_be payload_length</text>
+  <text x="661" y="461" text-anchor="middle" class="mono">Envelope protobuf payload</text>
+  <text x="661" y="484" text-anchor="middle" class="small">schema: proto/a2/unitree_agent.proto</text>
+
+  <rect x="542" y="548" width="238" height="76" class="contract"/>
+  <text x="661" y="574" text-anchor="middle" class="node-title">Message contract</text>
+  <text x="661" y="596" text-anchor="middle" class="small">CONTROL, STOP, STATE, HEALTH_STATUS, ACK</text>
+
+  <rect x="912" y="238" width="228" height="92" class="node agent-node"/>
+  <text x="1026" y="268" text-anchor="middle" class="node-title">unitree_agent</text>
+  <text x="1026" y="291" text-anchor="middle" class="node-sub">daemon, no ROS node</text>
+  <text x="1026" y="311" text-anchor="middle" class="mono">not in ros2 node list</text>
+
+  <rect x="912" y="382" width="228" height="92" class="node sdk-node"/>
+  <text x="1026" y="412" text-anchor="middle" class="node-title">Unitree SDK2</text>
+  <text x="1026" y="435" text-anchor="middle" class="node-sub">Unitree DDS/API lifecycle</text>
+  <text x="1026" y="455" text-anchor="middle" class="mono">loads libddsc.so.0</text>
+
+  <rect x="912" y="548" width="228" height="76" class="forbidden"/>
+  <text x="1026" y="575" text-anchor="middle" class="node-title">Agent guardrails</text>
+  <text x="1026" y="597" text-anchor="middle" class="small">IPC disconnect, SDK exception</text>
+  <text x="1026" y="614" text-anchor="middle" class="small">command timeout -> stop</text>
+
+  <rect x="1246" y="276" width="72" height="190" class="node robot-node"/>
+  <text x="1282" y="328" text-anchor="middle" class="node-title">A2</text>
+  <text x="1282" y="352" text-anchor="middle" class="node-title">Robot</text>
+  <text x="1282" y="384" text-anchor="middle" class="small">firmware</text>
+  <text x="1282" y="405" text-anchor="middle" class="small">motor</text>
+  <text x="1282" y="426" text-anchor="middle" class="small">state</text>
+
+  <rect x="90" y="216" width="112" height="26" rx="13" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="146" y="234" text-anchor="middle" class="pill">control path</text>
+  <rect x="90" y="408" width="96" height="26" rx="13" fill="#dcfce7" stroke="#86efac"/>
+  <text x="138" y="426" text-anchor="middle" class="pill">state path</text>
+
+  <path d="M410 277 C456 277, 489 288, 542 288" fill="none" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow-blue)"/>
+  <rect x="432" y="252" width="88" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="476" y="268" text-anchor="middle" class="small">CONTROL / STOP</text>
+
+  <path d="M780 288 C824 288, 858 284, 912 284" fill="none" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow-blue)"/>
+  <rect x="802" y="258" width="82" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="843" y="274" text-anchor="middle" class="small">protobuf frame</text>
+
+  <path d="M1026 330 L1026 382" fill="none" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <rect x="1038" y="345" width="73" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="1074" y="361" text-anchor="middle" class="small">SDK calls</text>
+
+  <path d="M1140 428 C1180 428, 1202 372, 1246 372" fill="none" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrow-blue)"/>
+  <rect x="1170" y="387" width="58" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="1199" y="403" text-anchor="middle" class="small">motion</text>
+
+  <path d="M1246 410 C1202 410, 1180 454, 1140 454" fill="none" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrow-green)"/>
+  <rect x="1164" y="431" width="74" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="1201" y="447" text-anchor="middle" class="small">robot state</text>
+
+  <path d="M912 444 C858 444, 824 448, 780 448" fill="none" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrow-green)"/>
+  <rect x="807" y="421" width="76" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="845" y="437" text-anchor="middle" class="small">STATE / HEALTH</text>
+
+  <path d="M542 448 C489 448, 456 469, 410 469" fill="none" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrow-green)"/>
+  <rect x="433" y="430" width="84" height="22" rx="4" fill="#ffffff" opacity="0.96"/>
+  <text x="475" y="446" text-anchor="middle" class="small">protobuf frame</text>
+
+  <path d="M410 586 C520 696, 820 696, 912 454" fill="none" stroke="#dc2626" stroke-width="2.0" stroke-dasharray="8 6" marker-end="url(#arrow-r)"/>
+  <rect x="540" y="666" width="244" height="24" rx="5" fill="#ffffff" opacity="0.96" stroke="#fee2e2"/>
+  <text x="662" y="683" text-anchor="middle" class="small">no direct ROS bridge -> Unitree SDK2/libddsc path</text>
+
+  <path d="M661 332 L661 388" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#arrow-gray)"/>
+  <path d="M661 506 L661 548" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#arrow-gray)"/>
+
+  <rect x="54" y="768" width="1292" height="92" class="contract"/>
+  <text x="76" y="795" class="node-title">Critical technical points</text>
+  <text x="76" y="821" class="small">1. ROS Domain 0: CycloneDDS only; no FastDDS participant and no libddsc preload in ROS bridge processes.</text>
+  <text x="76" y="842" class="small">2. Unitree SDK2 DDS remains private to unitree_agent; SDK2 never talks to the UDS boundary directly.</text>
+  <text x="730" y="821" class="small">3. UDS is local IPC; protobuf gives schema and binary framing without introducing a gRPC server.</text>
+  <text x="730" y="842" class="small">4. Control drops into stop on IPC disconnect, SDK exception, stale command, or command timeout.</text>
+
+  <g transform="translate(54, 704)">
+    <line x1="0" y1="8" x2="34" y2="8" stroke="#2563eb" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+    <text x="44" y="13" class="small">Control commands</text>
+    <line x1="166" y1="8" x2="200" y2="8" stroke="#16a34a" stroke-width="2.2" marker-end="url(#arrow-green)"/>
+    <text x="210" y="13" class="small">State and health</text>
+    <line x1="354" y1="8" x2="388" y2="8" stroke="#dc2626" stroke-width="2.0" stroke-dasharray="8 6" marker-end="url(#arrow-r)"/>
+    <text x="398" y="13" class="small">Forbidden dependency path</text>
+    <line x1="590" y1="8" x2="624" y2="8" stroke="#6b7280" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#arrow-gray)"/>
+    <text x="634" y="13" class="small">Local framing/contract detail</text>
+  </g>
+</svg>

@@ -11,6 +11,11 @@
 
 ## 改造后架构
 
+架构图：
+
+- SVG: `docs/a2_unitree_protobuf_ipc_architecture.svg`
+- PNG: `docs/a2_unitree_protobuf_ipc_architecture.png`
+
 改造后拆成三个同级边界角色：
 
 - `a2_control_bridge_ros`: ROS node，只订阅 `/cmd_vel_safe`，通过 UDS 发送控制/stop 到 `unitree_agent`。
