@@ -19,27 +19,11 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-def _unitree_ddsc_env():
-    env = {
-        # Unitree SDK2 creates its own CycloneDDS domain explicitly. If this
-        # bridge process also uses ROS 2 CycloneDDS, SDK2 throws
-        # PreconditionNotMetError("Failed to create domain explicitly").
-        # Keep this process isolated while the rest of the ROS graph stays on
-        # CycloneDDS.
-        "RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
+def _ros_bridge_env():
+    return {
+        "ROS_DOMAIN_ID": os.environ.get("ROS_DOMAIN_ID", "0"),
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
     }
-    candidates = [
-        "/opt/unitree_robotics/lib/x86_64/libddsc.so.0",
-        "/unitree/opt/lib/libddsc.so.0",
-    ]
-    for candidate in candidates:
-        if not os.path.exists(candidate):
-            continue
-        current = os.environ.get("LD_PRELOAD", "").strip()
-        preload = candidate if not current else f"{candidate}:{current}"
-        env["LD_PRELOAD"] = preload
-        return env
-    return env
 
 
 def _pointcloud_guard_action():
@@ -110,7 +94,8 @@ def _resolve_nav2_map_arguments(context, *args, **kwargs):
 
 def generate_launch_description():
     a2_system_share = get_package_share_directory("a2_system")
-    unitree_ddsc_env = _unitree_ddsc_env()
+    ros_bridge_env = _ros_bridge_env()
+    unitree_agent_socket = os.environ.get("A2_UNITREE_AGENT_SOCKET", "/run/a2/unitree_agent.sock")
     is_ndt_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'ndt'"])
     is_odom_only_localization = PythonExpression(["'", LaunchConfiguration("localization_mode"), "' == 'odom_only'"])
     return LaunchDescription(
@@ -179,13 +164,12 @@ def generate_launch_description():
                 executable="a2_sdk_bridge_node",
                 name="a2_sdk_bridge",
                 condition=IfCondition(LaunchConfiguration("start_robot_state")),
-                additional_env=unitree_ddsc_env,
+                additional_env=ros_bridge_env,
                 parameters=[
                     f"{a2_system_share}/config/a2_sdk.yaml",
                     {
                         "use_mock": ParameterValue(LaunchConfiguration("dry_run"), value_type=bool),
-                        "allow_loopback": False,
-                        "network_interface": LaunchConfiguration("sdk_interface"),
+                        "ipc_socket_path": unitree_agent_socket,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],
@@ -309,14 +293,6 @@ def generate_launch_description():
                     ),
                 ],
                 condition=UnlessCondition(LaunchConfiguration("enable_nav2_3d")),
-            ),
-            # ── Battery publisher → /a2/battery ──
-            Node(
-                package="a2_system",
-                executable="a2_battery_publisher.py",
-                name="a2_battery_publisher",
-                parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
-                output="screen",
             ),
             Node(
                 package="a2_system",
@@ -463,7 +439,7 @@ def generate_launch_description():
                 package="a2_control_bridge",
                 executable="a2_control_bridge_node",
                 name="a2_control_bridge",
-                additional_env=unitree_ddsc_env,
+                additional_env=ros_bridge_env,
                 parameters=[
                     f"{a2_system_share}/config/motion_limits.yaml",
                     {
@@ -486,6 +462,7 @@ def generate_launch_description():
                         "linear_x_sign": float(os.environ.get("A2_CONTROL_LINEAR_X_SIGN", "1.0")),
                         "linear_y_sign": float(os.environ.get("A2_CONTROL_LINEAR_Y_SIGN", "1.0")),
                         "yaw_sign": float(os.environ.get("A2_CONTROL_YAW_SIGN", "1.0")),
+                        "ipc_socket_path": unitree_agent_socket,
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
                     },
                 ],

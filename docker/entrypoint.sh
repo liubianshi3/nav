@@ -3,8 +3,8 @@ set -euo pipefail
 
 export A2_WORKSPACE="${A2_WORKSPACE:-/opt/a2_system_ws}"
 export CONFIG_PATH="${CONFIG_PATH:-${A2_WORKSPACE}/web_console/backend/config.docker.yaml}"
-export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 mkdir -p "${A2_WORKSPACE}/runtime/maps" "${A2_WORKSPACE}/runtime/logs"
 
@@ -12,8 +12,6 @@ set +u
 source /opt/ros/humble/setup.bash
 source "${A2_WORKSPACE}/install/setup.bash"
 set -u
-
-export LD_LIBRARY_PATH="/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib:${LD_LIBRARY_PATH:-}"
 
 log() {
   printf '[a2-docker] %s\n' "$*"
@@ -73,6 +71,21 @@ is_true() {
   [[ "${1:-}" == "true" || "${1:-}" == "1" || "${1:-}" == "yes" || "${1:-}" == "on" ]]
 }
 
+wait_for_unitree_agent_socket() {
+  if ! is_true "${A2_UNITREE_AGENT_EXTERNAL:-false}"; then
+    return 0
+  fi
+  local socket_path="${A2_UNITREE_AGENT_SOCKET:-/run/a2/unitree_agent.sock}"
+  local attempt
+  for attempt in $(seq 1 30); do
+    if [[ -S "$socket_path" ]]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  log "unitree_agent socket not ready yet: ${socket_path}; ROS bridges will retry over UDS"
+}
+
 start_standby_control_bridge() {
   local enabled="${A2_CONTROL_BRIDGE_AUTOSTART:-false}"
   if ! is_true "$enabled"; then
@@ -102,14 +115,12 @@ start_standby_control_bridge() {
   local max_linear_y="${A2_CONTROL_MAX_LINEAR_Y:-0.10}"
   local max_yaw_rate="${A2_CONTROL_MAX_YAW_RATE:-0.30}"
   local cmd_timeout_sec="${A2_CONTROL_CMD_TIMEOUT_SEC:-0.30}"
+  local socket_path="${A2_UNITREE_AGENT_SOCKET:-/run/a2/unitree_agent.sock}"
   local log_file="${A2_WORKSPACE}/runtime/logs/a2_control_bridge_standby.log"
-  local ld_preload="${A2_CONTROL_BRIDGE_LD_PRELOAD:-}"
   local env_args=()
 
-  env_args+=("RMW_IMPLEMENTATION=${A2_UNITREE_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}")
-  if [[ -n "$ld_preload" ]]; then
-    env_args+=("LD_PRELOAD=${ld_preload}")
-  fi
+  env_args+=("ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}")
+  env_args+=("RMW_IMPLEMENTATION=rmw_cyclonedds_cpp")
 
   log "autostarting standby control bridge iface=${control_iface} topic=${cmd_topic}"
   nohup env "${env_args[@]}" ros2 run a2_control_bridge a2_control_bridge_node \
@@ -123,10 +134,11 @@ start_standby_control_bridge() {
     -p allow_motion_without_map:="$allow_without_map" \
     -p allow_motion_without_localization:="$allow_without_localization" \
     -p max_linear_x:="$max_linear_x" \
-    -p max_linear_y:="$max_linear_y" \
-    -p max_yaw_rate:="$max_yaw_rate" \
-    -p cmd_timeout_sec:="$cmd_timeout_sec" \
-    > "$log_file" 2>&1 &
+	    -p max_linear_y:="$max_linear_y" \
+	    -p max_yaw_rate:="$max_yaw_rate" \
+	    -p cmd_timeout_sec:="$cmd_timeout_sec" \
+	    -p ipc_socket_path:="$socket_path" \
+	    > "$log_file" 2>&1 &
   log "standby control bridge log=${log_file}"
 }
 
@@ -142,30 +154,23 @@ start_standby_sdk_bridge() {
     return 0
   fi
 
-  local sdk_iface="${A2_SDK_INTERFACE:-${A2_NETWORK_INTERFACE:-eth0}}"
   local state_topic="${A2_SDK_STATE_TOPIC:-/a2/raw_state}"
-  local sport_state_topic="${A2_SDK_SPORT_STATE_TOPIC:-rt/lf/sportmodestate}"
   local timer_hz="${A2_SDK_TIMER_HZ:-50.0}"
   local stale_timeout_sec="${A2_SDK_STALE_TIMEOUT_SEC:-0.5}"
+  local socket_path="${A2_UNITREE_AGENT_SOCKET:-/run/a2/unitree_agent.sock}"
   local log_file="${A2_WORKSPACE}/runtime/logs/a2_sdk_bridge_standby.log"
-  local ld_preload="${A2_SDK_BRIDGE_LD_PRELOAD:-${A2_CONTROL_BRIDGE_LD_PRELOAD:-}}"
   local env_args=()
 
-  env_args+=("RMW_IMPLEMENTATION=${A2_UNITREE_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}")
-  if [[ -n "$ld_preload" ]]; then
-    env_args+=("LD_PRELOAD=${ld_preload}")
-  fi
+  env_args+=("ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}")
+  env_args+=("RMW_IMPLEMENTATION=rmw_cyclonedds_cpp")
 
-  log "autostarting standby sdk bridge iface=${sdk_iface} state_topic=${state_topic}"
+  log "autostarting standby sdk bridge state_topic=${state_topic} socket=${socket_path}"
   nohup env "${env_args[@]}" ros2 run a2_sdk_bridge a2_sdk_bridge_node \
     --ros-args \
     -p use_mock:=false \
-    -p auto_detect_interface:=false \
-    -p allow_loopback:=false \
-    -p network_interface:="$sdk_iface" \
     -p state_topic:="$state_topic" \
-    -p sport_state_topic:="$sport_state_topic" \
-    -p timer_hz:="$timer_hz" \
+	    -p ipc_socket_path:="$socket_path" \
+	    -p timer_hz:="$timer_hz" \
     -p stale_timeout_sec:="$stale_timeout_sec" \
     > "$log_file" 2>&1 &
   log "standby sdk bridge log=${log_file}"
@@ -367,6 +372,7 @@ start_a2_stack() {
 }
 
 configure_cyclonedds_interface
+wait_for_unitree_agent_socket
 start_standby_sdk_bridge
 start_standby_control_bridge
 start_standby_lidar_preview

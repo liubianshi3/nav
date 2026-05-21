@@ -43,25 +43,11 @@ def _real_lidar_consumer_topic(real_lidar_config_path, a2_system_share):
     return params.get("output_topic", "/jt128/front/points")
 
 
-def _unitree_ddsc_env(runtime_mode):
-    if runtime_mode != "real":
-        return {}
-
-    env = {
-        "RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
+def _ros_bridge_env():
+    return {
+        "ROS_DOMAIN_ID": os.environ.get("ROS_DOMAIN_ID", "0"),
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
     }
-    candidates = [
-        "/opt/unitree_robotics/lib/x86_64/libddsc.so.0",
-        "/unitree/opt/lib/libddsc.so.0",
-    ]
-    for candidate in candidates:
-        if not os.path.exists(candidate):
-            continue
-        current = os.environ.get("LD_PRELOAD", "").strip()
-        preload = candidate if not current else f"{candidate}:{current}"
-        env["LD_PRELOAD"] = preload
-        return env
-    return env
 
 
 def _launch_setup(context, *args, **kwargs):
@@ -102,7 +88,8 @@ def _launch_setup(context, *args, **kwargs):
         default_path=f"{a2_system_share}/config/real_camera.yaml",
         candidate_paths=[f"{a2_system_share}/config/cameras/{camera}.yaml"] if camera else [],
     )
-    unitree_ddsc_env = _unitree_ddsc_env(runtime_mode)
+    ros_bridge_env = _ros_bridge_env()
+    unitree_agent_socket = os.environ.get("A2_UNITREE_AGENT_SOCKET", "/run/a2/unitree_agent.sock")
     real_lidar_topic = _real_lidar_consumer_topic(real_lidar_config_path, a2_system_share)
     slam_params = _load_yaml(f"{a2_system_share}/config/slam.yaml").get("slam_manager", {}).get(
         "ros__parameters", {}
@@ -115,15 +102,14 @@ def _launch_setup(context, *args, **kwargs):
             package="a2_sdk_bridge",
             executable="a2_sdk_bridge_node",
             name="a2_sdk_bridge",
-            additional_env=unitree_ddsc_env,
+            additional_env=ros_bridge_env,
             parameters=[
                 f"{a2_system_share}/config/a2_sdk.yaml",
                 robot_config_path if robot_config_path else {},
                 {
                 "robot_profile": robot,
                 "use_mock": False,
-                "allow_loopback": False,
-                "network_interface": network_interface,
+                "ipc_socket_path": unitree_agent_socket,
                 "use_sim_time": use_sim_time,
                 },
             ],
@@ -132,14 +118,12 @@ def _launch_setup(context, *args, **kwargs):
             package="a2_sdk_bridge",
             executable="a2_light_bridge_node",
             name="a2_light_bridge",
-            additional_env=unitree_ddsc_env,
+            additional_env=ros_bridge_env,
             parameters=[{
                 "runtime_mode": runtime_mode,
                 "use_mock": False,
-                "allow_loopback": False,
-                "network_interface": network_interface,
+                "ipc_socket_path": unitree_agent_socket,
                 "command_topic": "/a2/light/command",
-                "lowcmd_topic": "rt/lowcmd",
                 "send_repeat": 5,
                 "send_hz": 10.0,
                 "use_sim_time": use_sim_time,
@@ -169,7 +153,7 @@ def _launch_setup(context, *args, **kwargs):
             executable="a2_control_bridge_node",
             name="a2_control_bridge",
             condition=IfCondition(enable_control_bridge),
-            additional_env=unitree_ddsc_env,
+            additional_env=ros_bridge_env,
             parameters=[
                 f"{a2_system_share}/config/motion_limits.yaml",
                 robot_config_path if robot_config_path else {},
@@ -181,6 +165,7 @@ def _launch_setup(context, *args, **kwargs):
                 "runtime_mode": runtime_mode,
                 "require_allow_motion_topic": True,
                 "sim_cmd_topic": "",
+                "ipc_socket_path": unitree_agent_socket,
                 "use_sim_time": use_sim_time,
                 },
             ],

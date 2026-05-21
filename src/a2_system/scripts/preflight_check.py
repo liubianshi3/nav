@@ -148,7 +148,15 @@ def main():
 
     ros_distro = os.environ.get("ROS_DISTRO", "")
     rmw = os.environ.get("RMW_IMPLEMENTATION", "")
-    sdk_root = pathlib.Path(os.environ.get("UNITREE_SDK2_ROOT", "/opt/unitree_robotics"))
+    agent_socket = pathlib.Path(
+        os.environ.get(
+            "A2_UNITREE_AGENT_SOCKET",
+            sdk_cfg.get("a2_sdk_bridge", {}).get("ros__parameters", {}).get(
+                "ipc_socket_path",
+                "/run/a2/unitree_agent.sock",
+            ),
+        )
+    )
     configured_iface = network_cfg.get("network", {}).get("network_interface", "")
     requested_iface = args.interface or configured_iface
     effective_mode = args.mode
@@ -175,7 +183,7 @@ def main():
     print(f"requested_mode      : {effective_mode}")
     print(f"configured_interface: {configured_iface or '<empty>'}")
     print(f"requested_interface : {requested_iface or '<empty>'}")
-    print(f"unitree_sdk2_root   : {sdk_root}")
+    print(f"unitree_agent_socket: {agent_socket}")
 
     missing = [name for name in ("system.yaml", "network.yaml", "a2_sdk.yaml") if not (config_dir / name).exists()]
     if missing:
@@ -187,10 +195,10 @@ def main():
         print(f"[WARN] Expected ROS 2 humble, found {ros_distro}.")
 
     if not rmw:
-        print("[WARN] RMW_IMPLEMENTATION is not set. rmw_cyclonedds_cpp is recommended for Unitree DDS.")
+        print("[WARN] RMW_IMPLEMENTATION is not set. rmw_cyclonedds_cpp is required for ROS Domain 0.")
 
-    if not sdk_root.exists():
-        print("[WARN] UNITREE_SDK2_ROOT does not exist.")
+    if not agent_socket.exists():
+        print("[WARN] unitree_agent socket does not exist yet. Start unitree_agent before real bridge traffic.")
 
     ip_cmd = shutil.which("ip")
     if ip_cmd:

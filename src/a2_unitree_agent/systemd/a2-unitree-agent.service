@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 Environment=A2_WORKSPACE=/home/unitree/ws/device-navigation
 Environment=A2_SDK_INTERFACE=eth0
+Environment=A2_UNITREE_DDS_DOMAIN_ID=0
 Environment=A2_UNITREE_AGENT_SOCKET=/run/a2/unitree_agent.sock
 Environment=LD_LIBRARY_PATH=/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib
 ExecStart=/home/unitree/ws/device-navigation/install/a2_unitree_agent/share/a2_unitree_agent/scripts/start_unitree_agent.sh

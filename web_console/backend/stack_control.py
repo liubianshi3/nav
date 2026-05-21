@@ -132,6 +132,7 @@ STACK_CLEANUP_PATTERNS = [
     "a2_state_publisher_node",
     "a2_sdk_bridge_node",
     "a2_control_bridge_node",
+    "unitree_agent",
     "task_manager.py",
     "safety_supervisor",
     "real_readiness_monitor",
@@ -272,11 +273,13 @@ class StackController:
         sdk_iface: str,
         control_iface: str,
     ) -> list[ProcessInfo]:
+        del sdk_iface, control_iface
+        socket_arg = f"ipc_socket_path:={os.environ.get('A2_UNITREE_AGENT_SOCKET', '/run/a2/unitree_agent.sock')}"
         mismatched: list[ProcessInfo] = []
         for proc in records:
-            if "a2_sdk_bridge_node" in proc.args and f"network_interface:={sdk_iface}" not in proc.args:
+            if "a2_sdk_bridge_node" in proc.args and socket_arg not in proc.args:
                 mismatched.append(proc)
-            elif "a2_control_bridge_node" in proc.args and f"network_interface:={control_iface}" not in proc.args:
+            elif "a2_control_bridge_node" in proc.args and socket_arg not in proc.args:
                 mismatched.append(proc)
         return mismatched
 
@@ -289,11 +292,8 @@ class StackController:
                 "exec ros2 run a2_sdk_bridge a2_sdk_bridge_node",
                 "--ros-args",
                 "-p use_mock:=false",
-                "-p auto_detect_interface:=false",
-                "-p allow_loopback:=false",
-                f"-p network_interface:={shlex.quote(sdk_iface)}",
                 f"-p state_topic:={shlex.quote(os.environ.get('A2_SDK_STATE_TOPIC', '/a2/raw_state'))}",
-                f"-p sport_state_topic:={shlex.quote(os.environ.get('A2_SDK_SPORT_STATE_TOPIC', 'rt/lf/sportmodestate'))}",
+                f"-p ipc_socket_path:={shlex.quote(os.environ.get('A2_UNITREE_AGENT_SOCKET', '/run/a2/unitree_agent.sock'))}",
                 f"-p timer_hz:={shlex.quote(os.environ.get('A2_SDK_TIMER_HZ', '50.0'))}",
                 f"-p stale_timeout_sec:={shlex.quote(os.environ.get('A2_SDK_STALE_TIMEOUT_SEC', '0.5'))}",
             ],
@@ -325,6 +325,7 @@ class StackController:
                 f"-p max_linear_y:={shlex.quote(os.environ.get('A2_CONTROL_MAX_LINEAR_Y', '0.18'))}",
                 f"-p max_yaw_rate:={shlex.quote(os.environ.get('A2_CONTROL_MAX_YAW_RATE', '0.45'))}",
                 f"-p cmd_timeout_sec:={shlex.quote(os.environ.get('A2_CONTROL_CMD_TIMEOUT_SEC', '0.30'))}",
+                f"-p ipc_socket_path:={shlex.quote(os.environ.get('A2_UNITREE_AGENT_SOCKET', '/run/a2/unitree_agent.sock'))}",
             ],
         )
 
@@ -334,14 +335,9 @@ class StackController:
         log_path = log_dir / log_name
         env = os.environ.copy()
         env["A2_WORKSPACE"] = str(self.workspace)
-        env["RMW_IMPLEMENTATION"] = os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")
-        ld_preload = os.environ.get("A2_CONTROL_BRIDGE_LD_PRELOAD", "")
-        if not ld_preload:
-            candidate = Path("/opt/unitree_robotics/lib/x86_64/libddsc.so.0")
-            if candidate.exists():
-                ld_preload = str(candidate)
-        if ld_preload:
-            env["LD_PRELOAD"] = ld_preload
+        env["ROS_DOMAIN_ID"] = os.environ.get("ROS_DOMAIN_ID", "0")
+        env["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
+        env.pop("LD_PRELOAD", None)
 
         shell = "\n".join(
             [

@@ -1,0 +1,69 @@
+FROM ubuntu:22.04
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      g++ \
+      make \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/unitree_sdk/ /opt/unitree_robotics/
+COPY docker/a2_sdk_headers/a2/ /opt/unitree_robotics/include/unitree/robot/a2/
+
+RUN set -euo pipefail; \
+    fix_so_link() { \
+      dir="$1"; \
+      soname="$2"; \
+      realname="$3"; \
+      realpath="${dir}/${realname}"; \
+      sonamepath="${dir}/${soname}"; \
+      if [ -f "${realpath}" ] && [ ! -e "${sonamepath}" ]; then \
+        ln -s "${realname}" "${sonamepath}"; \
+      fi; \
+      if [ -e "${sonamepath}" ] && [ ! -L "${sonamepath}" ]; then \
+        size="$(stat -c%s "${sonamepath}" 2>/dev/null || echo 0)"; \
+        if [ "${size}" -lt 4096 ]; then \
+          content="$(tr -d '\r\n\0' < "${sonamepath}" | head -c 128 || true)"; \
+          if [ "${content}" = "${realname}" ] && [ -f "${realpath}" ]; then \
+            rm -f "${sonamepath}"; \
+            ln -s "${realname}" "${sonamepath}"; \
+          fi; \
+        fi; \
+      fi; \
+    }; \
+    for d in /opt/unitree_robotics/lib /opt/unitree_robotics/lib/x86_64; do \
+      fix_so_link "${d}" libddscxx.so.0 libddscxx.so; \
+      fix_so_link "${d}" libddsc.so.0 libddsc.so; \
+    done
+
+COPY src/a2_unitree_ipc/include/ /build/a2_unitree_ipc/include/
+COPY src/a2_unitree_ipc/src/ /build/a2_unitree_ipc/src/
+COPY src/a2_unitree_agent/src/unitree_agent.cpp /build/a2_unitree_agent/src/unitree_agent.cpp
+COPY src/a2_unitree_agent/scripts/start_unitree_agent.sh /usr/local/bin/start_unitree_agent.sh
+
+RUN g++ -std=c++17 -O2 -DA2_ENABLE_UNITREE_SDK=1 \
+      -I/build/a2_unitree_ipc/include \
+      -I/opt/unitree_robotics/include \
+      -I/opt/unitree_robotics/include/ddscxx \
+      /build/a2_unitree_ipc/src/protocol.cpp \
+      /build/a2_unitree_ipc/src/client.cpp \
+      /build/a2_unitree_agent/src/unitree_agent.cpp \
+      -L/opt/unitree_robotics/lib/x86_64 \
+      -L/opt/unitree_robotics/lib \
+      -lunitree_sdk2 -lddsc -lddscxx -pthread \
+      -Wl,-rpath,/opt/unitree_robotics/lib/x86_64 \
+      -Wl,-rpath,/opt/unitree_robotics/lib \
+      -o /usr/local/bin/unitree_agent \
+    && chmod +x /usr/local/bin/unitree_agent /usr/local/bin/start_unitree_agent.sh \
+    && rm -rf /build
+
+ENV A2_UNITREE_AGENT_BIN=/usr/local/bin/unitree_agent
+ENV A2_UNITREE_AGENT_SOCKET=/run/a2/unitree_agent.sock
+ENV A2_UNITREE_DDS_DOMAIN_ID=0
+ENV LD_LIBRARY_PATH=/opt/unitree_robotics/lib/x86_64:/opt/unitree_robotics/lib
+
+ENTRYPOINT ["/usr/local/bin/start_unitree_agent.sh"]

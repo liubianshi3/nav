@@ -7,6 +7,7 @@ PATTERNS=(
   "bringup.launch.py"
   "a2_sdk_bridge_node"
   "a2_control_bridge_node"
+  "unitree_agent"
   "task_manager.py"
   "pointcloud_relay"
   "pointcloud_to_laserscan"

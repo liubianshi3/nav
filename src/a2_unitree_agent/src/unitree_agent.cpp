@@ -75,12 +75,13 @@ int clamp_int(int value, int minimum, int maximum)
 class UnitreeSdkFacade
 {
 public:
-  bool init(const std::string & interface_name)
+  bool init(const std::string & interface_name, int dds_domain_id)
   {
     interface_name_ = interface_name;
+    dds_domain_id_ = dds_domain_id;
 #if A2_ENABLE_UNITREE_SDK
     try {
-      unitree::robot::ChannelFactory::Instance()->Init(0, interface_name_);
+      unitree::robot::ChannelFactory::Instance()->Init(dds_domain_id_, interface_name_);
       sport_client_ = std::make_unique<unitree::robot::a2::SportClient>();
       sport_client_->SetTimeout(25.0F);
       sport_client_->Init();
@@ -111,7 +112,8 @@ public:
         state_.source_mode = "real";
         state_.connected = true;
       }
-      std::cerr << "[unitree_agent] Unitree SDK initialized on interface=" << interface_name_ << "\n";
+      std::cerr << "[unitree_agent] Unitree SDK initialized on interface=" << interface_name_
+                << " dds_domain_id=" << dds_domain_id_ << "\n";
       return true;
     } catch (const std::exception & exc) {
       std::lock_guard<std::mutex> guard(mutex_);
@@ -145,7 +147,7 @@ public:
       state_.gait_type = 1U;
     }
     std::cerr << "[unitree_agent] built without Unitree SDK2; running mock IPC agent on interface="
-              << interface_name_ << "\n";
+              << interface_name_ << " dds_domain_id=" << dds_domain_id_ << "\n";
     return true;
 #endif
   }
@@ -439,6 +441,7 @@ private:
 #endif
 
   std::string interface_name_;
+  int dds_domain_id_{0};
   mutable std::mutex mutex_;
   a2_unitree_ipc::StateStream state_;
   a2_unitree_ipc::HealthStatus health_;
@@ -769,6 +772,7 @@ struct Options
 {
   std::string socket_path{a2_unitree_ipc::kDefaultSocketPath};
   std::string interface_name{"eth0"};
+  int dds_domain_id{0};
   int command_timeout_ms{300};
 };
 
@@ -788,10 +792,12 @@ Options parse_args(int argc, char ** argv)
       options.socket_path = require_value(arg);
     } else if (arg == "--interface") {
       options.interface_name = require_value(arg);
+    } else if (arg == "--dds-domain-id") {
+      options.dds_domain_id = std::max(0, std::stoi(require_value(arg)));
     } else if (arg == "--command-timeout-ms") {
       options.command_timeout_ms = std::max(50, std::stoi(require_value(arg)));
     } else if (arg == "--help" || arg == "-h") {
-      std::cout << "usage: unitree_agent --socket /run/a2/unitree_agent.sock --interface eth0\n";
+      std::cout << "usage: unitree_agent --socket /run/a2/unitree_agent.sock --interface eth0 --dds-domain-id 0\n";
       std::exit(0);
     } else {
       std::cerr << "unknown argument: " << arg << "\n";
@@ -810,7 +816,7 @@ int main(int argc, char ** argv)
 
   const Options options = parse_args(argc, argv);
   UnitreeSdkFacade sdk;
-  sdk.init(options.interface_name);
+  sdk.init(options.interface_name, options.dds_domain_id);
 
   AgentServer server(options.socket_path, sdk, options.command_timeout_ms);
   if (!server.start()) {

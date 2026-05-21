@@ -1,22 +1,45 @@
 services:
+  unitree-agent:
+    container_name: ${A2_UNITREE_AGENT_CONTAINER_NAME:-a2-unitree-agent}
+    image: ${A2_UNITREE_AGENT_IMAGE:-a2-unitree-agent:dev}
+    build:
+      context: .
+      dockerfile: Dockerfile.unitree_agent
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      A2_WORKSPACE: /opt/a2_agent
+      A2_SDK_INTERFACE: ${A2_SDK_INTERFACE:-eth0}
+      A2_UNITREE_DDS_DOMAIN_ID: ${A2_UNITREE_DDS_DOMAIN_ID:-0}
+      A2_UNITREE_AGENT_SOCKET: /run/a2/unitree_agent.sock
+      A2_UNITREE_AGENT_COMMAND_TIMEOUT_MS: ${A2_UNITREE_AGENT_COMMAND_TIMEOUT_MS:-300}
+    volumes:
+      - /run/a2:/run/a2
+
   a2-system-ws:
     container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}
     image: ${A2_DOCKER_IMAGE:-a2-nav:dev}
-    platform: ${A2_DOCKER_PLATFORM:-linux/amd64}
     init: true
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}
+        A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-OFF}
     network_mode: host
     privileged: true
     restart: unless-stopped
+    depends_on:
+      - unitree-agent
     env_file:
       - ./docker/a2_ros.env
     environment:
       A2_WORKSPACE: /opt/a2_system_ws
       CONFIG_PATH: /opt/a2_system_ws/web_console/backend/config.docker.yaml
+      ROS_DOMAIN_ID: "0"
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      A2_UNITREE_AGENT_EXTERNAL: "true"
+      A2_UNITREE_AGENT_SOCKET: /run/a2/unitree_agent.sock
       # Default to real robot startup: latest map -> navigation, otherwise mapping.
       A2_DOCKER_START_MODE: ${A2_DOCKER_START_MODE:-standby}
       A2_NAV_MAP_ID: ${A2_NAV_MAP_ID:-}
@@ -31,13 +54,10 @@ services:
       A2_CONTROL_LINEAR_Y_SIGN: ${A2_CONTROL_LINEAR_Y_SIGN:-1.0}
       A2_CONTROL_YAW_SIGN: ${A2_CONTROL_YAW_SIGN:-1.0}
       A2_SDK_BRIDGE_AUTOSTART: ${A2_SDK_BRIDGE_AUTOSTART:-true}
-      A2_SDK_BRIDGE_LD_PRELOAD: ${A2_SDK_BRIDGE_LD_PRELOAD:-/opt/unitree_robotics/lib/x86_64/libddsc.so.0}
       A2_SDK_STATE_TOPIC: ${A2_SDK_STATE_TOPIC:-/a2/raw_state}
-      A2_SDK_SPORT_STATE_TOPIC: ${A2_SDK_SPORT_STATE_TOPIC:-rt/lf/sportmodestate}
       A2_SDK_TIMER_HZ: ${A2_SDK_TIMER_HZ:-50.0}
       A2_SDK_STALE_TIMEOUT_SEC: ${A2_SDK_STALE_TIMEOUT_SEC:-0.5}
       A2_CONTROL_BRIDGE_AUTOSTART: ${A2_CONTROL_BRIDGE_AUTOSTART:-true}
-      A2_CONTROL_BRIDGE_LD_PRELOAD: ${A2_CONTROL_BRIDGE_LD_PRELOAD:-/opt/unitree_robotics/lib/x86_64/libddsc.so.0}
       A2_CONTROL_CMD_TOPIC: ${A2_CONTROL_CMD_TOPIC:-/cmd_vel_safe}
       A2_STANDBY_LIDAR_AUTOSTART: ${A2_STANDBY_LIDAR_AUTOSTART:-true}
       A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART: ${A2_STANDBY_POINTCLOUD_PREVIEW_AUTOSTART:-true}
@@ -52,6 +72,7 @@ services:
       A2_LIVE_MOTION: ${A2_LIVE_MOTION:-true}
       A2_STACK_REQUIRED: ${A2_STACK_REQUIRED:-false}
     volumes:
+      - /run/a2:/run/a2
       - ${A2_HOST_MAP_ROOT:-/home/unitree/ws/device-navigation/runtime/maps}:/opt/a2_system_ws/runtime/maps
       - ${A2_HOST_LOG_ROOT:-/home/unitree/ws/device-navigation/runtime/logs}:/opt/a2_system_ws/runtime/logs
       - ${A2_HOST_ROUTE_ROOT:-/home/unitree/ws/device-navigation/runtime/routes}:/opt/a2_system_ws/runtime/routes

@@ -28,4 +28,5 @@ unset FASTDDS_BUILTIN_TRANSPORTS || true
 exec "$AGENT_BIN" \
   --socket "$SOCKET_PATH" \
   --interface "$SDK_IFACE" \
+  --dds-domain-id "${A2_UNITREE_DDS_DOMAIN_ID:-0}" \
   --command-timeout-ms "${A2_UNITREE_AGENT_COMMAND_TIMEOUT_MS:-300}"

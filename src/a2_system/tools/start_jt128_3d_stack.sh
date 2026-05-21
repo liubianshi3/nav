@@ -25,7 +25,7 @@ WEB_URL="${A2_WEB_URL:-http://127.0.0.1:8080}"
 WEB_BACKEND_PYTHON="${WORKSPACE}/web_console/.venv/bin/python"
 WEB_BACKEND_CONFIG="${WORKSPACE}/web_console/backend/config.3d.yaml"
 WEB_FALLBACK_LOG="${LOG_DIR}/web_console_fallback.log"
-FAST_DDS_TRANSPORTS="${A2_FASTDDS_BUILTIN_TRANSPORTS:-${FASTDDS_BUILTIN_TRANSPORTS:-UDPv4}}"
+UNITREE_AGENT_SOCKET="${A2_UNITREE_AGENT_SOCKET:-/run/a2/unitree_agent.sock}"
 
 usage() {
   cat <<EOF
@@ -218,15 +218,51 @@ source_ros() {
 }
 
 configure_ros_transport() {
-  export FASTDDS_BUILTIN_TRANSPORTS="${FAST_DDS_TRANSPORTS}"
-  log "Using Fast DDS builtin transports: ${FASTDDS_BUILTIN_TRANSPORTS}"
+  export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+  export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
+  unset FASTDDS_BUILTIN_TRANSPORTS || true
+  log "Using ROS_DOMAIN_ID=${ROS_DOMAIN_ID} RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}"
 }
 
 export_child_ros_env() {
+  printf 'export ROS_DOMAIN_ID=%q\n' "${ROS_DOMAIN_ID:-0}"
   printf 'export RMW_IMPLEMENTATION=%q\n' "${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
   if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
     printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
   fi
+  printf 'unset FASTDDS_BUILTIN_TRANSPORTS || true\n'
+}
+
+start_unitree_agent() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$UNITREE_AGENT_SOCKET")"
+  if [[ "${A2_UNITREE_AGENT_EXTERNAL:-false}" == "true" || "${A2_UNITREE_AGENT_EXTERNAL:-}" == "1" ]]; then
+    if [[ -S "$UNITREE_AGENT_SOCKET" ]]; then
+      log "External unitree_agent socket ready: ${UNITREE_AGENT_SOCKET}"
+    else
+      warn "External unitree_agent socket not ready yet: ${UNITREE_AGENT_SOCKET}; ROS bridges will retry"
+    fi
+    return 0
+  fi
+
+  local agent_script="${WORKSPACE}/install/a2_unitree_agent/share/a2_unitree_agent/scripts/start_unitree_agent.sh"
+  if [[ ! -x "$agent_script" ]]; then
+    agent_script="${WORKSPACE}/src/a2_unitree_agent/scripts/start_unitree_agent.sh"
+  fi
+  [[ -x "$agent_script" ]] || die "unitree_agent start script not found: ${agent_script}"
+
+  local log_file="${LOG_DIR}/unitree_agent.log"
+  pkill -TERM -f "unitree_agent.*${UNITREE_AGENT_SOCKET}" >/dev/null 2>&1 || true
+  sleep 0.5
+  A2_WORKSPACE="$WORKSPACE" \
+    A2_SDK_INTERFACE="$SDK_IFACE" \
+    A2_UNITREE_DDS_DOMAIN_ID="${A2_UNITREE_DDS_DOMAIN_ID:-0}" \
+    A2_UNITREE_AGENT_SOCKET="$UNITREE_AGENT_SOCKET" \
+    nohup "$agent_script" >"$log_file" 2>&1 &
+  log "unitree_agent started pid=$! socket=${UNITREE_AGENT_SOCKET} log=${log_file}"
 }
 
 require_a2_system_executable() {
@@ -321,6 +357,7 @@ start_web() {
 
 source_ros
 configure_ros_transport
+start_unitree_agent
 command -v ros2 >/dev/null 2>&1 || die "ros2 not found after sourcing workspace"
 require_a2_system_executable "traversability_to_obstacle_cloud.py"
 require_a2_system_executable "octomap_mapping_node.py"
@@ -355,9 +392,8 @@ setsid bash -lc "
   set -e
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
-  $(export_child_ros_env)
-  export FASTDDS_BUILTIN_TRANSPORTS='${FASTDDS_BUILTIN_TRANSPORTS}'
-  ros2 launch a2_bringup jt128_3d_navigation.launch.py \
+	  $(export_child_ros_env)
+	  ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
     start_static_tf:=true \
     start_robot_state:=${START_ROBOT_STATE} \
