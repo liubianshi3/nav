@@ -45,9 +45,10 @@ Generated from the current repository layout on 2026-05-18.
 
 | Bridge | Direction | Notes |
 |---|---|---|
-| `a2_sdk_bridge_node` | Unitree SDK/DDS -> ROS | Publishes `/a2/raw_state`, `/a2/sdk/status`, `/a2/battery` |
-| `a2_light_bridge_node` | ROS -> Unitree SDK | Consumes `a2_interfaces/msg/LightCommand` for light control |
-| `a2_control_bridge_node` | ROS/Nav2 -> Unitree SportClient | Applies safety gates and limits, consumes `/cmd_vel_safe` or `/cmd_vel`, publishes control status/state |
+| `unitree_agent` | Unitree SDK/DDS <-> local IPC | Non-ROS process; only owner of Unitree SDK2 and `libddsc.so.0` |
+| `a2_sdk_bridge_node` | UDS state stream -> ROS | Publishes `/a2/raw_state`, `/a2/sdk/status`, `/a2/battery` |
+| `a2_light_bridge_node` | ROS -> UDS light command | Consumes `a2_interfaces/msg/LightCommand` and forwards through `unitree_agent` |
+| `a2_control_bridge_node` | ROS/Nav2 -> UDS control command | Applies safety gates and limits, consumes `/cmd_vel_safe` or `/cmd_vel`, publishes control status/state |
 | `a2_state_publisher_node` + `state_bridge.yaml` | raw robot state -> normalized ROS state/TF | Converts `/a2/raw_state` into `/robot_state`, `/odom`, IMU, joint state, TF |
 | `goal_bridge` | exploration/UI goals -> Nav2 action or pose topic | Converts `/a2/exploration/goal` into `/navigate_to_pose` or `/a2/nav3/goal_pose` |
 | `RosBridgeNode` | Web/FastAPI/gRPC -> ROS graph | Subscribes to map/pose/status/camera/pointcloud topics and publishes commands/goals |
@@ -74,6 +75,7 @@ sequenceDiagram
     participant Scripts as A2 stack scripts
     participant Launch as ROS launch
     participant Bridges as ROS bridges/adapters
+    participant Agent as unitree_agent
     participant Nav2 as Nav2 + Safety
     participant Robot as Unitree A2
 
@@ -96,11 +98,12 @@ sequenceDiagram
         Ros->>Bridges: /a2/exploration/goal, /cmd_vel, /a2/control/*
         Bridges->>Nav2: NavigateToPose goal or sanitized pose goal
         Nav2->>Bridges: /cmd_vel -> /cmd_vel_safe
-        Bridges->>Robot: Unitree SportClient Move()/gait/posture
-        Robot-->>Bridges: sport/low/BMS state
+        Bridges->>Agent: CONTROL/STOP over /run/a2/unitree_agent.sock
+        Agent->>Robot: Unitree SDK2 Move()/gait/posture
+        Robot-->>Agent: sport/low/BMS state
+        Agent-->>Bridges: STATE/HEALTH over UDS
         Bridges-->>Ros: /a2/raw_state, /robot_state, /a2/control/status
         Ros-->>API: live status/camera/map/pointcloud
         API-->>Operator: dashboard update
     end
 ```
-
