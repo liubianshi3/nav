@@ -237,8 +237,12 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "A2_LIVE_MOTION: ${A2_LIVE_MOTION:-true}" in compose_source
     assert "image: ${A2_DOCKER_IMAGE:-a2-nav:dev}" in compose_source
     assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
-    assert "platform: ${A2_DOCKER_PLATFORM:-linux/amd64}" in compose_source
-    assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-ON}" in compose_source
+    assert "platform:" not in compose_source
+    assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-OFF}" in compose_source
+    assert "unitree-agent:" in compose_source
+    assert "dockerfile: Dockerfile.unitree_agent" in compose_source
+    assert "- /run/a2:/run/a2" in compose_source
+    assert "A2_UNITREE_AGENT_SOCKET: /run/a2/unitree_agent.sock" in compose_source
     assert "env_file:" in compose_source
     assert "- ./docker/a2_ros.env" in compose_source
     assert "ROS_DOMAIN_ID=0" in a2_ros_env_source
@@ -286,15 +290,19 @@ def test_docker_ros_children_preserve_cyclonedds_uri_for_rviz_peers():
     assert "export CYCLONEDDS_URI=" in mapping_source
 
 
-def test_unitree_bridge_nodes_use_fastrtps_rmw():
+def test_unitree_bridge_nodes_use_cyclonedds_and_unitree_agent_ipc():
     repo_root = Path(__file__).resolve().parents[3]
     nav_launch = (repo_root / "src/a2_bringup/launch/jt128_3d_navigation.launch.py").read_text(encoding="utf-8")
     legacy_launch = (repo_root / "src/a2_bringup/launch/bringup.launch.py").read_text(encoding="utf-8")
     entrypoint_source = (repo_root / "docker/entrypoint.sh").read_text(encoding="utf-8")
 
-    assert '"RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")' in nav_launch
-    assert '"RMW_IMPLEMENTATION": os.environ.get("A2_UNITREE_RMW_IMPLEMENTATION", "rmw_fastrtps_cpp")' in legacy_launch
-    assert "A2_UNITREE_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp" in entrypoint_source
+    for source in (nav_launch, legacy_launch, entrypoint_source):
+        assert "rmw_cyclonedds_cpp" in source
+        assert "rmw_fastrtps_cpp" not in source
+        assert "A2_UNITREE_RMW_IMPLEMENTATION" not in source
+        assert "A2_CONTROL_BRIDGE_LD_PRELOAD" not in source
+        assert "A2_SDK_BRIDGE_LD_PRELOAD" not in source
+        assert "unitree_agent.sock" in source
 
 
 def test_sim_config_uses_direct_cmd_vel_navigation_for_sim():
@@ -365,7 +373,8 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "def _manual_control_standby_mismatches" in stack_source
     assert "self.config.stack.network_interface" in stack_source
     assert "os.environ.get(\"A2_SDK_INTERFACE\") or \"eth0\"" in stack_source
-    assert "network_interface:={sdk_iface}" in stack_source
+    assert "ipc_socket_path:={shlex.quote(os.environ.get('A2_UNITREE_AGENT_SOCKET', '/run/a2/unitree_agent.sock'))}" in stack_source
+    assert "socket_arg = f\"ipc_socket_path:={os.environ.get('A2_UNITREE_AGENT_SOCKET', '/run/a2/unitree_agent.sock')}\"" in stack_source
     assert "A2_CONTROL_ALLOW_WITHOUT_MAP" in stack_source
     assert "A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION" in stack_source
     assert "ensure_manual_control_standby" in grpc_source

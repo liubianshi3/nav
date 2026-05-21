@@ -46,9 +46,13 @@ def test_real_a2_source_launch_uses_cyclonedds_with_unitree_bridge_isolation():
         repo_root / "src" / "a2_system" / "tools" / "start_jt128_dlio_mapping.sh"
     ).read_text()
 
-    assert '"rmw_fastrtps_cpp"' in launch_text
-    assert "PreconditionNotMetError" in launch_text
-    assert "ROS_RMW_IMPLEMENTATION" in start_text
+    assert '"rmw_cyclonedds_cpp"' in launch_text
+    assert "rmw_fastrtps_cpp" not in launch_text
+    assert "LD_PRELOAD" not in launch_text
+    assert "unitree_agent.sock" in launch_text
+    assert "ipc_socket_path" in launch_text
+    assert "ROS_DOMAIN_ID" in start_text
+    assert "start_unitree_agent" in start_text
     assert "rmw_cyclonedds_cpp" in start_text
     assert "unset FASTDDS_BUILTIN_TRANSPORTS" in start_text
     assert "ROS_RMW_IMPLEMENTATION" in dlio_start_text
