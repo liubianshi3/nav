@@ -85,3 +85,31 @@ def test_verification_script_checks_process_boundaries() -> None:
     assert "libddsc.so.0" in script
     assert "/run/a2/unitree_agent.sock" in script
     assert "rmw_fastrtps_cpp" in script
+
+
+def test_unitree_agent_ipc_uses_protobuf_frames_not_text_lines() -> None:
+    proto = _read("proto/a2/unitree_agent.proto")
+    protocol_header = _read("src/a2_unitree_ipc/include/a2_unitree_ipc/protocol.hpp")
+    client_header = _read("src/a2_unitree_ipc/include/a2_unitree_ipc/client.hpp")
+    agent_source = _read("src/a2_unitree_agent/src/unitree_agent.cpp")
+
+    for message_name in [
+        "ControlCommand",
+        "StopCommand",
+        "MotionCommand",
+        "LightCommand",
+        "StateStream",
+        "HealthStatus",
+        "Ack",
+        "Envelope",
+    ]:
+        assert f"message {message_name}" in proto
+
+    assert "encode_frame" in protocol_header
+    assert "read_message" in client_header
+    assert "send_message" in client_header
+    assert "read_line" not in client_header
+    assert "send_line" not in client_header
+    assert "find('\\n')" not in agent_source
+    assert "grpc" not in proto.lower()
+    assert "service " not in proto

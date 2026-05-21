@@ -117,7 +117,7 @@ private:
     if (state_subscribed_) {
       return true;
     }
-    if (!client.send_line(a2_unitree_ipc::encode_state_subscribe(), error_message)) {
+    if (!client.send_message(a2_unitree_ipc::encode_state_subscribe(), error_message)) {
       client.close();
       return false;
     }
@@ -136,7 +136,7 @@ private:
     }
 
     std::string line;
-    if (!ipc_client().read_line(&line, 0, &error)) {
+    if (!ipc_client().read_message(&line, 0, &error)) {
       if (error == "read timeout") {
         return;
       }

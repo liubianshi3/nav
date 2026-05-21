@@ -1,5 +1,7 @@
 #include "a2_unitree_ipc/client.hpp"
 
+#include "a2_unitree_ipc/protocol.hpp"
+
 #include <cerrno>
 #include <cstring>
 #include <utility>
@@ -98,13 +100,17 @@ bool UnixSocketClient::connected() const
   return fd_ >= 0;
 }
 
-bool UnixSocketClient::send_line(const std::string & line, std::string * error_message)
+bool UnixSocketClient::send_message(const std::string & message, std::string * error_message)
 {
   if (!ensure_connected(error_message)) {
     return false;
   }
 
-  const std::string payload = line + "\n";
+  std::string payload;
+  if (!encode_frame(message, &payload, error_message)) {
+    return false;
+  }
+
   std::lock_guard<std::mutex> guard(mutex_);
   const char * data = payload.data();
   std::size_t remaining = payload.size();
@@ -128,10 +134,10 @@ bool UnixSocketClient::send_line(const std::string & line, std::string * error_m
   return true;
 }
 
-bool UnixSocketClient::read_line(std::string * line, int timeout_ms, std::string * error_message)
+bool UnixSocketClient::read_message(std::string * message, int timeout_ms, std::string * error_message)
 {
-  if (!line) {
-    set_error(error_message, "read_line called with null output");
+  if (!message) {
+    set_error(error_message, "read_message called with null output");
     return false;
   }
   if (!ensure_connected(error_message)) {
@@ -140,11 +146,14 @@ bool UnixSocketClient::read_line(std::string * line, int timeout_ms, std::string
 
   std::lock_guard<std::mutex> guard(mutex_);
   while (true) {
-    const auto newline = read_buffer_.find('\n');
-    if (newline != std::string::npos) {
-      *line = read_buffer_.substr(0, newline);
-      read_buffer_.erase(0, newline + 1);
+    const FrameDecodeStatus status = try_decode_frame(&read_buffer_, message, error_message);
+    if (status == FrameDecodeStatus::kReady) {
       return true;
+    }
+    if (status == FrameDecodeStatus::kError) {
+      ::close(fd_);
+      fd_ = -1;
+      return false;
     }
 
     pollfd pfd{};

@@ -20,8 +20,8 @@ public:
   bool ensure_connected(std::string * error_message = nullptr);
   void close();
   bool connected() const;
-  bool send_line(const std::string & line, std::string * error_message = nullptr);
-  bool read_line(std::string * line, int timeout_ms, std::string * error_message = nullptr);
+  bool send_message(const std::string & message, std::string * error_message = nullptr);
+  bool read_message(std::string * message, int timeout_ms, std::string * error_message = nullptr);
 
 private:
   std::string socket_path_;

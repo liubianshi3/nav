@@ -24,6 +24,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         && apt-get "${APT_OPTS[@]}" install -y --no-install-recommends --fix-missing \
             libeigen3-dev \
             libomp-dev \
+            libprotobuf-dev \
+            protobuf-compiler \
             ros-humble-rosidl-default-generators \
         && ok=1 \
         && break; \

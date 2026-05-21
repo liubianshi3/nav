@@ -611,36 +611,37 @@ private:
         return false;
       }
       clients_[index].buffer.append(buffer, static_cast<std::size_t>(count));
-      std::size_t newline = std::string::npos;
-      while ((newline = clients_[index].buffer.find('\n')) != std::string::npos) {
-        const std::string line = clients_[index].buffer.substr(0, newline);
-        clients_[index].buffer.erase(0, newline + 1);
-        handle_line(clients_[index], line);
+      while (true) {
+        std::string message;
+        std::string error;
+        const auto status = a2_unitree_ipc::try_decode_frame(&clients_[index].buffer, &message, &error);
+        if (status == a2_unitree_ipc::FrameDecodeStatus::kIncomplete) {
+          break;
+        }
+        if (status == a2_unitree_ipc::FrameDecodeStatus::kError) {
+          std::cerr << "[unitree_agent] bad IPC frame: " << error << "\n";
+          return false;
+        }
+        handle_message(clients_[index], message);
       }
     }
   }
 
-  void handle_line(Client & client, const std::string & line)
+  void handle_message(Client & client, const std::string & message)
   {
-    std::string type;
-    a2_unitree_ipc::Fields fields;
-    if (!a2_unitree_ipc::parse_line(line, &type, &fields)) {
-      send_to(client, a2_unitree_ipc::encode_ack({0, false, -1, "bad_request"}));
-      return;
-    }
-
-    if (type == "SUBSCRIBE_STATE") {
+    const auto type = a2_unitree_ipc::message_type(message);
+    if (type == a2_unitree_ipc::MessageType::kStateSubscribe) {
       client.state_subscriber = true;
       send_to(client, a2_unitree_ipc::encode_health_status(sdk_.health()));
       return;
     }
-    if (type == "HEALTH") {
+    if (type == a2_unitree_ipc::MessageType::kHealthRequest) {
       send_to(client, a2_unitree_ipc::encode_health_status(sdk_.health()));
       return;
     }
-    if (type == "CONTROL") {
+    if (type == a2_unitree_ipc::MessageType::kControl) {
       a2_unitree_ipc::ControlCommand command;
-      if (!a2_unitree_ipc::decode_control_command(line, &command)) {
+      if (!a2_unitree_ipc::decode_control_command(message, &command)) {
         send_to(client, a2_unitree_ipc::encode_ack({0, false, -2, "bad_control"}));
         return;
       }
@@ -651,9 +652,9 @@ private:
       send_to(client, a2_unitree_ipc::encode_ack(sdk_.handle_control(command)));
       return;
     }
-    if (type == "STOP") {
+    if (type == a2_unitree_ipc::MessageType::kStop) {
       a2_unitree_ipc::StopCommand command;
-      if (!a2_unitree_ipc::decode_stop_command(line, &command)) {
+      if (!a2_unitree_ipc::decode_stop_command(message, &command)) {
         send_to(client, a2_unitree_ipc::encode_ack({0, false, -2, "bad_stop"}));
         return;
       }
@@ -661,9 +662,9 @@ private:
       send_to(client, a2_unitree_ipc::encode_ack(sdk_.handle_stop(command)));
       return;
     }
-    if (type == "MOTION") {
+    if (type == a2_unitree_ipc::MessageType::kMotion) {
       a2_unitree_ipc::MotionCommand command;
-      if (!a2_unitree_ipc::decode_motion_command(line, &command)) {
+      if (!a2_unitree_ipc::decode_motion_command(message, &command)) {
         send_to(client, a2_unitree_ipc::encode_ack({0, false, -2, "bad_motion"}));
         return;
       }
@@ -673,9 +674,9 @@ private:
       send_to(client, a2_unitree_ipc::encode_ack(sdk_.handle_motion(command)));
       return;
     }
-    if (type == "LIGHT") {
+    if (type == a2_unitree_ipc::MessageType::kLight) {
       a2_unitree_ipc::LightCommand command;
-      if (!a2_unitree_ipc::decode_light_command(line, &command)) {
+      if (!a2_unitree_ipc::decode_light_command(message, &command)) {
         send_to(client, a2_unitree_ipc::encode_ack({0, false, -2, "bad_light"}));
         return;
       }
@@ -685,22 +686,43 @@ private:
     send_to(client, a2_unitree_ipc::encode_ack({0, false, -3, "unknown_message_type"}));
   }
 
-  bool send_to(Client & client, const std::string & line)
+  bool send_to(Client & client, const std::string & message)
   {
-    const std::string payload = line + "\n";
-    const auto count = ::send(client.fd, payload.data(), payload.size(), MSG_NOSIGNAL);
-    return count == static_cast<ssize_t>(payload.size());
+    std::string payload;
+    std::string error;
+    if (!a2_unitree_ipc::encode_frame(message, &payload, &error)) {
+      std::cerr << "[unitree_agent] failed to encode IPC frame: " << error << "\n";
+      return false;
+    }
+
+    const char * data = payload.data();
+    std::size_t remaining = payload.size();
+    while (remaining > 0) {
+      const auto count = ::send(client.fd, data, remaining, MSG_NOSIGNAL);
+      if (count < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+          return false;
+        }
+        return false;
+      }
+      if (count == 0) {
+        return false;
+      }
+      data += count;
+      remaining -= static_cast<std::size_t>(count);
+    }
+    return true;
   }
 
   void broadcast_state()
   {
-    const std::string line = a2_unitree_ipc::encode_state_stream(sdk_.state());
+    const std::string message = a2_unitree_ipc::encode_state_stream(sdk_.state());
     std::vector<std::size_t> closed;
     for (std::size_t index = 0; index < clients_.size(); ++index) {
       if (!clients_[index].state_subscriber) {
         continue;
       }
-      if (!send_to(clients_[index], line)) {
+      if (!send_to(clients_[index], message)) {
         closed.push_back(index);
       }
     }

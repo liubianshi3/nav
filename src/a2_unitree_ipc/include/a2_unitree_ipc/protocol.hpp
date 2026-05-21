@@ -4,14 +4,33 @@
 #include <array>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 
 namespace a2_unitree_ipc
 {
 
 constexpr const char * kDefaultSocketPath = "/run/a2/unitree_agent.sock";
+constexpr std::uint32_t kMaxFrameBytes = 1024U * 1024U;
 
-using Fields = std::unordered_map<std::string, std::string>;
+enum class MessageType
+{
+  kUnknown = 0,
+  kControl,
+  kStop,
+  kMotion,
+  kLight,
+  kAck,
+  kHealthStatus,
+  kState,
+  kHealthRequest,
+  kStateSubscribe,
+};
+
+enum class FrameDecodeStatus
+{
+  kIncomplete,
+  kReady,
+  kError,
+};
 
 struct ControlCommand
 {
@@ -96,10 +115,16 @@ struct StateStream
   bool battery_charging{false};
 };
 
-std::string encode_string(const std::string & value);
-std::string decode_string(const std::string & value);
+bool encode_frame(
+  const std::string & message,
+  std::string * frame,
+  std::string * error_message = nullptr);
+FrameDecodeStatus try_decode_frame(
+  std::string * buffer,
+  std::string * message,
+  std::string * error_message = nullptr);
 
-bool parse_line(const std::string & line, std::string * type, Fields * fields);
+MessageType message_type(const std::string & message);
 
 std::string encode_control_command(const ControlCommand & command);
 std::string encode_stop_command(const StopCommand & command);
@@ -111,13 +136,13 @@ std::string encode_state_stream(const StateStream & state);
 std::string encode_health_request();
 std::string encode_state_subscribe();
 
-bool decode_control_command(const std::string & line, ControlCommand * command);
-bool decode_stop_command(const std::string & line, StopCommand * command);
-bool decode_motion_command(const std::string & line, MotionCommand * command);
-bool decode_light_command(const std::string & line, LightCommand * command);
-bool decode_ack(const std::string & line, Ack * ack);
-bool decode_health_status(const std::string & line, HealthStatus * health);
-bool decode_state_stream(const std::string & line, StateStream * state);
+bool decode_control_command(const std::string & message, ControlCommand * command);
+bool decode_stop_command(const std::string & message, StopCommand * command);
+bool decode_motion_command(const std::string & message, MotionCommand * command);
+bool decode_light_command(const std::string & message, LightCommand * command);
+bool decode_ack(const std::string & message, Ack * ack);
+bool decode_health_status(const std::string & message, HealthStatus * health);
+bool decode_state_stream(const std::string & message, StateStream * state);
 
 }  // namespace a2_unitree_ipc
 

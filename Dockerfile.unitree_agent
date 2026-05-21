@@ -8,7 +8,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends \
       ca-certificates \
       g++ \
+      libprotobuf-dev \
       make \
+      protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/unitree_sdk/ /opt/unitree_robotics/
@@ -42,19 +44,24 @@ RUN set -euo pipefail; \
 
 COPY src/a2_unitree_ipc/include/ /build/a2_unitree_ipc/include/
 COPY src/a2_unitree_ipc/src/ /build/a2_unitree_ipc/src/
+COPY proto/a2/unitree_agent.proto /build/proto/a2/unitree_agent.proto
 COPY src/a2_unitree_agent/src/unitree_agent.cpp /build/a2_unitree_agent/src/unitree_agent.cpp
 COPY src/a2_unitree_agent/scripts/start_unitree_agent.sh /usr/local/bin/start_unitree_agent.sh
 
-RUN g++ -std=c++17 -O2 -DA2_ENABLE_UNITREE_SDK=1 \
+RUN mkdir -p /build/generated \
+    && protoc --cpp_out=/build/generated -I /build/proto /build/proto/a2/unitree_agent.proto \
+    && g++ -std=c++17 -O2 -DA2_ENABLE_UNITREE_SDK=1 \
       -I/build/a2_unitree_ipc/include \
+      -I/build/generated \
       -I/opt/unitree_robotics/include \
       -I/opt/unitree_robotics/include/ddscxx \
+      /build/generated/a2/unitree_agent.pb.cc \
       /build/a2_unitree_ipc/src/protocol.cpp \
       /build/a2_unitree_ipc/src/client.cpp \
       /build/a2_unitree_agent/src/unitree_agent.cpp \
       -L/opt/unitree_robotics/lib/x86_64 \
       -L/opt/unitree_robotics/lib \
-      -lunitree_sdk2 -lddsc -lddscxx -pthread \
+      -lunitree_sdk2 -lddsc -lddscxx -lprotobuf -pthread \
       -Wl,-rpath,/opt/unitree_robotics/lib/x86_64 \
       -Wl,-rpath,/opt/unitree_robotics/lib \
       -o /usr/local/bin/unitree_agent \

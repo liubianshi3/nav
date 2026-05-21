@@ -601,7 +601,7 @@ private:
     std::lock_guard<std::mutex> guard(ipc_mutex_);
     std::string error;
     auto & client = ipc_client();
-    if (!client.send_line(line, &error)) {
+    if (!client.send_message(line, &error)) {
       if (error_message) {
         *error_message = error;
       }
@@ -610,7 +610,7 @@ private:
     }
 
     std::string response;
-    if (!client.read_line(&response, ipc_timeout_ms_, &error)) {
+    if (!client.read_message(&response, ipc_timeout_ms_, &error)) {
       if (error_message) {
         *error_message = error;
       }

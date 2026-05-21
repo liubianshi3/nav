@@ -16,8 +16,9 @@ TEST(UnitreeIpcProtocol, ControlCommandRoundTrip)
   command.auto_recovery = true;
 
   a2_unitree_ipc::ControlCommand decoded;
-  ASSERT_TRUE(a2_unitree_ipc::decode_control_command(
-    a2_unitree_ipc::encode_control_command(command), &decoded));
+  const auto message = a2_unitree_ipc::encode_control_command(command);
+  EXPECT_EQ(a2_unitree_ipc::message_type(message), a2_unitree_ipc::MessageType::kControl);
+  ASSERT_TRUE(a2_unitree_ipc::decode_control_command(message, &decoded));
   EXPECT_EQ(decoded.seq, 42U);
   EXPECT_DOUBLE_EQ(decoded.linear_x, 0.25);
   EXPECT_DOUBLE_EQ(decoded.linear_y, -0.1);
@@ -27,6 +28,27 @@ TEST(UnitreeIpcProtocol, ControlCommandRoundTrip)
   EXPECT_EQ(decoded.speed_level, 2);
   EXPECT_DOUBLE_EQ(decoded.body_height, 0.05);
   EXPECT_TRUE(decoded.auto_recovery);
+}
+
+TEST(UnitreeIpcProtocol, ProtobufFramesUseLengthPrefix)
+{
+  const auto message = a2_unitree_ipc::encode_health_request();
+  std::string frame;
+  ASSERT_TRUE(a2_unitree_ipc::encode_frame(message, &frame));
+  ASSERT_GE(frame.size(), message.size() + 4U);
+  EXPECT_EQ(static_cast<unsigned char>(frame[0]), 0U);
+  EXPECT_EQ(static_cast<unsigned char>(frame[1]), 0U);
+  EXPECT_EQ(static_cast<unsigned char>(frame[2]), 0U);
+  EXPECT_EQ(static_cast<unsigned char>(frame[3]), message.size());
+
+  std::string buffer = frame;
+  std::string decoded;
+  EXPECT_EQ(
+    a2_unitree_ipc::try_decode_frame(&buffer, &decoded),
+    a2_unitree_ipc::FrameDecodeStatus::kReady);
+  EXPECT_TRUE(buffer.empty());
+  EXPECT_EQ(decoded, message);
+  EXPECT_EQ(a2_unitree_ipc::message_type(decoded), a2_unitree_ipc::MessageType::kHealthRequest);
 }
 
 TEST(UnitreeIpcProtocol, StopCommandCarriesSafeReason)

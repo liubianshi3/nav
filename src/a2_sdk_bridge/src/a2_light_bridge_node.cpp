@@ -68,14 +68,14 @@ private:
     std::lock_guard<std::mutex> guard(ipc_mutex_);
     std::string error;
     auto & client = ipc_client();
-    if (!client.send_line(a2_unitree_ipc::encode_light_command(command), &error)) {
+    if (!client.send_message(a2_unitree_ipc::encode_light_command(command), &error)) {
       client.close();
       RCLCPP_WARN(get_logger(), "Failed to send light command to unitree_agent: %s", error.c_str());
       return;
     }
 
     std::string response;
-    if (!client.read_line(&response, ipc_timeout_ms_, &error)) {
+    if (!client.read_message(&response, ipc_timeout_ms_, &error)) {
       client.close();
       RCLCPP_WARN(get_logger(), "Failed to read light ACK from unitree_agent: %s", error.c_str());
       return;

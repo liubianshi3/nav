@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package a2.unitree_agent.v1;
+
+option go_package = "github.com/feishu/core/proto/a2";
+
+message Vector3f {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message Quaternionf {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float w = 4;
+}
+
+message ControlCommand {
+  uint64 seq = 1;
+  double linear_x = 2;
+  double linear_y = 3;
+  double angular_z = 4;
+  uint32 timeout_ms = 5;
+  int32 gait_type = 6;
+  int32 speed_level = 7;
+  double body_height = 8;
+  bool auto_recovery = 9;
+}
+
+message StopCommand {
+  uint64 seq = 1;
+  string reason = 2;
+}
+
+message MotionCommand {
+  uint64 seq = 1;
+  string command = 2;
+  int32 int_value = 3;
+  double float_value = 4;
+  bool bool_value = 5;
+}
+
+message LightCommand {
+  uint64 seq = 1;
+  bool on = 2;
+  int32 color_mode = 3;
+  int32 intensity = 4;
+  int32 r = 5;
+  int32 g = 6;
+  int32 b = 7;
+  int32 color_temperature_kelvin = 8;
+}
+
+message Ack {
+  uint64 seq = 1;
+  bool ok = 2;
+  int32 code = 3;
+  string message = 4;
+}
+
+message HealthStatus {
+  bool connected = 1;
+  bool sdk_ready = 2;
+  bool ipc_ready = 3;
+  string state = 4;
+  string reason = 5;
+  string last_stop_reason = 6;
+}
+
+message StateStream {
+  uint64 seq = 1;
+  string source_mode = 2;
+  bool connected = 3;
+  bool imu_valid = 4;
+  bool odom_valid = 5;
+  Vector3f position = 6;
+  Vector3f velocity = 7;
+  Quaternionf orientation_xyzw = 8;
+  Vector3f rpy = 9;
+  Vector3f linear_acceleration = 10;
+  Vector3f angular_velocity = 11;
+  float body_height = 12;
+  float yaw_speed = 13;
+  uint32 motion_mode = 14;
+  float progress = 15;
+  uint32 gait_type = 16;
+  bool battery_present = 17;
+  float battery_percentage = 18;
+  float battery_voltage = 19;
+  float battery_current = 20;
+  bool battery_charging = 21;
+}
+
+message HealthRequest {}
+
+message StateSubscribe {}
+
+message Envelope {
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    CONTROL = 1;
+    STOP = 2;
+    MOTION = 3;
+    LIGHT = 4;
+    ACK = 5;
+    HEALTH_STATUS = 6;
+    STATE = 7;
+    HEALTH_REQUEST = 8;
+    STATE_SUBSCRIBE = 9;
+  }
+
+  Type type = 1;
+
+  oneof payload {
+    ControlCommand control = 2;
+    StopCommand stop = 3;
+    MotionCommand motion = 4;
+    LightCommand light = 5;
+    Ack ack = 6;
+    HealthStatus health_status = 7;
+    StateStream state = 8;
+    HealthRequest health_request = 9;
+    StateSubscribe state_subscribe = 10;
+  }
+}

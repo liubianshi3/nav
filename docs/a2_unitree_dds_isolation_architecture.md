@@ -56,7 +56,16 @@ IPC socket:
 - /run/a2:/run/a2
 ```
 
-协议为 line-based key/value，当前定义：
+协议为 length-prefixed protobuf 二进制帧，schema 固定在 `proto/a2/unitree_agent.proto`。UDS 只负责传输本机字节流，`.sock` 本身不会增长；每个消息帧格式为：
+
+```text
+uint32_be payload_length
+protobuf Envelope payload
+```
+
+这里仅使用 protobuf 序列化，不引入 gRPC server、HTTP/2 或网络监听端口。
+
+当前 `Envelope` 定义：
 
 - `CONTROL`: 速度控制、gait、speed level、body height、command timeout。
 - `STOP`: 显式 stop 及原因。
@@ -114,6 +123,8 @@ ROS bridge 层：
 ### 源码启动
 
 源码启动仍然走同一条链路。`start_jt128_3d_stack.sh` 会在非外部 agent 模式下启动 `unitree_agent`：
+
+源码构建需要 C++ protobuf 工具链，Dockerfile 已安装 `protobuf-compiler` 和 `libprotobuf-dev`；裸机源码构建时也需要同等依赖。
 
 ```bash
 export ROS_DOMAIN_ID=0

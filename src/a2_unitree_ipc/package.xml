@@ -9,6 +9,11 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <build_depend>libprotobuf-dev</build_depend>
+  <build_depend>protobuf-compiler</build_depend>
+  <build_export_depend>libprotobuf-dev</build_export_depend>
+  <exec_depend>libprotobuf-dev</exec_depend>
+
   <test_depend>ament_cmake_gtest</test_depend>
 
   <export>

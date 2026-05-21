@@ -2,416 +2,422 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
-#include <charconv>
-#include <iomanip>
-#include <sstream>
-#include <stdexcept>
+#include <limits>
 #include <string>
-#include <vector>
+
+#include "a2/unitree_agent.pb.h"
 
 namespace a2_unitree_ipc
 {
 namespace
 {
 
-template<typename T>
-std::string number_string(T value)
-{
-  std::ostringstream out;
-  out << std::setprecision(9) << value;
-  return out.str();
-}
+namespace pb = ::a2::unitree_agent::v1;
 
-std::string bool_string(bool value)
+void set_error(std::string * error_message, const std::string & value)
 {
-  return value ? "1" : "0";
-}
-
-bool parse_bool(const Fields & fields, const std::string & key, bool default_value = false)
-{
-  const auto it = fields.find(key);
-  if (it == fields.end()) {
-    return default_value;
+  if (error_message) {
+    *error_message = value;
   }
-  const std::string value = it->second;
-  return value == "1" || value == "true" || value == "True" || value == "yes" || value == "on";
-}
-
-std::string parse_string(const Fields & fields, const std::string & key, const std::string & default_value = "")
-{
-  const auto it = fields.find(key);
-  if (it == fields.end()) {
-    return default_value;
-  }
-  return decode_string(it->second);
-}
-
-template<typename T>
-T parse_number(const Fields & fields, const std::string & key, T default_value)
-{
-  const auto it = fields.find(key);
-  if (it == fields.end()) {
-    return default_value;
-  }
-  std::istringstream in(it->second);
-  T value{};
-  in >> value;
-  return in.fail() ? default_value : value;
 }
 
 template<std::size_t N>
-std::string encode_array(const std::array<float, N> & values)
+void set_vector3(pb::Vector3f * out, const std::array<float, N> & values)
 {
-  std::ostringstream out;
-  out << std::setprecision(9);
-  for (std::size_t index = 0; index < N; ++index) {
-    if (index > 0) {
-      out << ",";
-    }
-    out << values[index];
-  }
-  return out.str();
+  static_assert(N >= 3);
+  out->set_x(values[0]);
+  out->set_y(values[1]);
+  out->set_z(values[2]);
 }
 
-template<std::size_t N>
-std::array<float, N> parse_array(
-  const Fields & fields,
-  const std::string & key,
-  const std::array<float, N> & default_value)
+std::array<float, 3> read_vector3(const pb::Vector3f & value)
 {
-  const auto it = fields.find(key);
-  if (it == fields.end()) {
-    return default_value;
-  }
+  return {value.x(), value.y(), value.z()};
+}
 
-  std::array<float, N> out = default_value;
-  std::istringstream in(it->second);
-  std::string token;
-  std::size_t index = 0;
-  while (std::getline(in, token, ',') && index < N) {
-    std::istringstream value_in(token);
-    value_in >> out[index];
-    if (value_in.fail()) {
-      out[index] = default_value[index];
-    }
-    ++index;
-  }
+void set_quaternion(pb::Quaternionf * out, const std::array<float, 4> & values)
+{
+  out->set_x(values[0]);
+  out->set_y(values[1]);
+  out->set_z(values[2]);
+  out->set_w(values[3]);
+}
+
+std::array<float, 4> read_quaternion(const pb::Quaternionf & value)
+{
+  return {value.x(), value.y(), value.z(), value.w()};
+}
+
+std::string serialize(const pb::Envelope & envelope)
+{
+  std::string out;
+  envelope.SerializeToString(&out);
   return out;
 }
 
-std::string with_fields(const std::string & type, const std::vector<std::pair<std::string, std::string>> & fields)
+bool parse_envelope(const std::string & message, pb::Envelope * envelope)
 {
-  std::ostringstream out;
-  out << type;
-  for (const auto & field : fields) {
-    out << " " << field.first << "=" << field.second;
-  }
-  return out.str();
+  return envelope != nullptr && envelope->ParseFromString(message);
 }
 
-bool parse_typed_line(const std::string & line, const std::string & expected, Fields * fields)
+MessageType from_proto_type(pb::Envelope::Type type)
 {
-  std::string type;
-  Fields parsed;
-  if (!parse_line(line, &type, &parsed)) {
-    return false;
+  switch (type) {
+    case pb::Envelope::CONTROL:
+      return MessageType::kControl;
+    case pb::Envelope::STOP:
+      return MessageType::kStop;
+    case pb::Envelope::MOTION:
+      return MessageType::kMotion;
+    case pb::Envelope::LIGHT:
+      return MessageType::kLight;
+    case pb::Envelope::ACK:
+      return MessageType::kAck;
+    case pb::Envelope::HEALTH_STATUS:
+      return MessageType::kHealthStatus;
+    case pb::Envelope::STATE:
+      return MessageType::kState;
+    case pb::Envelope::HEALTH_REQUEST:
+      return MessageType::kHealthRequest;
+    case pb::Envelope::STATE_SUBSCRIBE:
+      return MessageType::kStateSubscribe;
+    case pb::Envelope::TYPE_UNSPECIFIED:
+    default:
+      return MessageType::kUnknown;
   }
-  if (type != expected) {
-    return false;
-  }
-  if (fields) {
-    *fields = std::move(parsed);
-  }
-  return true;
 }
 
 }  // namespace
 
-std::string encode_string(const std::string & value)
+bool encode_frame(
+  const std::string & message,
+  std::string * frame,
+  std::string * error_message)
 {
-  std::ostringstream out;
-  out << std::uppercase << std::hex << std::setfill('0');
-  for (const unsigned char ch : value) {
-    if (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch == '/') {
-      out << static_cast<char>(ch);
-    } else {
-      out << '%' << std::setw(2) << static_cast<int>(ch);
-    }
+  if (frame == nullptr) {
+    set_error(error_message, "encode_frame called with null output");
+    return false;
   }
-  return out.str();
-}
-
-std::string decode_string(const std::string & value)
-{
-  std::string out;
-  out.reserve(value.size());
-  for (std::size_t index = 0; index < value.size(); ++index) {
-    if (value[index] == '%' && index + 2 < value.size()) {
-      const std::string hex = value.substr(index + 1, 2);
-      int byte = 0;
-      std::istringstream in(hex);
-      in >> std::hex >> byte;
-      if (!in.fail()) {
-        out.push_back(static_cast<char>(byte));
-        index += 2;
-        continue;
-      }
-    }
-    out.push_back(value[index]);
-  }
-  return out;
-}
-
-bool parse_line(const std::string & line, std::string * type, Fields * fields)
-{
-  std::istringstream in(line);
-  std::string parsed_type;
-  if (!(in >> parsed_type)) {
+  if (message.size() > kMaxFrameBytes) {
+    set_error(error_message, "message exceeds max protobuf frame size");
     return false;
   }
 
-  Fields parsed_fields;
-  std::string token;
-  while (in >> token) {
-    const auto separator = token.find('=');
-    if (separator == std::string::npos || separator == 0) {
-      continue;
-    }
-    parsed_fields[token.substr(0, separator)] = token.substr(separator + 1);
+  const auto length = static_cast<std::uint32_t>(message.size());
+  frame->clear();
+  frame->reserve(sizeof(length) + message.size());
+  frame->push_back(static_cast<char>((length >> 24U) & 0xFFU));
+  frame->push_back(static_cast<char>((length >> 16U) & 0xFFU));
+  frame->push_back(static_cast<char>((length >> 8U) & 0xFFU));
+  frame->push_back(static_cast<char>(length & 0xFFU));
+  frame->append(message);
+  return true;
+}
+
+FrameDecodeStatus try_decode_frame(
+  std::string * buffer,
+  std::string * message,
+  std::string * error_message)
+{
+  if (buffer == nullptr || message == nullptr) {
+    set_error(error_message, "try_decode_frame called with null input");
+    return FrameDecodeStatus::kError;
+  }
+  if (buffer->size() < 4U) {
+    return FrameDecodeStatus::kIncomplete;
   }
 
-  if (type) {
-    *type = parsed_type;
+  const auto length =
+    (static_cast<std::uint32_t>(static_cast<unsigned char>((*buffer)[0])) << 24U) |
+    (static_cast<std::uint32_t>(static_cast<unsigned char>((*buffer)[1])) << 16U) |
+    (static_cast<std::uint32_t>(static_cast<unsigned char>((*buffer)[2])) << 8U) |
+    static_cast<std::uint32_t>(static_cast<unsigned char>((*buffer)[3]));
+
+  if (length > kMaxFrameBytes) {
+    set_error(error_message, "protobuf frame exceeds max size");
+    return FrameDecodeStatus::kError;
   }
-  if (fields) {
-    *fields = std::move(parsed_fields);
+  if (buffer->size() < 4U + static_cast<std::size_t>(length)) {
+    return FrameDecodeStatus::kIncomplete;
   }
-  return true;
+
+  *message = buffer->substr(4U, length);
+  buffer->erase(0, 4U + static_cast<std::size_t>(length));
+  return FrameDecodeStatus::kReady;
+}
+
+MessageType message_type(const std::string & message)
+{
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope)) {
+    return MessageType::kUnknown;
+  }
+  return from_proto_type(envelope.type());
 }
 
 std::string encode_control_command(const ControlCommand & command)
 {
-  return with_fields("CONTROL", {
-    {"seq", std::to_string(command.seq)},
-    {"vx", number_string(command.linear_x)},
-    {"vy", number_string(command.linear_y)},
-    {"wz", number_string(command.angular_z)},
-    {"timeout_ms", std::to_string(command.timeout_ms)},
-    {"gait_type", std::to_string(command.gait_type)},
-    {"speed_level", std::to_string(command.speed_level)},
-    {"body_height", number_string(command.body_height)},
-    {"auto_recovery", bool_string(command.auto_recovery)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::CONTROL);
+  auto * out = envelope.mutable_control();
+  out->set_seq(command.seq);
+  out->set_linear_x(command.linear_x);
+  out->set_linear_y(command.linear_y);
+  out->set_angular_z(command.angular_z);
+  out->set_timeout_ms(std::max(command.timeout_ms, 0));
+  out->set_gait_type(command.gait_type);
+  out->set_speed_level(command.speed_level);
+  out->set_body_height(command.body_height);
+  out->set_auto_recovery(command.auto_recovery);
+  return serialize(envelope);
 }
 
 std::string encode_stop_command(const StopCommand & command)
 {
-  return with_fields("STOP", {
-    {"seq", std::to_string(command.seq)},
-    {"reason", encode_string(command.reason)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::STOP);
+  auto * out = envelope.mutable_stop();
+  out->set_seq(command.seq);
+  out->set_reason(command.reason);
+  return serialize(envelope);
 }
 
 std::string encode_motion_command(const MotionCommand & command)
 {
-  return with_fields("MOTION", {
-    {"seq", std::to_string(command.seq)},
-    {"command", encode_string(command.command)},
-    {"int_value", std::to_string(command.int_value)},
-    {"float_value", number_string(command.float_value)},
-    {"bool_value", bool_string(command.bool_value)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::MOTION);
+  auto * out = envelope.mutable_motion();
+  out->set_seq(command.seq);
+  out->set_command(command.command);
+  out->set_int_value(command.int_value);
+  out->set_float_value(command.float_value);
+  out->set_bool_value(command.bool_value);
+  return serialize(envelope);
 }
 
 std::string encode_light_command(const LightCommand & command)
 {
-  return with_fields("LIGHT", {
-    {"seq", std::to_string(command.seq)},
-    {"on", bool_string(command.on)},
-    {"color_mode", std::to_string(command.color_mode)},
-    {"intensity", std::to_string(command.intensity)},
-    {"r", std::to_string(command.r)},
-    {"g", std::to_string(command.g)},
-    {"b", std::to_string(command.b)},
-    {"ct", std::to_string(command.color_temperature_kelvin)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::LIGHT);
+  auto * out = envelope.mutable_light();
+  out->set_seq(command.seq);
+  out->set_on(command.on);
+  out->set_color_mode(command.color_mode);
+  out->set_intensity(command.intensity);
+  out->set_r(command.r);
+  out->set_g(command.g);
+  out->set_b(command.b);
+  out->set_color_temperature_kelvin(command.color_temperature_kelvin);
+  return serialize(envelope);
 }
 
 std::string encode_ack(const Ack & ack)
 {
-  return with_fields("ACK", {
-    {"seq", std::to_string(ack.seq)},
-    {"ok", bool_string(ack.ok)},
-    {"code", std::to_string(ack.code)},
-    {"message", encode_string(ack.message)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::ACK);
+  auto * out = envelope.mutable_ack();
+  out->set_seq(ack.seq);
+  out->set_ok(ack.ok);
+  out->set_code(ack.code);
+  out->set_message(ack.message);
+  return serialize(envelope);
 }
 
 std::string encode_health_status(const HealthStatus & health)
 {
-  return with_fields("HEALTH_STATUS", {
-    {"connected", bool_string(health.connected)},
-    {"sdk_ready", bool_string(health.sdk_ready)},
-    {"ipc_ready", bool_string(health.ipc_ready)},
-    {"state", encode_string(health.state)},
-    {"reason", encode_string(health.reason)},
-    {"last_stop_reason", encode_string(health.last_stop_reason)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::HEALTH_STATUS);
+  auto * out = envelope.mutable_health_status();
+  out->set_connected(health.connected);
+  out->set_sdk_ready(health.sdk_ready);
+  out->set_ipc_ready(health.ipc_ready);
+  out->set_state(health.state);
+  out->set_reason(health.reason);
+  out->set_last_stop_reason(health.last_stop_reason);
+  return serialize(envelope);
 }
 
 std::string encode_state_stream(const StateStream & state)
 {
-  return with_fields("STATE", {
-    {"seq", std::to_string(state.seq)},
-    {"source", encode_string(state.source_mode)},
-    {"connected", bool_string(state.connected)},
-    {"imu_valid", bool_string(state.imu_valid)},
-    {"odom_valid", bool_string(state.odom_valid)},
-    {"position", encode_array(state.position)},
-    {"velocity", encode_array(state.velocity)},
-    {"orientation", encode_array(state.orientation_xyzw)},
-    {"rpy", encode_array(state.rpy)},
-    {"accel", encode_array(state.linear_acceleration)},
-    {"gyro", encode_array(state.angular_velocity)},
-    {"body_height", number_string(state.body_height)},
-    {"yaw_speed", number_string(state.yaw_speed)},
-    {"motion_mode", std::to_string(state.motion_mode)},
-    {"progress", number_string(state.progress)},
-    {"gait_type", std::to_string(state.gait_type)},
-    {"battery_present", bool_string(state.battery_present)},
-    {"battery_pct", number_string(state.battery_percentage)},
-    {"battery_voltage", number_string(state.battery_voltage)},
-    {"battery_current", number_string(state.battery_current)},
-    {"battery_charging", bool_string(state.battery_charging)},
-  });
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::STATE);
+  auto * out = envelope.mutable_state();
+  out->set_seq(state.seq);
+  out->set_source_mode(state.source_mode);
+  out->set_connected(state.connected);
+  out->set_imu_valid(state.imu_valid);
+  out->set_odom_valid(state.odom_valid);
+  set_vector3(out->mutable_position(), state.position);
+  set_vector3(out->mutable_velocity(), state.velocity);
+  set_quaternion(out->mutable_orientation_xyzw(), state.orientation_xyzw);
+  set_vector3(out->mutable_rpy(), state.rpy);
+  set_vector3(out->mutable_linear_acceleration(), state.linear_acceleration);
+  set_vector3(out->mutable_angular_velocity(), state.angular_velocity);
+  out->set_body_height(state.body_height);
+  out->set_yaw_speed(state.yaw_speed);
+  out->set_motion_mode(state.motion_mode);
+  out->set_progress(state.progress);
+  out->set_gait_type(state.gait_type);
+  out->set_battery_present(state.battery_present);
+  out->set_battery_percentage(state.battery_percentage);
+  out->set_battery_voltage(state.battery_voltage);
+  out->set_battery_current(state.battery_current);
+  out->set_battery_charging(state.battery_charging);
+  return serialize(envelope);
 }
 
 std::string encode_health_request()
 {
-  return "HEALTH";
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::HEALTH_REQUEST);
+  envelope.mutable_health_request();
+  return serialize(envelope);
 }
 
 std::string encode_state_subscribe()
 {
-  return "SUBSCRIBE_STATE";
+  pb::Envelope envelope;
+  envelope.set_type(pb::Envelope::STATE_SUBSCRIBE);
+  envelope.mutable_state_subscribe();
+  return serialize(envelope);
 }
 
-bool decode_control_command(const std::string & line, ControlCommand * command)
+bool decode_control_command(const std::string & message, ControlCommand * command)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "CONTROL", &fields) || command == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || command == nullptr ||
+    envelope.type() != pb::Envelope::CONTROL || !envelope.has_control())
+  {
     return false;
   }
-  command->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  command->linear_x = parse_number<double>(fields, "vx", 0.0);
-  command->linear_y = parse_number<double>(fields, "vy", 0.0);
-  command->angular_z = parse_number<double>(fields, "wz", 0.0);
-  command->timeout_ms = parse_number<int>(fields, "timeout_ms", 300);
-  command->gait_type = parse_number<int>(fields, "gait_type", 1);
-  command->speed_level = parse_number<int>(fields, "speed_level", 1);
-  command->body_height = parse_number<double>(fields, "body_height", 0.0);
-  command->auto_recovery = parse_bool(fields, "auto_recovery", false);
+  const auto & in = envelope.control();
+  command->seq = in.seq();
+  command->linear_x = in.linear_x();
+  command->linear_y = in.linear_y();
+  command->angular_z = in.angular_z();
+  command->timeout_ms = static_cast<int>(std::min<std::uint32_t>(
+    in.timeout_ms(), static_cast<std::uint32_t>(std::numeric_limits<int>::max())));
+  command->gait_type = in.gait_type();
+  command->speed_level = in.speed_level();
+  command->body_height = in.body_height();
+  command->auto_recovery = in.auto_recovery();
   return true;
 }
 
-bool decode_stop_command(const std::string & line, StopCommand * command)
+bool decode_stop_command(const std::string & message, StopCommand * command)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "STOP", &fields) || command == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || command == nullptr ||
+    envelope.type() != pb::Envelope::STOP || !envelope.has_stop())
+  {
     return false;
   }
-  command->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  command->reason = parse_string(fields, "reason", "unspecified");
+  command->seq = envelope.stop().seq();
+  command->reason = envelope.stop().reason();
   return true;
 }
 
-bool decode_motion_command(const std::string & line, MotionCommand * command)
+bool decode_motion_command(const std::string & message, MotionCommand * command)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "MOTION", &fields) || command == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || command == nullptr ||
+    envelope.type() != pb::Envelope::MOTION || !envelope.has_motion())
+  {
     return false;
   }
-  command->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  command->command = parse_string(fields, "command", "");
-  command->int_value = parse_number<int>(fields, "int_value", 0);
-  command->float_value = parse_number<double>(fields, "float_value", 0.0);
-  command->bool_value = parse_bool(fields, "bool_value", false);
+  const auto & in = envelope.motion();
+  command->seq = in.seq();
+  command->command = in.command();
+  command->int_value = in.int_value();
+  command->float_value = in.float_value();
+  command->bool_value = in.bool_value();
   return true;
 }
 
-bool decode_light_command(const std::string & line, LightCommand * command)
+bool decode_light_command(const std::string & message, LightCommand * command)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "LIGHT", &fields) || command == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || command == nullptr ||
+    envelope.type() != pb::Envelope::LIGHT || !envelope.has_light())
+  {
     return false;
   }
-  command->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  command->on = parse_bool(fields, "on", false);
-  command->color_mode = parse_number<int>(fields, "color_mode", 0);
-  command->intensity = parse_number<int>(fields, "intensity", 0);
-  command->r = parse_number<int>(fields, "r", 0);
-  command->g = parse_number<int>(fields, "g", 0);
-  command->b = parse_number<int>(fields, "b", 0);
-  command->color_temperature_kelvin = parse_number<int>(fields, "ct", 4500);
+  const auto & in = envelope.light();
+  command->seq = in.seq();
+  command->on = in.on();
+  command->color_mode = in.color_mode();
+  command->intensity = in.intensity();
+  command->r = in.r();
+  command->g = in.g();
+  command->b = in.b();
+  command->color_temperature_kelvin = in.color_temperature_kelvin();
   return true;
 }
 
-bool decode_ack(const std::string & line, Ack * ack)
+bool decode_ack(const std::string & message, Ack * ack)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "ACK", &fields) || ack == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || ack == nullptr ||
+    envelope.type() != pb::Envelope::ACK || !envelope.has_ack())
+  {
     return false;
   }
-  ack->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  ack->ok = parse_bool(fields, "ok", false);
-  ack->code = parse_number<int>(fields, "code", 0);
-  ack->message = parse_string(fields, "message", "");
+  const auto & in = envelope.ack();
+  ack->seq = in.seq();
+  ack->ok = in.ok();
+  ack->code = in.code();
+  ack->message = in.message();
   return true;
 }
 
-bool decode_health_status(const std::string & line, HealthStatus * health)
+bool decode_health_status(const std::string & message, HealthStatus * health)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "HEALTH_STATUS", &fields) || health == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || health == nullptr ||
+    envelope.type() != pb::Envelope::HEALTH_STATUS || !envelope.has_health_status())
+  {
     return false;
   }
-  health->connected = parse_bool(fields, "connected", false);
-  health->sdk_ready = parse_bool(fields, "sdk_ready", false);
-  health->ipc_ready = parse_bool(fields, "ipc_ready", false);
-  health->state = parse_string(fields, "state", "unknown");
-  health->reason = parse_string(fields, "reason", "unknown");
-  health->last_stop_reason = parse_string(fields, "last_stop_reason", "none");
+  const auto & in = envelope.health_status();
+  health->connected = in.connected();
+  health->sdk_ready = in.sdk_ready();
+  health->ipc_ready = in.ipc_ready();
+  health->state = in.state();
+  health->reason = in.reason();
+  health->last_stop_reason = in.last_stop_reason();
   return true;
 }
 
-bool decode_state_stream(const std::string & line, StateStream * state)
+bool decode_state_stream(const std::string & message, StateStream * state)
 {
-  Fields fields;
-  if (!parse_typed_line(line, "STATE", &fields) || state == nullptr) {
+  pb::Envelope envelope;
+  if (!parse_envelope(message, &envelope) || state == nullptr ||
+    envelope.type() != pb::Envelope::STATE || !envelope.has_state())
+  {
     return false;
   }
-  state->seq = parse_number<std::uint64_t>(fields, "seq", 0U);
-  state->source_mode = parse_string(fields, "source", "unknown");
-  state->connected = parse_bool(fields, "connected", false);
-  state->imu_valid = parse_bool(fields, "imu_valid", false);
-  state->odom_valid = parse_bool(fields, "odom_valid", false);
-  state->position = parse_array<3>(fields, "position", state->position);
-  state->velocity = parse_array<3>(fields, "velocity", state->velocity);
-  state->orientation_xyzw = parse_array<4>(fields, "orientation", state->orientation_xyzw);
-  state->rpy = parse_array<3>(fields, "rpy", state->rpy);
-  state->linear_acceleration = parse_array<3>(fields, "accel", state->linear_acceleration);
-  state->angular_velocity = parse_array<3>(fields, "gyro", state->angular_velocity);
-  state->body_height = parse_number<float>(fields, "body_height", 0.0F);
-  state->yaw_speed = parse_number<float>(fields, "yaw_speed", 0.0F);
-  state->motion_mode = static_cast<std::uint8_t>(parse_number<int>(fields, "motion_mode", 0));
-  state->progress = parse_number<float>(fields, "progress", 0.0F);
-  state->gait_type = static_cast<std::uint8_t>(parse_number<int>(fields, "gait_type", 0));
-  state->battery_present = parse_bool(fields, "battery_present", false);
-  state->battery_percentage = parse_number<float>(fields, "battery_pct", 0.0F);
-  state->battery_voltage = parse_number<float>(fields, "battery_voltage", 0.0F);
-  state->battery_current = parse_number<float>(fields, "battery_current", 0.0F);
-  state->battery_charging = parse_bool(fields, "battery_charging", false);
+  const auto & in = envelope.state();
+  state->seq = in.seq();
+  state->source_mode = in.source_mode();
+  state->connected = in.connected();
+  state->imu_valid = in.imu_valid();
+  state->odom_valid = in.odom_valid();
+  state->position = read_vector3(in.position());
+  state->velocity = read_vector3(in.velocity());
+  state->orientation_xyzw = read_quaternion(in.orientation_xyzw());
+  state->rpy = read_vector3(in.rpy());
+  state->linear_acceleration = read_vector3(in.linear_acceleration());
+  state->angular_velocity = read_vector3(in.angular_velocity());
+  state->body_height = in.body_height();
+  state->yaw_speed = in.yaw_speed();
+  state->motion_mode = static_cast<std::uint8_t>(std::min(in.motion_mode(), 255U));
+  state->progress = in.progress();
+  state->gait_type = static_cast<std::uint8_t>(std::min(in.gait_type(), 255U));
+  state->battery_present = in.battery_present();
+  state->battery_percentage = in.battery_percentage();
+  state->battery_voltage = in.battery_voltage();
+  state->battery_current = in.battery_current();
+  state->battery_charging = in.battery_charging();
   return true;
 }
 
