@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -8,20 +7,13 @@
 #include <vector>
 
 #include "a2_interfaces/msg/robot_state.hpp"
-#include "a2_system/network_utils.hpp"
+#include "a2_unitree_ipc/client.hpp"
+#include "a2_unitree_ipc/protocol.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
-
-#if A2_ENABLE_UNITREE_SDK
-#include <unitree/idl/go2/LowState_.hpp>
-#include <unitree/idl/go2/SportModeState_.hpp>
-#include <unitree/idl/hg/BmsState_.hpp>
-#include <unitree/robot/channel/channel_factory.hpp>
-#include <unitree/robot/channel/channel_subscriber.hpp>
-#endif
 
 class A2SdkBridgeNode : public rclcpp::Node
 {
@@ -32,24 +24,28 @@ public:
     use_mock_ = declare_parameter<bool>("use_mock", true);
     robot_profile_ = declare_parameter<std::string>("robot_profile", "");
     robot_model_ = declare_parameter<std::string>("robot_model", "");
-    auto_detect_interface_ = declare_parameter<bool>("auto_detect_interface", true);
-    allow_loopback_ = declare_parameter<bool>("allow_loopback", true);
-    network_interface_ = declare_parameter<std::string>("network_interface", "");
-    interface_candidates_ = declare_parameter<std::vector<std::string>>(
-      "interface_candidates", std::vector<std::string>{});
     state_topic_ = declare_parameter<std::string>("state_topic", "/a2/raw_state");
-    sport_state_topic_ = declare_parameter<std::string>("sport_state_topic", "rt/lf/sportmodestate");
-    low_state_topic_ = declare_parameter<std::string>("low_state_topic", "rt/lf/lowstate");
-    low_state_topic_candidates_ = declare_parameter<std::vector<std::string>>(
-      "low_state_topic_candidates", std::vector<std::string>{});
-    bms_state_topic_ = declare_parameter<std::string>("bms_state_topic", "lf/bmsstate");
-    bms_state_topic_candidates_ = declare_parameter<std::vector<std::string>>(
-      "bms_state_topic_candidates", std::vector<std::string>{});
     battery_topic_ = declare_parameter<std::string>("battery_topic", "/a2/battery");
+    status_topic_ = declare_parameter<std::string>("status_topic", "/a2/status");
+    ipc_socket_path_ = declare_parameter<std::string>("ipc_socket_path", a2_unitree_ipc::kDefaultSocketPath);
+    ipc_timeout_ms_ = declare_parameter<int>("ipc_timeout_ms", 100);
     timer_hz_ = declare_parameter<double>("timer_hz", 50.0);
     stale_timeout_sec_ = declare_parameter<double>("stale_timeout_sec", 0.5);
     battery_publish_hz_ = std::max(0.2, declare_parameter<double>("battery_publish_hz", 1.0));
     battery_stale_timeout_sec_ = std::max(0.5, declare_parameter<double>("battery_stale_timeout_sec", 5.0));
+    declare_parameter<bool>("auto_detect_interface", true);
+    declare_parameter<bool>("allow_loopback", false);
+    declare_parameter<std::string>("network_interface", "");
+    declare_parameter<std::vector<std::string>>("interface_candidates", std::vector<std::string>{});
+    declare_parameter<std::string>("sport_state_topic", "rt/lf/sportmodestate");
+    declare_parameter<std::vector<std::string>>(
+      "low_state_topic_candidates",
+      std::vector<std::string>{"rt/lf/lowstate", "rt/lowstate", "lf/lowstate", "lowstate"});
+    declare_parameter<std::string>("low_state_topic", "rt/lf/lowstate");
+    declare_parameter<std::vector<std::string>>(
+      "bms_state_topic_candidates",
+      std::vector<std::string>{"lf/bmsstate", "rt/lf/bmsstate", "rt/bmsstate", "bmsstate"});
+    declare_parameter<std::string>("bms_state_topic", "lf/bmsstate");
     mock_battery_percent_ = std::max(
       0.0,
       std::min(100.0, declare_parameter<double>("mock_battery_percent", 85.0)));
@@ -61,118 +57,37 @@ public:
     state_pub_ = create_publisher<a2_interfaces::msg::RobotState>(state_topic_, 20);
     sdk_connected_pub_ = create_publisher<std_msgs::msg::Bool>("/a2/sdk/connected", 10);
     sdk_status_pub_ = create_publisher<std_msgs::msg::String>("/a2/sdk/status", 10);
+    status_pub_ = create_publisher<std_msgs::msg::String>(status_topic_, 10);
     battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>(battery_topic_, 10);
-    resolved_interface_ = resolve_interface();
 
     if (use_mock_) {
-      RCLCPP_INFO(
-        get_logger(),
-        "Starting in mock mode. interface='%s', candidates=%s",
-        resolved_interface_.c_str(),
-        a2_system::describe_interfaces().c_str());
+      RCLCPP_INFO(get_logger(), "Starting a2_sdk_bridge in mock mode.");
       mock_cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
         mock_cmd_topic_, 20,
         std::bind(&A2SdkBridgeNode::on_mock_cmd, this, std::placeholders::_1));
-      const auto period = std::chrono::duration<double>(1.0 / std::max(timer_hz_, 1.0));
-      mock_timer_ = create_wall_timer(
+    } else {
+      RCLCPP_INFO(
+        get_logger(), "Starting a2_sdk_bridge as UDS client. socket='%s'", ipc_socket_path_.c_str());
+    }
+
+    const auto period = std::chrono::duration<double>(1.0 / std::max(timer_hz_, 1.0));
+    if (use_mock_) {
+      state_timer_ = create_wall_timer(
         std::chrono::duration_cast<std::chrono::milliseconds>(period),
         std::bind(&A2SdkBridgeNode::publish_mock_state, this));
-      const auto battery_period = std::chrono::duration<double>(1.0 / battery_publish_hz_);
-      battery_timer_ = create_wall_timer(
-        std::chrono::duration_cast<std::chrono::milliseconds>(battery_period),
-        std::bind(&A2SdkBridgeNode::publish_battery_state, this));
-      watchdog_timer_ = create_wall_timer(
-        std::chrono::milliseconds(500),
-        std::bind(&A2SdkBridgeNode::watchdog_tick, this));
-      return;
-    }
-
-#if A2_ENABLE_UNITREE_SDK
-    watchdog_timer_ = create_wall_timer(
-      std::chrono::milliseconds(500),
-      std::bind(&A2SdkBridgeNode::watchdog_tick, this));
-    last_state_time_ = now();
-    if (resolved_interface_.empty()) {
-      sdk_interface_ready_ = false;
-      RCLCPP_ERROR(get_logger(), "No usable network interface found for SDK mode.");
-      publish_sdk_status(false, "no_interface");
-      return;
-    }
-    if (!a2_system::interface_is_ready_for_real(resolved_interface_)) {
-      sdk_interface_ready_ = false;
-      RCLCPP_WARN(
-        get_logger(),
-        "Interface '%s' is not ready for real A2 traffic. State bridge will stay armed but disconnected.",
-        resolved_interface_.c_str());
-      publish_sdk_status(false, "interface_not_ready");
-      return;
-    }
-    unitree::robot::ChannelFactory::Instance()->Init(0, resolved_interface_);
-    suber_ = std::make_shared<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>>(sport_state_topic_);
-    suber_->InitChannel(std::bind(&A2SdkBridgeNode::on_sport_state, this, std::placeholders::_1), 1);
-
-    auto norm = [](std::string s) {
-      s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char c) { return std::isspace(c) != 0; }), s.end());
-      return s;
-    };
-
-    auto merge_topics = [&](std::vector<std::string> base, const std::vector<std::string> & extra, std::vector<std::string> defaults) {
-      for (auto & item : base) {
-        item = norm(item);
-      }
-      if (!extra.empty()) {
-        for (auto candidate : extra) {
-          candidate = norm(candidate);
-          if (!candidate.empty()) {
-            base.push_back(candidate);
-          }
-        }
-      } else {
-        for (auto item : defaults) {
-          item = norm(item);
-          if (!item.empty()) {
-            base.push_back(item);
-          }
-        }
-      }
-      base.erase(std::remove_if(base.begin(), base.end(), [](const std::string & s) { return s.empty(); }), base.end());
-      std::sort(base.begin(), base.end());
-      base.erase(std::unique(base.begin(), base.end()), base.end());
-      return base;
-    };
-
-    const auto low_topics = merge_topics(
-      std::vector<std::string>{low_state_topic_},
-      low_state_topic_candidates_,
-      std::vector<std::string>{"rt/lf/lowstate", "rt/lowstate", "lf/lowstate", "lowstate", "/rt/lf/lowstate", "/rt/lowstate", "/lf/lowstate", "/lowstate"});
-    for (const auto & topic : low_topics) {
-      auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::LowState_>>(topic);
-      sub->InitChannel(std::bind(&A2SdkBridgeNode::on_low_state, this, std::placeholders::_1), 1);
-      low_subers_.push_back(sub);
-    }
-
-    const auto bms_topics = merge_topics(
-      std::vector<std::string>{bms_state_topic_},
-      bms_state_topic_candidates_,
-      std::vector<std::string>{"lf/bmsstate", "rt/lf/bmsstate", "rt/bmsstate", "bmsstate", "/lf/bmsstate", "/rt/lf/bmsstate", "/rt/bmsstate", "/bmsstate"});
-    for (const auto & topic : bms_topics) {
-      auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::BmsState_>>(topic);
-      sub->InitChannel(std::bind(&A2SdkBridgeNode::on_bms_state, this, std::placeholders::_1), 1);
-      bms_subers_.push_back(sub);
+    } else {
+      state_timer_ = create_wall_timer(
+        std::chrono::duration_cast<std::chrono::milliseconds>(period),
+        std::bind(&A2SdkBridgeNode::poll_agent_state, this));
     }
 
     const auto battery_period = std::chrono::duration<double>(1.0 / battery_publish_hz_);
     battery_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::milliseconds>(battery_period),
       std::bind(&A2SdkBridgeNode::publish_battery_state, this));
-    RCLCPP_INFO(
-      get_logger(), "SDK mode armed on interface '%s', sport_topic='%s', low_topic='%s' (+%zu fallbacks).",
-      resolved_interface_.c_str(), sport_state_topic_.c_str(), low_state_topic_.c_str(), low_subers_.size() > 0 ? (low_subers_.size() - 1U) : 0U);
-    publish_sdk_status(false, "waiting_for_a2_state");
-#else
-    RCLCPP_ERROR(get_logger(), "This binary was built without unitree_sdk2. Rebuild with UNITREE_SDK2_ROOT available or use mock mode.");
-    publish_sdk_status(false, "sdk_library_missing");
-#endif
+    watchdog_timer_ = create_wall_timer(
+      std::chrono::milliseconds(500),
+      std::bind(&A2SdkBridgeNode::watchdog_tick, this));
   }
 
 private:
@@ -185,16 +100,107 @@ private:
     return stamp;
   }
 
-  std::string resolve_interface() const
+  a2_unitree_ipc::UnixSocketClient & ipc_client()
   {
-    const bool allow_loopback = use_mock_ && allow_loopback_;
-    if (!network_interface_.empty() && a2_system::interface_exists(network_interface_)) {
-      return network_interface_;
+    if (!ipc_client_) {
+      ipc_client_ = std::make_unique<a2_unitree_ipc::UnixSocketClient>(ipc_socket_path_, ipc_timeout_ms_);
     }
-    if (auto_detect_interface_) {
-      return a2_system::select_interface(network_interface_, interface_candidates_, allow_loopback);
+    return *ipc_client_;
+  }
+
+  bool ensure_agent_subscription(std::string * error_message)
+  {
+    auto & client = ipc_client();
+    if (!client.ensure_connected(error_message)) {
+      return false;
     }
-    return network_interface_;
+    if (state_subscribed_) {
+      return true;
+    }
+    if (!client.send_line(a2_unitree_ipc::encode_state_subscribe(), error_message)) {
+      client.close();
+      return false;
+    }
+    state_subscribed_ = true;
+    return true;
+  }
+
+  void poll_agent_state()
+  {
+    std::lock_guard<std::mutex> guard(ipc_mutex_);
+    std::string error;
+    if (!ensure_agent_subscription(&error)) {
+      state_subscribed_ = false;
+      publish_sdk_status(false, "ipc_unavailable:" + error);
+      return;
+    }
+
+    std::string line;
+    if (!ipc_client().read_line(&line, 0, &error)) {
+      if (error == "read timeout") {
+        return;
+      }
+      state_subscribed_ = false;
+      ipc_client().close();
+      publish_sdk_status(false, "ipc_read_failed:" + error);
+      return;
+    }
+
+    a2_unitree_ipc::StateStream state;
+    if (a2_unitree_ipc::decode_state_stream(line, &state)) {
+      publish_state(state);
+      publish_sdk_status(state.connected, state.connected ? "a2_state_ok" : "agent_disconnected");
+      return;
+    }
+
+    a2_unitree_ipc::HealthStatus health;
+    if (a2_unitree_ipc::decode_health_status(line, &health)) {
+      publish_sdk_status(health.connected && health.sdk_ready, health.reason);
+      return;
+    }
+
+    publish_sdk_status(false, "invalid_agent_message");
+  }
+
+  void publish_state(const a2_unitree_ipc::StateStream & state)
+  {
+    const auto current_time = now();
+    a2_interfaces::msg::RobotState msg;
+    msg.stamp = to_builtin_time(current_time);
+    msg.source_mode = state.source_mode;
+    msg.frame_id = "base_link";
+    msg.connected = state.connected;
+    msg.imu_valid = state.imu_valid;
+    msg.odom_valid = state.odom_valid;
+    for (std::size_t index = 0; index < 3U; ++index) {
+      msg.position[index] = state.position[index];
+      msg.velocity[index] = state.velocity[index];
+      msg.rpy[index] = state.rpy[index];
+      msg.linear_acceleration[index] = state.linear_acceleration[index];
+      msg.angular_velocity[index] = state.angular_velocity[index];
+    }
+    for (std::size_t index = 0; index < 4U; ++index) {
+      msg.orientation_xyzw[index] = state.orientation_xyzw[index];
+    }
+    msg.body_height = state.body_height;
+    msg.yaw_speed = state.yaw_speed;
+    msg.motion_mode = state.motion_mode;
+    msg.progress = state.progress;
+    msg.gait_type = state.gait_type;
+    state_pub_->publish(msg);
+    last_state_time_ = current_time;
+
+    {
+      std::lock_guard<std::mutex> lock(battery_mutex_);
+      battery_present_ = state.battery_present;
+      battery_percentage_ratio_ = state.battery_percentage;
+      battery_voltage_ = state.battery_voltage;
+      battery_current_a_ = state.battery_current;
+      battery_charging_ = state.battery_charging;
+      if (state.battery_present) {
+        last_battery_time_ = current_time;
+      }
+    }
   }
 
   void publish_mock_state()
@@ -249,103 +255,16 @@ private:
     msg.orientation_xyzw[1] = 0.0F;
     msg.orientation_xyzw[2] = static_cast<float>(std::sin(msg.rpy[2] * 0.5));
     msg.orientation_xyzw[3] = static_cast<float>(std::cos(msg.rpy[2] * 0.5));
-    msg.linear_acceleration[0] = 0.0F;
-    msg.linear_acceleration[1] = 0.0F;
     msg.linear_acceleration[2] = 9.81F;
     msg.angular_velocity[2] = static_cast<float>(cmd_yaw);
     msg.body_height = 0.28F;
     msg.yaw_speed = static_cast<float>(cmd_yaw);
     msg.motion_mode = 1U;
-    msg.progress = 0.0F;
     msg.gait_type = 1U;
     state_pub_->publish(msg);
     last_state_time_ = current_time;
     publish_sdk_status(true, "mock_state_ok");
   }
-
-#if A2_ENABLE_UNITREE_SDK
-  void on_sport_state(const void * message)
-  {
-    const auto & state = *static_cast<const unitree_go::msg::dds_::SportModeState_ *>(message);
-    const auto current_time = now();
-
-    a2_interfaces::msg::RobotState msg;
-    msg.stamp = to_builtin_time(current_time);
-    msg.source_mode = "real";
-    msg.frame_id = "base_link";
-    msg.connected = true;
-    msg.imu_valid = true;
-    msg.odom_valid = true;
-    for (std::size_t index = 0; index < 3U; ++index) {
-      msg.position[index] = state.position()[index];
-      msg.velocity[index] = state.velocity()[index];
-      msg.rpy[index] = state.imu_state().rpy()[index];
-      msg.linear_acceleration[index] = state.imu_state().accelerometer()[index];
-      msg.angular_velocity[index] = state.imu_state().gyroscope()[index];
-    }
-    for (std::size_t index = 0; index < 4U; ++index) {
-      msg.orientation_xyzw[index] = state.imu_state().quaternion()[index];
-    }
-    msg.body_height = state.body_height();
-    msg.yaw_speed = state.yaw_speed();
-    msg.motion_mode = state.mode();
-    msg.progress = state.progress();
-    msg.gait_type = state.gait_type();
-    last_state_time_ = current_time;
-    state_pub_->publish(msg);
-    publish_sdk_status(true, "a2_state_ok");
-  }
-
-  void on_low_state(const void * message)
-  {
-    const auto & state = *static_cast<const unitree_go::msg::dds_::LowState_ *>(message);
-    const auto current_time = now();
-    const double soc_ratio = std::max(0.0, std::min(1.0, static_cast<double>(state.bms_state().soc()) / 100.0));
-    const double voltage = static_cast<double>(state.power_v());
-    const double current_a = static_cast<double>(state.power_a());
-    const bool charging = current_a < -0.1;
-    {
-      std::lock_guard<std::mutex> lock(battery_mutex_);
-      last_battery_time_ = current_time;
-      battery_percentage_ratio_ = soc_ratio;
-      battery_voltage_ = voltage;
-      battery_current_a_ = current_a;
-      battery_charging_ = charging;
-      battery_present_ = true;
-    }
-  }
-
-  void on_bms_state(const void * message)
-  {
-    const auto & state = *static_cast<const unitree_hg::msg::dds_::BmsState_ *>(message);
-    const auto current_time = now();
-    const double soc_ratio = std::max(0.0, std::min(1.0, static_cast<double>(state.soc()) / 100.0));
-    double voltage = 0.0;
-    const auto & bmsvoltage = state.bmsvoltage();
-    if (bmsvoltage[0] > 0) {
-      voltage = static_cast<double>(bmsvoltage[0]) / 1000.0;
-    } else {
-      double sum_mv = 0.0;
-      for (const auto mv : state.cell_vol()) {
-        sum_mv += static_cast<double>(mv);
-      }
-      if (sum_mv > 0.0) {
-        voltage = sum_mv / 1000.0;
-      }
-    }
-    const double current_a = static_cast<double>(state.current()) / 1000.0;
-    const bool charging = current_a < -0.1;
-    {
-      std::lock_guard<std::mutex> lock(battery_mutex_);
-      last_battery_time_ = current_time;
-      battery_percentage_ratio_ = soc_ratio;
-      battery_voltage_ = voltage;
-      battery_current_a_ = current_a;
-      battery_charging_ = charging;
-      battery_present_ = true;
-    }
-  }
-#endif
 
   void publish_battery_state()
   {
@@ -385,40 +304,17 @@ private:
 
   void watchdog_tick()
   {
-    if (!use_mock_ && !sdk_interface_ready_) {
-      const std::string reason = resolved_interface_.empty() ? "no_interface" : "interface_not_ready";
-      publish_sdk_status(false, reason);
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "A2 SDK bridge is waiting for a ready wired interface. selected='%s' visible=%s",
-        resolved_interface_.empty() ? "none" : resolved_interface_.c_str(),
-        a2_system::describe_interfaces().c_str());
-      return;
-    }
-
     if (last_state_time_.nanoseconds() == 0) {
-      publish_sdk_status(false, use_mock_ ? "mock_not_initialized" : "waiting_for_a2_state");
+      publish_sdk_status(false, use_mock_ ? "mock_not_initialized" : "waiting_for_agent_state");
       return;
     }
 
     const auto age = (now() - last_state_time_).seconds();
     if (age > stale_timeout_sec_) {
-      std::string reason = use_mock_ ? "mock_state_stale" : "a2_state_stale";
-      if (!use_mock_ && !a2_system::interface_is_ready_for_real(resolved_interface_)) {
-        reason = "interface_not_ready";
-      }
-      publish_sdk_status(false, reason);
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 3000,
-        "A2 sport state stale for %.2f sec on interface '%s'. Visible interfaces: %s",
-        age,
-        resolved_interface_.c_str(),
-        a2_system::describe_interfaces().c_str());
+      publish_sdk_status(false, use_mock_ ? "mock_state_stale" : "agent_state_stale");
       return;
     }
-    if (!resolved_interface_.empty()) {
-      publish_sdk_status(true, use_mock_ ? "mock_state_ok" : "a2_state_ok");
-    }
+    publish_sdk_status(true, use_mock_ ? "mock_state_ok" : "a2_state_ok");
   }
 
   void on_mock_cmd(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -433,53 +329,46 @@ private:
     connected_msg.data = connected;
     sdk_connected_pub_->publish(connected_msg);
 
-    std_msgs::msg::String status_msg;
     const std::string mode = use_mock_ ? "mock" : "real";
     std::string state = connected ? "ready" : "waiting";
-    if (status == "no_interface" || status == "interface_not_ready") {
-      state = "waiting_interface";
-    } else if (status == "sdk_library_missing") {
+    if (status.find("ipc_") == 0 || status == "waiting_for_agent_state") {
+      state = "waiting_agent";
+    } else if (status.find("invalid_") == 0) {
       state = "error";
-    } else if (status == "mock_state_stale" || status == "a2_state_stale") {
+    } else if (status == "mock_state_stale" || status == "agent_state_stale") {
       state = "stale";
-    } else if (status == "waiting_for_a2_state" || status == "mock_not_initialized") {
-      state = "waiting_state";
     }
+
+    std_msgs::msg::String status_msg;
     status_msg.data =
       "mode=" + mode +
       ";state=" + state +
       ";ready=" + std::string(connected ? "true" : "false") +
       ";reason=" + status +
-      ";interface=" + (resolved_interface_.empty() ? "none" : resolved_interface_) +
-      ";sport_state_topic=" + sport_state_topic_ +
+      ";ipc_socket=" + ipc_socket_path_ +
+      ";sdk_owner=unitree_agent" +
       ";robot_profile=" + robot_profile_ +
       ";robot_model=" + robot_model_;
     sdk_status_pub_->publish(status_msg);
+    status_pub_->publish(status_msg);
   }
 
   bool use_mock_{true};
-  bool auto_detect_interface_{true};
-  bool allow_loopback_{true};
-  std::string network_interface_;
-  std::vector<std::string> interface_candidates_;
+  bool state_subscribed_{false};
   std::string robot_profile_;
   std::string robot_model_;
   std::string state_topic_;
-  std::string sport_state_topic_;
-  std::string low_state_topic_;
-  std::vector<std::string> low_state_topic_candidates_;
-  std::string bms_state_topic_;
-  std::vector<std::string> bms_state_topic_candidates_;
   std::string battery_topic_;
+  std::string status_topic_;
   std::string mock_cmd_topic_;
-  std::string resolved_interface_;
+  std::string ipc_socket_path_{a2_unitree_ipc::kDefaultSocketPath};
+  int ipc_timeout_ms_{100};
   double timer_hz_{50.0};
   double stale_timeout_sec_{0.5};
   double battery_publish_hz_{1.0};
   double battery_stale_timeout_sec_{5.0};
   double mock_battery_percent_{85.0};
   double mock_cmd_timeout_sec_{0.5};
-  bool sdk_interface_ready_{true};
   double mock_linear_speed_{0.1};
   double mock_yaw_rate_{0.15};
   double mock_x_{0.0};
@@ -491,9 +380,10 @@ private:
   rclcpp::Publisher<a2_interfaces::msg::RobotState>::SharedPtr state_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr sdk_connected_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr sdk_status_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr mock_cmd_sub_;
-  rclcpp::TimerBase::SharedPtr mock_timer_;
+  rclcpp::TimerBase::SharedPtr state_timer_;
   rclcpp::TimerBase::SharedPtr battery_timer_;
   rclcpp::TimerBase::SharedPtr watchdog_timer_;
   rclcpp::Time last_state_time_{0, 0, RCL_ROS_TIME};
@@ -502,11 +392,8 @@ private:
   rclcpp::Time last_mock_cmd_time_{0, 0, RCL_ROS_TIME};
   geometry_msgs::msg::Twist mock_cmd_;
 
-#if A2_ENABLE_UNITREE_SDK
-  std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>> suber_;
-  std::vector<std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::LowState_>>> low_subers_;
-  std::vector<std::shared_ptr<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::BmsState_>>> bms_subers_;
-#endif
+  std::mutex ipc_mutex_;
+  std::unique_ptr<a2_unitree_ipc::UnixSocketClient> ipc_client_;
 
   std::mutex battery_mutex_;
   bool battery_present_{false};

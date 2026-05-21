@@ -14,6 +14,7 @@
   <depend>std_msgs</depend>
   <depend>a2_interfaces</depend>
   <depend>a2_system</depend>
+  <depend>a2_unitree_ipc</depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>

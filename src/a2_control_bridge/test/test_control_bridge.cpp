@@ -473,12 +473,13 @@ TEST_F(ControlBridgeTest, STATUS_001_FormatContainsAllFields)
   publish_twist(0.3, 0.0, 0.0);
 
   std::string status = get_status();
-  // Expected: mode=mock;state=ready;ready=true;reason=command_active;interface=...;sport_client=a2
+  // Expected: mode=mock;state=ready;ready=true;reason=command_active;interface=...;control_backend=unitree_agent_uds
   EXPECT_TRUE(std::regex_search(status, std::regex("mode=mock")));
   EXPECT_TRUE(std::regex_search(status, std::regex("state=ready")));
   EXPECT_TRUE(std::regex_search(status, std::regex("ready=true")));
   EXPECT_TRUE(std::regex_search(status, std::regex("reason=command_active")));
-  EXPECT_TRUE(std::regex_search(status, std::regex("sport_client=a2")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("control_backend=unitree_agent_uds")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("sdk_owner=unitree_agent")));
 }
 
 TEST_F(ControlBridgeTest, STATUS_002_BlockedState_ReadyFalse)
@@ -512,7 +513,7 @@ TEST_F(ControlBridgeTest, STATUS_003_GaitControlFieldsReflectTopicRequests)
   publish_twist(0.2, 0.0, 0.0);
 
   std::string status = get_status();
-  EXPECT_TRUE(std::regex_search(status, std::regex("gait_backend=unitree_sport")));
+  EXPECT_TRUE(std::regex_search(status, std::regex("gait_backend=unitree_agent")));
   EXPECT_TRUE(std::regex_search(status, std::regex("gait_control=true")));
   EXPECT_TRUE(std::regex_search(status, std::regex("gait_type=3")));
   EXPECT_TRUE(std::regex_search(status, std::regex("speed_level=2")));
