@@ -64,8 +64,10 @@ def generate_launch_description():
             'ndt_trigger_retry_sec': 1.0,
             'ndt_initial_guess_publish_period_sec': 0.02,
             'align_periodic_initial_guess_to_cloud': False,
-            'max_map_to_odom_translation_step': ParameterValue(max_map_to_odom_translation_step, value_type=float),
-            'max_map_to_odom_rotation_step_deg': ParameterValue(max_map_to_odom_rotation_step_deg, value_type=float),
+            'first_fix_max_translation_m': ParameterValue(max_map_to_odom_translation_step, value_type=float),
+            'first_fix_max_rotation_deg': ParameterValue(max_map_to_odom_rotation_step_deg, value_type=float),
+            'max_map_to_odom_translation_step': 1.0,
+            'max_map_to_odom_rotation_step_deg': 20.0,
         }],
         output='screen'
     )

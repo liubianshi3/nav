@@ -39,7 +39,7 @@ def generate_launch_description():
                 default_value=(
                     "[0.0, 0.0, 1.0, "
                     "1.0, 0.0, 0.0, "
-                    "0.0, 1.0, 0.0]"
+                    "0.0, -1.0, 0.0]"
                 ),
             ),
             Node(
@@ -67,7 +67,7 @@ def generate_launch_description():
                         "max_range_m": LaunchConfiguration("sensor_max_range"),
                         "lidar_to_base_translation": LaunchConfiguration("lidar_to_base_translation"),
                         "lidar_to_base_rotation": LaunchConfiguration("lidar_to_base_rotation"),
-                        "publish_tf": False,
+                        "publish_tf": True,
                     }
                 ],
             ),

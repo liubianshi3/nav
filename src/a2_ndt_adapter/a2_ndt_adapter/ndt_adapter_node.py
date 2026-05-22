@@ -159,7 +159,7 @@ class A2NdtAdapter(Node):
         self.declare_parameter('max_map_to_odom_translation_step', 1.0)
         self.declare_parameter('max_map_to_odom_rotation_step_deg', 20.0)
         self.declare_parameter('first_fix_max_translation_m', 3.0)
-        self.declare_parameter('first_fix_max_rotation_rad', math.radians(45.0))
+        self.declare_parameter('first_fix_max_rotation_deg', 45.0)
         self.declare_parameter('map_service_min_radius', 1.0)
         self.declare_parameter('map_service_max_radius', 25.0)
         self.declare_parameter('map_service_margin_m', 3.0)
@@ -285,26 +285,63 @@ class A2NdtAdapter(Node):
 
             return
 
+        if self.cached_map_points.size > 0:
+            px = float(msg.pose.pose.position.x)
+            py = float(msg.pose.pose.position.y)
+            min_x = float(np.min(self.cached_map_points[:, 0])) - 5.0
+            max_x = float(np.max(self.cached_map_points[:, 0])) + 5.0
+            min_y = float(np.min(self.cached_map_points[:, 1])) - 5.0
+            max_y = float(np.max(self.cached_map_points[:, 1])) + 5.0
+            if not (min_x <= px <= max_x and min_y <= py <= max_y):
+                self.publish_status(False, "rejected", "out_of_map")
+                self.get_logger().warn(
+                    f"NDT pose rejected: position ({px:.2f}, {py:.2f}) out of map bounds "
+                    f"X:[{min_x+5.0:.1f}, {max_x-5.0:.1f}], Y:[{min_y+5.0:.1f}, {max_y-5.0:.1f}]",
+                    throttle_duration_sec=1.0,
+                )
+                return
+
         map_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
         candidate_map_to_odom = map_to_base @ np.linalg.inv(self.last_odom_to_base)
-        if (
-            self.has_seed
+        is_bounded = True
+        if self.has_seed:
+            if self.awaiting_first_ndt_fix:
+                is_bounded = self.first_fix_step_is_bounded(candidate_map_to_odom)
+            else:
+                is_bounded = self.correction_step_is_bounded(candidate_map_to_odom)
 
-            and not self.awaiting_first_ndt_fix
-            and not self.correction_step_is_bounded(candidate_map_to_odom)
-        ):
+        if not is_bounded:
             delta = candidate_map_to_odom @ np.linalg.inv(self.map_to_odom)
             translation = float(np.linalg.norm(delta[:3, 3]))
             rotation_trace = (float(np.trace(delta[:3, :3])) - 1.0) * 0.5
             rotation = math.degrees(math.acos(max(-1.0, min(1.0, rotation_trace))))
-            max_translation = float(self.get_parameter('max_map_to_odom_translation_step').value)
-            max_rotation_deg = float(self.get_parameter('max_map_to_odom_rotation_step_deg').value)
-            self.publish_status(False, "rejected", "map_to_odom_jump")
-            self.get_logger().warn(
-                f"NDT correction step too large: {translation:.2f}m, {rotation:.1f}deg "
-                f"(limits: {max_translation:.2f}m, {max_rotation_deg:.1f}deg)",
-                throttle_duration_sec=0.5,
-            )
+            if self.awaiting_first_ndt_fix:
+                max_translation = float(
+                    self.get_parameter('first_fix_max_translation_m').value
+                )
+                max_rotation_deg = float(
+                    self.get_parameter('first_fix_max_rotation_deg').value
+                )
+                self.publish_status(False, "rejected", "first_fix_jump")
+                self.get_logger().warn(
+                    f"NDT first fix correction step too large: "
+                    f"{translation:.2f}m, {rotation:.1f}deg "
+                    f"(limits: {max_translation:.2f}m, {max_rotation_deg:.1f}deg)",
+                    throttle_duration_sec=0.5,
+                )
+            else:
+                max_translation = float(
+                    self.get_parameter('max_map_to_odom_translation_step').value
+                )
+                max_rotation_deg = float(
+                    self.get_parameter('max_map_to_odom_rotation_step_deg').value
+                )
+                self.publish_status(False, "rejected", "map_to_odom_jump")
+                self.get_logger().warn(
+                    f"NDT correction step too large: {translation:.2f}m, {rotation:.1f}deg "
+                    f"(limits: {max_translation:.2f}m, {max_rotation_deg:.1f}deg)",
+                    throttle_duration_sec=0.5,
+                )
             return
 
         self.map_to_odom = candidate_map_to_odom
@@ -326,6 +363,21 @@ class A2NdtAdapter(Node):
             return
 
         map_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
+        if self.cached_map_points.size > 0:
+            px = float(msg.pose.pose.position.x)
+            py = float(msg.pose.pose.position.y)
+            min_x = float(np.min(self.cached_map_points[:, 0])) - 5.0
+            max_x = float(np.max(self.cached_map_points[:, 0])) + 5.0
+            min_y = float(np.min(self.cached_map_points[:, 1])) - 5.0
+            max_y = float(np.max(self.cached_map_points[:, 1])) + 5.0
+            if not (min_x <= px <= max_x and min_y <= py <= max_y):
+                self.publish_status(False, "rejected", "out_of_map")
+                self.get_logger().warn(
+                    f"Initial pose rejected: position ({px:.2f}, {py:.2f}) out of map bounds "
+                    f"X:[{min_x+5.0:.1f}, {max_x-5.0:.1f}], Y:[{min_y+5.0:.1f}, {max_y-5.0:.1f}]"
+                )
+                return
+
         self.map_to_odom = map_to_base @ np.linalg.inv(self.last_odom_to_base)
         self.has_seed = True
         self.awaiting_first_ndt_fix = True
@@ -666,7 +718,9 @@ class A2NdtAdapter(Node):
         rotation_trace = (float(np.trace(delta[:3, :3])) - 1.0) * 0.5
         rotation = math.acos(max(-1.0, min(1.0, rotation_trace)))
         max_translation = float(self.get_parameter('first_fix_max_translation_m').value)
-        max_rotation = float(self.get_parameter('first_fix_max_rotation_rad').value)
+        max_rotation = math.radians(
+            float(self.get_parameter('first_fix_max_rotation_deg').value)
+        )
         return translation <= max_translation and rotation <= max_rotation
 
     def publish_periodic_status(self):

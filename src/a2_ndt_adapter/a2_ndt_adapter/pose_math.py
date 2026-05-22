@@ -153,5 +153,7 @@ def seeded_odom_tracking_status(
     if not map_ready:
         return False, "waiting_map", "map_not_ready"
     if not score_is_acceptable(score, score_threshold, score_min_is_good):
+        if score is not None and score != -1.0:
+            return False, "score_low", "score_below_threshold"
         return False, "waiting_first_score", "ndt_not_scored_yet"
     return True, "tracking", "odom_tracking"

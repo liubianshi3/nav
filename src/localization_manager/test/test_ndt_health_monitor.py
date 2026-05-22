@@ -106,3 +106,30 @@ def test_classifies_healthy_status():
     assert healthy is True
     assert state == "healthy"
     assert reason == "converged"
+
+
+def test_classifies_score_low_state():
+    parsed = parse_ndt_status(
+        "state=score_low;ready=false;reason=score_below_threshold;score=1.200;"
+        "score_fresh=true;initial_guess_count=20;last_initial_guess_age=0.050"
+    )
+
+    healthy, state, reason = classify_ndt_health_status(parsed, min_score=2.3)
+
+    assert healthy is False
+    assert state == "score_low"
+    assert reason == "score_below_threshold"
+
+
+def test_classifies_score_low_even_with_zero_initial_guess_count():
+    parsed = parse_ndt_status(
+        "state=rejected;ready=false;reason=score_below_threshold;score=1.200;"
+        "score_fresh=true;initial_guess_count=0;last_initial_guess_age=0.050"
+    )
+
+    healthy, state, reason = classify_ndt_health_status(parsed, min_score=2.3)
+
+    assert healthy is False
+    assert state == "score_low"
+    assert reason == "score_below_threshold"
+

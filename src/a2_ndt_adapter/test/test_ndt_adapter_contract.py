@@ -177,3 +177,60 @@ def test_ndt_adapter_initializes_status_timestamps_before_first_pose():
     assert "self.last_odom_receive_time = None" in text
     assert "self.last_odom_msg_stamp = None" in text
     assert "self.last_odom_receive_time = self.get_clock().now()" in text
+
+
+def test_seeded_odom_tracking_classifies_low_score_properly():
+    ready, state, reason = seeded_odom_tracking_status(
+        has_seed=True,
+        odom_fresh=True,
+        score=1.2,
+        score_threshold=2.3,
+        score_min_is_good=True,
+        map_ready=True,
+    )
+
+    assert ready is False
+    assert state == "score_low"
+    assert reason == "score_below_threshold"
+
+
+def test_out_of_bounds_pose_rejection():
+    import rclpy
+    from geometry_msgs.msg import PoseWithCovarianceStamped
+    from a2_ndt_adapter.ndt_adapter_node import A2NdtAdapter
+    if not rclpy.ok():
+        rclpy.init()
+    try:
+        node = A2NdtAdapter()
+        node.cached_map_points = np.array([
+            [0.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0]
+        ], dtype=np.float32)
+        node.last_odom_to_base = np.eye(4)
+        node.last_odom_stamp = node.get_clock().now()
+        node.last_score_stamp = node.get_clock().now()
+        node.last_score = 3.0
+
+        msg = PoseWithCovarianceStamped()
+        msg.pose.pose.position.x = 20.0
+        msg.pose.pose.position.y = 5.0
+        msg.pose.pose.orientation.w = 1.0
+
+        node.on_initial_pose(msg)
+        assert not node.has_seed
+
+        node.map_to_odom = np.eye(4)
+        node.on_ndt_pose(msg)
+        assert np.allclose(node.map_to_odom, np.eye(4))
+
+        msg_in = PoseWithCovarianceStamped()
+        msg_in.pose.pose.position.x = 8.0
+        msg_in.pose.pose.position.y = 5.0
+        msg_in.pose.pose.orientation.w = 1.0
+
+        node.on_initial_pose(msg_in)
+        assert node.has_seed
+    finally:
+        if rclpy.ok():
+            rclpy.shutdown()
+

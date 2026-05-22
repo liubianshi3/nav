@@ -75,10 +75,14 @@ def classify_ndt_health_status(
     if "out_of_map" in reason_text or "map_range" in reason_text:
         return False, "out_of_map", adapter_reason or adapter_state or "map_range"
 
+    has_fresh_score = (score is not None and score != -1.0 and score_fresh is True)
+
     if (
         adapter_state in ("waiting_seed", "waiting_first_score")
-        or adapter_reason in ("send_initialpose", "initialpose_without_odom", "ndt_not_scored_yet")
-        or initial_guess_count == 0
+        or adapter_reason in (
+            "send_initialpose", "initialpose_without_odom", "ndt_not_scored_yet"
+        )
+        or (initial_guess_count == 0 and not has_fresh_score)
     ):
         return False, "waiting_initial_guess", "initial_guess_missing"
 
