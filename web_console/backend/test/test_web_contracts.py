@@ -367,10 +367,12 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "A2_ENABLE_MOTION: ${A2_ENABLE_MOTION:-true}" in compose_source
     assert "A2_LIVE_MOTION: ${A2_LIVE_MOTION:-true}" in compose_source
     assert "image: ${A2_DOCKER_IMAGE:-a2-nav:dev}" in compose_source
-    assert "container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}" in compose_source
+    assert "a2-nav:" in compose_source
+    assert "container_name: ${A2_CONTAINER_NAME:-a2-nav}" in compose_source
     assert "platform:" not in compose_source
     assert "A2_REQUIRE_UNITREE_SDK: ${A2_REQUIRE_UNITREE_SDK:-OFF}" in compose_source
-    assert "unitree-agent:" in compose_source
+    assert "a2-unitree-agent:" in compose_source
+    assert "- a2-unitree-agent" in compose_source
     assert "dockerfile: Dockerfile.unitree_agent" in compose_source
     assert "- /run/a2:/run/a2" in compose_source
     assert "A2_UNITREE_AGENT_SOCKET: /run/a2/unitree_agent.sock" in compose_source
@@ -378,6 +380,7 @@ def test_a2_docker_defaults_start_standby_with_real_motion_available():
     assert "- ./docker/a2_ros.env" in compose_source
     assert "ROS_DOMAIN_ID=0" in a2_ros_env_source
     assert "RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" in a2_ros_env_source
+    assert "a2-system-ws" not in compose_source
     assert "A2_ROS_INTERFACE=wlxe865d4707bf8" in a2_ros_env_source
     assert "A2_ROS_PEERS=" in a2_ros_env_source
     assert "A2_NETWORK_INTERFACE: ${A2_NETWORK_INTERFACE:-net1}" in compose_source
@@ -774,6 +777,48 @@ def test_a2_live_navigation_speed_defaults_match_field_validated_limits():
     assert "A2_CONTROL_MAX_LINEAR_Y: ${A2_CONTROL_MAX_LINEAR_Y:-0.45}" in compose_source
     assert "A2_CONTROL_MAX_YAW_RATE: ${A2_CONTROL_MAX_YAW_RATE:-1.2}" in compose_source
     assert "A2_CONTROL_CMD_TIMEOUT_SEC: ${A2_CONTROL_CMD_TIMEOUT_SEC:-1.0}" in compose_source
+
+
+def test_a2_3d_nav2_controller_budget_matches_live_robot_cpu_limits():
+    root = Path(__file__).resolve().parents[3]
+    nav2_3d = yaml.safe_load((root / "src/a2_system/config/nav2_3d.yaml").read_text(encoding="utf-8"))
+    ground_seg = yaml.safe_load((root / "src/a2_system/config/ground_segmentation.yaml").read_text(encoding="utf-8"))
+    ndt = yaml.safe_load((root / "src/a2_system/config/ndt_scan_matcher_a2.yaml").read_text(encoding="utf-8"))
+
+    controller_params = nav2_3d["controller_server"]["ros__parameters"]
+    controller = controller_params["FollowPath"]
+    smoother = nav2_3d["velocity_smoother"]["ros__parameters"]
+    local_costmap = nav2_3d["local_costmap"]["local_costmap"]["ros__parameters"]
+    obstacle_layer = local_costmap["obstacle_layer"]
+
+    assert controller_params["controller_frequency"] <= 10.0
+    assert smoother["smoothing_frequency"] <= 10.0
+    assert controller["vx_samples"] * controller["vy_samples"] * controller["vtheta_samples"] <= 600
+    assert controller["sim_time"] <= 1.2
+    assert local_costmap["width"] <= 6
+    assert local_costmap["height"] <= 6
+    assert local_costmap["resolution"] >= 0.05
+    assert obstacle_layer["enabled"] is True
+    assert obstacle_layer["observation_sources"] == "obstacle_cloud"
+    assert obstacle_layer["obstacle_cloud"]["obstacle_min_range"] >= 0.85
+    assert ground_seg["ground_segmentation"]["ros__parameters"]["process_every_n"] >= 2
+    assert ndt["/**"]["ros__parameters"]["ndt"]["max_iterations"] <= 40
+
+
+def test_strict_collision_monitor_uses_forward_stop_without_slowdown_throttle():
+    root = Path(__file__).resolve().parents[3]
+    config = yaml.safe_load((root / "src/a2_system/config/collision_monitor.yaml").read_text(encoding="utf-8"))
+    params = config["collision_monitor"]["ros__parameters"]
+    polygon_stop = params["PolygonStop"]
+    polygon_slow = params["PolygonSlow"]
+
+    stop_xs = polygon_stop["points"][0::2]
+    slow_xs = polygon_slow["points"][0::2]
+    assert min(stop_xs) >= 0.75
+    assert min(slow_xs) >= 0.75
+    assert polygon_stop["max_points"] >= 20
+    assert polygon_slow["action_type"] == "slowdown"
+    assert polygon_slow["slowdown_ratio"] == 1.0
 
 
 def test_jt128_hesai_config_matches_sdk2_schema():

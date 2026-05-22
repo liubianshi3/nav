@@ -17,28 +17,26 @@ collision_monitor:
     stop_pub_timeout: 2.0
 
     # ── Safety polygons ─────────────────────────────────────────
-    # Two zones: inner STOP + outer SLOWDOWN
-    # A2 body: ~1.1m long × ~0.45m wide. Polygons defined in
-    # base_link frame (x-forward, y-left)
+    # Two forward zones: STOP is still enforced, SLOWDOWN only validates
+    # perception without throttling live navigation commands. Keeping both
+    # zones in front of the body avoids self/ground returns near the robot.
     polygons: ["PolygonStop", "PolygonSlow"]
 
     PolygonStop:
       type: "polygon"
-      # 0.5m forward, 0.4m side, 0.3m rear
-      points: [0.5, 0.4, 0.5, -0.4, -0.3, -0.4, -0.3, 0.4]
+      points: [1.25, 0.35, 1.25, -0.35, 0.75, -0.35, 0.75, 0.35]
       action_type: "stop"
-      max_points: 3
+      max_points: 20
       visualize: true
       polygon_pub_topic: "polygon_stop"
       enabled: true
 
     PolygonSlow:
       type: "polygon"
-      # 0.9m forward, 0.7m side, 0.5m rear
-      points: [0.9, 0.7, 0.9, -0.7, -0.5, -0.7, -0.5, 0.7]
+      points: [1.75, 0.70, 1.75, -0.70, 0.75, -0.70, 0.75, 0.70]
       action_type: "slowdown"
-      max_points: 2
-      slowdown_ratio: 0.3
+      max_points: 50000
+      slowdown_ratio: 1.0
       visualize: true
       polygon_pub_topic: "polygon_slowdown"
       enabled: true

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SOCKET_PATH="${A2_UNITREE_AGENT_SOCKET:-/run/a2/unitree_agent.sock}"
-ROS_BRIDGE_CONTAINER="${A2_ROS_BRIDGE_CONTAINER:-a2-system-ws-dev}"
+ROS_BRIDGE_CONTAINER="${A2_ROS_BRIDGE_CONTAINER:-a2-nav}"
 UNITREE_AGENT_CONTAINER="${A2_UNITREE_AGENT_CONTAINER:-a2-unitree-agent}"
 DESTRUCTIVE="${A2_VERIFY_DESTRUCTIVE:-0}"
 if [[ "${1:-}" == "--destructive" ]]; then

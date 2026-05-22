@@ -1,8 +1,8 @@
 /**:
   ros__parameters:
     ndt:
-      max_iterations: 80
-      trans_epsilon: 0.01
+      max_iterations: 40
+      trans_epsilon: 0.02
 
     score_estimation:
       # Keep Autoware NDT's convergence gate aligned with a2_ndt_adapter.

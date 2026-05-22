@@ -1,5 +1,5 @@
 services:
-  unitree-agent:
+  a2-unitree-agent:
     container_name: ${A2_UNITREE_AGENT_CONTAINER_NAME:-a2-unitree-agent}
     image: ${A2_UNITREE_AGENT_IMAGE:-a2-unitree-agent:dev}
     build:
@@ -17,7 +17,7 @@ services:
     volumes:
       - /run/a2:/run/a2
 
-  a2-system-ws:
+  a2-nav:
     container_name: ${A2_CONTAINER_NAME:-a2-nav}
     image: ${A2_DOCKER_IMAGE:-a2-nav:dev}
     init: true
@@ -30,7 +30,7 @@ services:
     privileged: true
     restart: unless-stopped
     depends_on:
-      - unitree-agent
+      - a2-unitree-agent
     env_file:
       - ./docker/a2_ros.env
     environment:

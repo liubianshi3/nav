@@ -43,5 +43,7 @@ ground_segmentation:
     # -- misc ------------------------------------------------------------
     frame_id: map
     target_frame_id: odom
-    # Process 1 out of every N pointclouds (1 = every cloud).
-    process_every_n: 1
+    # Process 1 out of every N pointclouds. JT128 publishes at ~10Hz; 5Hz
+    # obstacle updates are enough for the A2 speed range and avoid starving
+    # Nav2/controller_server on the onboard PC.
+    process_every_n: 2

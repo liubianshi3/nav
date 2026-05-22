@@ -39,7 +39,7 @@ A2_ROS_IMAGE=ros:humble-ros-base-jammy \
 Run the container:
 
 ```bash
-docker run -d --name a2-system-ws-dev --restart unless-stopped \
+docker run -d --name a2-nav --restart unless-stopped \
   --net host --privileged \
   -e A2_DOCKER_START_MODE=auto \
   -e A2_JT128_INTERFACE=net1 \
@@ -48,7 +48,7 @@ docker run -d --name a2-system-ws-dev --restart unless-stopped \
   -v /home/unitree/ws/device-navigation/runtime/logs:/opt/a2_system_ws/runtime/logs \
   -v /home/unitree/ws/device-navigation/runtime/routes:/opt/a2_system_ws/runtime/routes \
   -v /home/unitree/ws/device-navigation/runtime/reports:/opt/a2_system_ws/runtime/reports \
-  a2-system-ws:dev
+  a2-nav:dev
 ```
 
 Or with Compose:
