@@ -374,7 +374,7 @@ fi
 "$DLIO_MAPPING_SCRIPT" \
   --iface "$LIDAR_IFACE" \
   --no-web \
-  --no-octomap
+  --start-octomap
 
 start_web
 
