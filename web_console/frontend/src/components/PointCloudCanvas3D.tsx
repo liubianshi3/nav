@@ -55,6 +55,7 @@ const GROUND_HEIGHT_QUANTILE = 0.12;
 const DISPLAY_GROUND_HEIGHT_QUANTILE = 0.03;
 const GROUND_PICK_RADIUS_PX = 24;
 const ZERO_SCENE_ORIGIN: SceneOrigin = { x: 0, y: 0 };
+const POINTCLOUD_BOUNDS_TRIM = 0.02;
 
 export function PointCloudCanvas3D({
   pointcloud,
@@ -193,6 +194,9 @@ export function PointCloudCanvas3D({
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      if (context.activeBounds && !context.activeBounds.isEmpty()) {
+        applyViewPreset(context, context.preset);
+      }
     };
     resize();
 
@@ -322,7 +326,7 @@ export function PointCloudCanvas3D({
         next.savedPoints.visible = showSavedMapRef.current;
         next.scene.add(next.savedPoints);
         next.savedCount = getPointCount(next.savedPoints);
-        next.activeBounds = new THREE.Box3().setFromObject(next.savedPoints);
+        next.activeBounds = computePointCloudBounds(next.savedPoints);
         next.savedAssetKey = savedAssetKey;
         setRenderStats({ saved: next.savedCount, live: next.liveCount });
         setArtifactState(next.savedCount > 0 ? `Three.js 已加载 ${next.savedCount} 点` : "已加载点云但没有可显示点");
@@ -368,10 +372,10 @@ export function PointCloudCanvas3D({
       current.livePoints = createLivePointCloud(pointcloud.points, current.sceneOrigin);
       current.livePoints.visible = !hasSavedMap || showLiveOverlay;
       current.scene.add(current.livePoints);
-      current.liveCount = pointcloud.points.length;
-      if (!hasSavedMap) {
-        const shouldFrame = !current.hasAutoFramed || current.activeBounds === null;
-        current.activeBounds = new THREE.Box3().setFromObject(current.livePoints);
+        current.liveCount = pointcloud.points.length;
+        if (!hasSavedMap) {
+          const shouldFrame = !current.hasAutoFramed || current.activeBounds === null;
+        current.activeBounds = computePointCloudBounds(current.livePoints);
         if (shouldFrame) {
           applyViewPreset(current, current.preset);
           current.hasAutoFramed = true;
@@ -750,7 +754,7 @@ function normalizeLoadedPcd(points: THREE.Points, fallbackColor: THREE.Color, or
   const geometry = points.geometry;
   const hasColors = geometry.getAttribute("color") !== undefined;
   const material = new THREE.PointsMaterial({
-    size: 0.05,
+    size: 0.065,
     sizeAttenuation: true,
     color: fallbackColor,
     transparent: true,
@@ -780,7 +784,7 @@ function createLivePointCloud(points: number[][], origin: SceneOrigin | null): T
   alignGeometryGroundToZero(geometry);
   geometry.computeBoundingSphere();
   const material = new THREE.PointsMaterial({
-    size: 0.04,
+    size: 0.06,
     sizeAttenuation: true,
     color: LIVE_POINT_COLOR,
     transparent: true,
@@ -828,20 +832,57 @@ function applyViewPreset(context: SceneContext, preset: ViewPreset) {
   const fallbackCenter = new THREE.Vector3(0, 0.4, 0);
   const center = bounds && !bounds.isEmpty() ? bounds.getCenter(new THREE.Vector3()) : fallbackCenter;
   const size = bounds && !bounds.isEmpty() ? bounds.getSize(new THREE.Vector3()) : new THREE.Vector3(4, 2, 4);
-  const radius = Math.max(size.length() * 0.45, 2.6);
-  const distance = radius / Math.tan(THREE.MathUtils.degToRad(context.camera.fov * 0.5)) * 0.72;
+  const footprint = Math.max(size.x, size.z);
+  const vertical = Math.max(size.y, footprint * 0.42);
+  const verticalFov = THREE.MathUtils.degToRad(context.camera.fov);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * Math.max(context.camera.aspect, 0.2));
+  const distanceForHeight = (vertical * 0.5) / Math.tan(verticalFov * 0.5);
+  const distanceForWidth = (footprint * 0.5) / Math.tan(horizontalFov * 0.5);
+  const distance = Math.max(distanceForHeight, distanceForWidth, 2.2) * 0.76;
+  const target = center.clone();
+  target.y += Math.max(size.y * 0.08, 0.12);
 
-  let direction = new THREE.Vector3(1, 0.75, 1);
+  let direction = new THREE.Vector3(1, 0.55, 1);
   if (preset === "front") {
-    direction = new THREE.Vector3(0, 0.32, 1.4);
+    direction = new THREE.Vector3(0, 0.18, 1.4);
   } else if (preset === "top") {
     direction = new THREE.Vector3(0.001, 1.9, 0.001);
   }
 
   direction.normalize();
-  context.camera.position.copy(center.clone().add(direction.multiplyScalar(distance)));
-  context.controls.target.copy(center);
+  context.camera.position.copy(target.clone().add(direction.multiplyScalar(distance)));
+  context.controls.target.copy(target);
   context.controls.update();
+}
+
+function computePointCloudBounds(points: THREE.Points): THREE.Box3 {
+  const attribute = points.geometry.getAttribute("position");
+  if (!attribute || !(attribute instanceof THREE.BufferAttribute) || attribute.count === 0) {
+    return new THREE.Box3().setFromObject(points);
+  }
+
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const zs: number[] = [];
+  for (let index = 0; index < attribute.count; index += 1) {
+    xs.push(attribute.getX(index));
+    ys.push(attribute.getY(index));
+    zs.push(attribute.getZ(index));
+  }
+
+  const minX = quantile(xs, POINTCLOUD_BOUNDS_TRIM);
+  const maxX = quantile(xs, 1 - POINTCLOUD_BOUNDS_TRIM);
+  const minY = quantile(ys, POINTCLOUD_BOUNDS_TRIM);
+  const maxY = quantile(ys, 1 - POINTCLOUD_BOUNDS_TRIM);
+  const minZ = quantile(zs, POINTCLOUD_BOUNDS_TRIM);
+  const maxZ = quantile(zs, 1 - POINTCLOUD_BOUNDS_TRIM);
+  if ([minX, maxX, minY, maxY, minZ, maxZ].some((value) => value === null)) {
+    return new THREE.Box3().setFromObject(points);
+  }
+  return new THREE.Box3(
+    new THREE.Vector3(minX ?? 0, minY ?? 0, minZ ?? 0),
+    new THREE.Vector3(maxX ?? 0, maxY ?? 0, maxZ ?? 0),
+  );
 }
 
 function getPointCount(points: THREE.Points | null): number {

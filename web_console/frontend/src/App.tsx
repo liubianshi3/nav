@@ -78,6 +78,7 @@ const PointCloudCanvas3D = lazy(async () => ({
 }));
 
 type DrawerKey = "task" | "map" | "nav" | "obstacle" | "function" | null;
+type SummaryKey = "robot" | "execution" | null;
 type ViewMode = "auto" | "2d" | "3d";
 
 function createEmptySnapshot(): DashboardSnapshot {
@@ -276,6 +277,7 @@ export default function App() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const [activeDrawer, setActiveDrawer] = useState<DrawerKey>(null);
+  const [activeSummary, setActiveSummary] = useState<SummaryKey>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("auto");
   const [localizationMode, setLocalizationMode] = useState("ndt");
   const [motionMode, setMotionMode] = useState("live_motion");
@@ -904,6 +906,10 @@ export default function App() {
     setActiveDrawer((current) => (current === drawer ? null : drawer));
   };
 
+  const openSummary = (summary: Exclude<SummaryKey, null>) => {
+    setActiveSummary((current) => (current === summary ? null : summary));
+  };
+
   const handleCreateRouteTemplate = () => {
     const nextRouteId = routeDraftId.trim() || selectedRouteId || "office_loop";
     setRouteDraftId(nextRouteId);
@@ -1165,28 +1171,48 @@ export default function App() {
             />
           </div>
 
-          <div className="scene-hud scene-hud-left">
-            <StatusSummaryCard
-              title="机器人状态"
-              rows={[
-                ["后端", backendConnected ? "online" : "offline"],
-                ["WebSocket", websocketConnected ? "connected" : "disconnected"],
-                ["栈模式", stack?.mode ?? "stopped"],
-                ["地图", stack?.selected_map_id ?? snapshot.status.active_map ?? "暂无"],
-              ]}
-            />
-          </div>
-          <div className="scene-hud scene-hud-right">
-            <StatusSummaryCard
-              title="定位与执行"
-              rows={[
-                ["pose", snapshot.pose.available ? `${snapshot.pose.x?.toFixed(2)}, ${snapshot.pose.y?.toFixed(2)}` : "暂无"],
-                ["frame", snapshot.pose.frame_id ?? "unknown"],
-                ["3d asset", selectedPointcloudPath ?? "默认地图点云"],
-                ["goal", snapshot.navigation.goal ? `${snapshot.navigation.goal.x.toFixed(2)}, ${snapshot.navigation.goal.y.toFixed(2)}` : "暂无"],
-                ["task", snapshot.navigation.state],
-              ]}
-            />
+          <div className="scene-summary-tray" aria-label="场景摘要">
+            <button
+              type="button"
+              className={`scene-summary-toggle ${activeSummary === "robot" ? "scene-summary-toggle-active" : ""}`}
+              onClick={() => openSummary("robot")}
+              aria-expanded={activeSummary === "robot"}
+            >
+              机器人状态
+            </button>
+            <button
+              type="button"
+              className={`scene-summary-toggle ${activeSummary === "execution" ? "scene-summary-toggle-active" : ""}`}
+              onClick={() => openSummary("execution")}
+              aria-expanded={activeSummary === "execution"}
+            >
+              定位与执行
+            </button>
+            <div className={`scene-summary-popover ${activeSummary ? "scene-summary-popover-open" : ""}`}>
+              {activeSummary === "robot" ? (
+                <StatusSummaryCard
+                  title="机器人状态"
+                  rows={[
+                    ["后端", backendConnected ? "online" : "offline"],
+                    ["WebSocket", websocketConnected ? "connected" : "disconnected"],
+                    ["栈模式", stack?.mode ?? "stopped"],
+                    ["地图", stack?.selected_map_id ?? snapshot.status.active_map ?? "暂无"],
+                  ]}
+                />
+              ) : null}
+              {activeSummary === "execution" ? (
+                <StatusSummaryCard
+                  title="定位与执行"
+                  rows={[
+                    ["pose", snapshot.pose.available ? `${snapshot.pose.x?.toFixed(2)}, ${snapshot.pose.y?.toFixed(2)}` : "暂无"],
+                    ["frame", snapshot.pose.frame_id ?? "unknown"],
+                    ["3d asset", selectedPointcloudPath ?? "默认地图点云"],
+                    ["goal", snapshot.navigation.goal ? `${snapshot.navigation.goal.x.toFixed(2)}, ${snapshot.navigation.goal.y.toFixed(2)}` : "暂无"],
+                    ["task", snapshot.navigation.state],
+                  ]}
+                />
+              ) : null}
+            </div>
           </div>
 
           <DrawerPanel side="left" open={activeDrawer === "task"}>
