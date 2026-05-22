@@ -93,8 +93,8 @@ manual_control:
   max_linear_x: 0.4
   max_linear_y: 0.25
   max_angular_z: 0.8
-  publish_burst_count: 3
-  publish_burst_interval_sec: 0.05
+  publish_burst_count: 1
+  publish_burst_interval_sec: 0.0
 
 gait_control:
   enabled: true

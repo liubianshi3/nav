@@ -26,6 +26,7 @@ from backend.models import (
     VirtualObstacleZone,
     StartNavigationRequest,
 )
+from backend.navigation_rules import active_navigation_goal_conflict_reason
 from backend.stack_control import (
     MAPPING_NODES,
     NAVIGATION_NODES,
@@ -42,6 +43,52 @@ def test_dashboard_snapshot_contains_camera_contract():
     assert isinstance(snapshot.camera, CameraFrame)
     assert snapshot.camera.available is False
     assert snapshot.health.camera_received is False
+
+
+def test_nav2_goal_can_retarget_while_previous_goal_is_active(monkeypatch):
+    assert active_navigation_goal_conflict_reason(
+        backend="nav2",
+        has_active_action_goal=True,
+        has_active_pose_goal=False,
+    ) is None
+
+
+def test_navigation_goal_block_reason_explains_missing_initialpose():
+    from backend.navigation_rules import localization_goal_block_reason
+
+    status = TextStatus(
+        state="waiting_seed",
+        ready=False,
+        reason="send_initialpose",
+        fields={"initial_guess_count": "0", "map_ready": "true", "odom_fresh": "true"},
+    )
+
+    assert localization_goal_block_reason(localization_ok=False, relocalization_status=status) == (
+        "NDT 等待初始位姿，请先设置初始位姿"
+    )
+
+
+def test_diagnostics_explain_ndt_waiting_for_initialpose_not_generic_tf():
+    snapshot = DashboardSnapshot()
+    snapshot.pose.available = False
+    snapshot.status.localization_ok = False
+    snapshot.status.ndt_healthy = False
+    snapshot.status.ndt_score = -1.0
+    snapshot.status.relocalization_status = TextStatus(
+        raw="state=waiting_seed;ready=false;reason=send_initialpose;score=-1.000;initial_guess_count=0",
+        state="waiting_seed",
+        ready=False,
+        reason="send_initialpose",
+        fields={"initial_guess_count": "0", "map_ready": "true", "odom_fresh": "true"},
+    )
+
+    diagnostics = build_diagnostics(snapshot, StackStatus(mode="navigation"))
+    item = next(item for item in diagnostics.navigation if item.key == "localization")
+
+    assert item.state == "error"
+    assert item.reason == "NDT 等待初始位姿"
+    assert item.suggestion == "在导航选择里点击地图当前位置，先设置初始位姿；NDT 收敛后会发布 map→odom TF"
+    assert any("relocalization_state=waiting_seed" in evidence for evidence in item.evidence)
 
 
 def test_diagnostics_explain_unitree_agent_ipc_boundary_not_dds():
@@ -374,6 +421,10 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert command.angular_z == 0.4
 
     main_source = (root / "backend/main.py").read_text()
+    manual_endpoint_source = main_source[
+        main_source.index('    @app.post("/api/manual-control/cmd_vel")') :
+        main_source.index('    @app.get("/api/manual-control/motion-authorization")')
+    ]
     api_source = (root / "frontend/src/api.ts").read_text()
     app_source = (root / "frontend/src/App.tsx").read_text()
     controls_source = (root / "frontend/src/components/ControlSidebar.tsx").read_text()
@@ -383,7 +434,10 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
 
     assert "/api/manual-control/cmd_vel" in main_source
     assert "stack_controller.ensure_manual_control_standby" in main_source
-    assert main_source.count("stack_controller.ensure_manual_control_standby") >= 2
+    assert "ensure_manual_motion_authorized" in main_source
+    assert "stack_controller.ensure_manual_control_standby" not in manual_endpoint_source
+    assert "ensure_manual_motion_authorized" not in manual_endpoint_source
+    assert "publish_manual_velocity" in manual_endpoint_source
     assert "sendManualVelocityCommand" in api_source
     assert "ManualControlSection" in controls_source
     assert "snapshot.manual_control.enabled" in app_source
@@ -424,6 +478,8 @@ def test_manual_control_contract_publishes_safe_cmd_vel():
     assert "A2_CONTROL_ALLOW_WITHOUT_MAP" in stack_source
     assert "A2_CONTROL_ALLOW_WITHOUT_LOCALIZATION" in stack_source
     assert "ensure_manual_control_standby" in grpc_source
+    assert "self.manual_control_publisher.publish(msg)" in (root / "backend/ros_bridge.py").read_text()
+    assert "manual.publish_burst_count" not in (root / "backend/ros_bridge.py").read_text()
 
 
 def test_real_3d_config_enables_manual_control_for_true_dog():
@@ -434,6 +490,8 @@ def test_real_3d_config_enables_manual_control_for_true_dog():
     assert config.manual_control.max_linear_x <= 0.4
     assert config.manual_control.max_linear_y <= 0.25
     assert config.manual_control.max_angular_z <= 0.8
+    assert config.manual_control.publish_burst_count == 1
+    assert config.manual_control.publish_burst_interval_sec == 0.0
 
 
 def test_gait_control_contract_publishes_unitree_sport_requests():

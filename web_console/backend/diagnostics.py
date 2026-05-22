@@ -13,6 +13,7 @@ from .models import (
     LogEntry,
     StackStatus,
 )
+from .navigation_rules import ndt_waiting_for_initialpose
 
 _LOG_CATEGORY_PATTERNS: dict[str, list[str]] = {
     "navigation": [
@@ -213,6 +214,13 @@ def _nav_localization_check(snapshot: DashboardSnapshot) -> DiagnosticItem:
         item.evidence.append(f"ndt_healthy={ndt_healthy}")
     if ndt_score is not None:
         item.evidence.append(f"ndt_score={ndt_score:.3f}")
+    relocalization = status.relocalization_status
+    if relocalization.state:
+        item.evidence.append(f"relocalization_state={relocalization.state}")
+    if relocalization.reason:
+        item.evidence.append(f"relocalization_reason={relocalization.reason}")
+    if relocalization.fields.get("initial_guess_count") is not None:
+        item.evidence.append(f"initial_guess_count={relocalization.fields.get('initial_guess_count')}")
 
     if pose and pose.available and not pose.stale:
         item.evidence.append(f"pose_age=ok x={pose.x:.2f} y={pose.y:.2f}")
@@ -223,6 +231,10 @@ def _nav_localization_check(snapshot: DashboardSnapshot) -> DiagnosticItem:
 
     if loc_ok is False or ndt_healthy is False:
         item.state = "error"
+        if ndt_waiting_for_initialpose(relocalization):
+            item.reason = "NDT 等待初始位姿"
+            item.suggestion = "在导航选择里点击地图当前位置，先设置初始位姿；NDT 收敛后会发布 map→odom TF"
+            return item
         item.reason = "定位未就绪"
         if ndt_healthy is False:
             item.reason += "：NDT 未收敛或 score 过高"

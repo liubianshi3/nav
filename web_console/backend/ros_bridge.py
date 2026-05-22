@@ -86,6 +86,8 @@ except ImportError:  # pragma: no cover - runtime environment fallback
 
 from .config import AppConfig
 from .direct_navigation import compute_direct_velocity_command
+from .navigation_rules import active_navigation_goal_conflict_reason
+from .navigation_rules import localization_goal_block_reason
 from .models import (
     BatterySnapshot,
     ControlStateSnapshot,
@@ -331,6 +333,7 @@ class RosBridgeNode(Node):
         self._lock = threading.RLock()
         self._navigation_lock = threading.Lock()
         self._active_goal_handle: Any | None = None
+        self._active_goal_token = 0
 
         self.map_snapshot = MapSnapshot()
         self.pointcloud_snapshot = PointCloudSnapshot()
@@ -1716,12 +1719,23 @@ class RosBridgeNode(Node):
         with self._navigation_lock:
             if not self.config.navigation.allow_send_goal:
                 raise RosBridgeError("导航发送在配置中被禁用")
-            if self.config.navigation.require_localization_ready and self.status.localization_ok is not True:
-                raise RosBridgeError("定位未就绪，禁止发送导航目标")
+            if self.config.navigation.require_localization_ready:
+                block_reason = localization_goal_block_reason(
+                    localization_ok=self.status.localization_ok,
+                    relocalization_status=self.status.relocalization_status,
+                )
+                if block_reason:
+                    raise RosBridgeError(block_reason)
             if self.config.navigation.require_map_for_goal and not self.map_snapshot.loaded:
                 raise RosBridgeError("地图尚未加载完成")
-            if self._active_goal_handle is not None or self._active_pose_goal is not None:
-                raise RosBridgeError("已有导航任务正在执行")
+            was_retargeting = self._active_goal_handle is not None or self._active_pose_goal is not None
+            conflict_reason = active_navigation_goal_conflict_reason(
+                backend=self.config.navigation.backend,
+                has_active_action_goal=self._active_goal_handle is not None,
+                has_active_pose_goal=self._active_pose_goal is not None,
+            )
+            if conflict_reason:
+                raise RosBridgeError(conflict_reason)
             if self.config.navigation.backend == "cmd_vel_direct":
                 return self._start_direct_cmd_vel_goal(request.goal)
             if self.config.navigation.backend == "pose_topic_3d":
@@ -1751,6 +1765,9 @@ class RosBridgeNode(Node):
 
             wait_event = threading.Event()
             result_box: dict[str, Any] = {}
+            with self._lock:
+                self._active_goal_token += 1
+                goal_token = self._active_goal_token
 
             def feedback_callback(feedback_msg: NavigateToPose.FeedbackMessage) -> None:
                 feedback = feedback_msg.feedback
@@ -1775,11 +1792,15 @@ class RosBridgeNode(Node):
                     if goal_handle is None or not goal_handle.accepted:
                         result_box["error"] = "导航目标被 action server 拒绝"
                         return
-                    self._active_goal_handle = goal_handle
-                    accepted_message = "导航目标已接受"
+                    accepted_message = "导航目标已重定向" if was_retargeting else "导航目标已接受"
                     if goal_snapped:
-                        accepted_message = "导航目标已接受，已吸附到最近可行点"
+                        accepted_message = (
+                            "导航目标已重定向，已吸附到最近可行点"
+                            if was_retargeting
+                            else "导航目标已接受，已吸附到最近可行点"
+                        )
                     with self._lock:
+                        self._active_goal_handle = goal_handle
                         self.navigation = NavigationTaskState(
                             state="navigating",
                             message=accepted_message,
@@ -1790,7 +1811,9 @@ class RosBridgeNode(Node):
                         )
                     self._publish("navigation", dump_model(self.navigation))
                     result_future = goal_handle.get_result_async()
-                    result_future.add_done_callback(self._on_navigation_result)
+                    result_future.add_done_callback(
+                        lambda done_future: self._on_navigation_result(done_future, goal_token)
+                    )
                     result_box["ok"] = True
                 except Exception as exc:  # pragma: no cover - defensive path
                     result_box["error"] = f"发送导航目标失败: {exc}"
@@ -1987,12 +2010,7 @@ class RosBridgeNode(Node):
         msg.linear.y = linear_y
         msg.angular.z = angular_z
 
-        burst_count = max(1, int(manual.publish_burst_count))
-        interval = max(0.0, float(manual.publish_burst_interval_sec))
-        for _ in range(burst_count):
-            self.manual_control_publisher.publish(msg)
-            if interval > 0.0:
-                time.sleep(interval)
+        self.manual_control_publisher.publish(msg)
 
         clipped_command = ManualVelocityCommand(
             linear_x=linear_x,
@@ -2002,7 +2020,7 @@ class RosBridgeNode(Node):
         return ManualVelocityResponse(
             topic=manual.cmd_topic,
             command=clipped_command,
-            burst_count=burst_count,
+            burst_count=1,
             message=f"已发布手动速度到 {manual.cmd_topic}",
         )
 
@@ -2133,7 +2151,7 @@ class RosBridgeNode(Node):
         ready = (localization_ok or localization_status.ready is True) and pose_updated
         return ready, localization_status
 
-    def _on_navigation_result(self, result_future: Any) -> None:
+    def _on_navigation_result(self, result_future: Any, goal_token: int | None = None) -> None:
         state = "failed"
         message = "未知导航结果"
         try:
@@ -2155,6 +2173,8 @@ class RosBridgeNode(Node):
             state = "failed"
             message = f"获取导航结果失败: {exc}"
         with self._lock:
+            if goal_token is not None and goal_token != self._active_goal_token:
+                return
             self.navigation.state = state
             self.navigation.message = message
             self.navigation.updated_at = now_iso()

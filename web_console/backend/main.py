@@ -330,13 +330,8 @@ def create_app(config_path: str | None = None) -> FastAPI:
         if node is None:
             raise HTTPException(status_code=503, detail="ROS runtime 未启动")
         try:
-            if any(abs(value) > 1e-6 for value in (request.linear_x, request.linear_y, request.angular_z)):
-                await asyncio.to_thread(stack_controller.ensure_manual_control_standby)
-                await asyncio.to_thread(ensure_manual_motion_authorized, node)
             result = await asyncio.to_thread(node.publish_manual_velocity, request)
         except RosBridgeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except StackControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"ok": True, "manual_control": jsonable_encoder(result)}
 

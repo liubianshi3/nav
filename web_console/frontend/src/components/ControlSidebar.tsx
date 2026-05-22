@@ -26,8 +26,11 @@ export interface ControlSidebarProps {
   canSendGoal: boolean;
   canSetInitialPose: boolean;
   initialPoseBusy: boolean;
+  navigationGoalBusy: boolean;
   initialPoseMessage: string | null;
   initialPoseError: string | null;
+  navigationGoalMessage: string | null;
+  navigationGoalError: string | null;
   startMappingReason: string | null;
   startNavigationReason: string | null;
   saveMapReason: string | null;
@@ -96,8 +99,11 @@ export function ControlSidebar(props: ControlSidebarProps) {
         canSendGoal={props.canSendGoal}
         canSetInitialPose={props.canSetInitialPose}
         initialPoseBusy={props.initialPoseBusy}
+        navigationGoalBusy={props.navigationGoalBusy}
         initialPoseMessage={props.initialPoseMessage}
         initialPoseError={props.initialPoseError}
+        navigationGoalMessage={props.navigationGoalMessage}
+        navigationGoalError={props.navigationGoalError}
         sendGoalReason={props.sendGoalReason}
         setInitialPoseReason={props.setInitialPoseReason}
         onSetInitialPose={props.onSetInitialPose}
@@ -622,8 +628,11 @@ export function SelectedGoalSection({
   canSendGoal,
   canSetInitialPose,
   initialPoseBusy,
+  navigationGoalBusy,
   initialPoseMessage,
   initialPoseError,
+  navigationGoalMessage,
+  navigationGoalError,
   sendGoalReason,
   setInitialPoseReason,
   onSetInitialPose,
@@ -635,8 +644,11 @@ export function SelectedGoalSection({
   | "canSendGoal"
   | "canSetInitialPose"
   | "initialPoseBusy"
+  | "navigationGoalBusy"
   | "initialPoseMessage"
   | "initialPoseError"
+  | "navigationGoalMessage"
+  | "navigationGoalError"
   | "sendGoalReason"
   | "setInitialPoseReason"
   | "onSetInitialPose"
@@ -649,6 +661,12 @@ export function SelectedGoalSection({
     : initialPoseMessage
       ? `notice ${initialPoseBusy ? "" : "notice-success"} initial-pose-feedback`
       : "panel-message initial-pose-feedback";
+  const navigationGoalFeedback = navigationGoalError ?? navigationGoalMessage ?? sendGoalReason;
+  const navigationGoalFeedbackClass = navigationGoalError
+    ? "notice notice-error"
+    : navigationGoalMessage
+      ? `notice ${navigationGoalBusy ? "" : "notice-success"}`
+      : "panel-message";
 
   return (
     <section className="panel">
@@ -660,15 +678,15 @@ export function SelectedGoalSection({
         <button className="secondary-button" disabled={initialPoseBusy || !selectedGoal || !canSetInitialPose} onClick={onSetInitialPose}>
           {initialPoseBusy ? "设置中..." : "设置初始位姿"}
         </button>
-        <button className="primary-button" disabled={!selectedGoal || !canSendGoal} onClick={onSendGoal}>
-          发送导航
+        <button className="primary-button" disabled={navigationGoalBusy || !selectedGoal || !canSendGoal} onClick={onSendGoal}>
+          {navigationGoalBusy ? "发送中..." : "发送导航"}
         </button>
         <button className="danger-button" onClick={onCancelGoal}>
           停止导航
         </button>
       </div>
       <p className={initialPoseFeedbackClass}>{formatNullable(initialPoseFeedback, "当前模式允许设置初始位姿")}</p>
-      <p className="panel-message">{formatNullable(sendGoalReason, "当前模式允许发送导航目标")}</p>
+      <p className={navigationGoalFeedbackClass}>{formatNullable(navigationGoalFeedback, "当前模式允许发送导航目标")}</p>
     </section>
   );
 }

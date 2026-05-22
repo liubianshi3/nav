@@ -122,8 +122,8 @@ class ManualControlConfig:
     max_linear_x: float = 0.4
     max_linear_y: float = 0.25
     max_angular_z: float = 0.8
-    publish_burst_count: int = 3
-    publish_burst_interval_sec: float = 0.05
+    publish_burst_count: int = 1
+    publish_burst_interval_sec: float = 0.0
 
 
 @dataclass

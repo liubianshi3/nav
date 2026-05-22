@@ -300,6 +300,9 @@ export default function App() {
   const [initialPoseBusy, setInitialPoseBusy] = useState(false);
   const [lastInitialPoseMessage, setLastInitialPoseMessage] = useState<string | null>(null);
   const [lastInitialPoseError, setLastInitialPoseError] = useState<string | null>(null);
+  const [navigationGoalBusy, setNavigationGoalBusy] = useState(false);
+  const [lastNavigationGoalMessage, setLastNavigationGoalMessage] = useState<string | null>(null);
+  const [lastNavigationGoalError, setLastNavigationGoalError] = useState<string | null>(null);
   const [obstacles, setObstacles] = useState<VirtualObstacleZone[]>([]);
   const [obstacleBusy, setObstacleBusy] = useState(false);
   const [obstacleLabel, setObstacleLabel] = useState("");
@@ -811,17 +814,33 @@ export default function App() {
 
   const handleSendGoal = async () => {
     if (!selectedGoal) {
-      setLastError("请先在地图上点击目标点");
+      const message = "请先在地图上点击目标点";
+      setLastNavigationGoalMessage(null);
+      setLastNavigationGoalError(message);
+      setLastError(message);
       return;
     }
+    setNavigationGoalBusy(true);
+    setLastNavigationGoalMessage("正在发送导航目标...");
+    setLastNavigationGoalError(null);
+    setLastSuccess(null);
+    setLastError(null);
     try {
       const navigation = await sendNavigationGoal(selectedGoal, selectedMapId || null);
       setSnapshot((current) => ({ ...current, navigation }));
-      setLastSuccess("导航目标已发送");
+      const message = navigation.message ?? "导航目标已发送";
+      setLastNavigationGoalMessage(message);
+      setLastNavigationGoalError(null);
+      setLastSuccess(message);
       setLastError(null);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "发送导航目标失败";
+      setLastNavigationGoalMessage(null);
+      setLastNavigationGoalError(message);
       setLastSuccess(null);
-      setLastError(error instanceof Error ? error.message : "发送导航目标失败");
+      setLastError(message);
+    } finally {
+      setNavigationGoalBusy(false);
     }
   };
 
@@ -1309,8 +1328,11 @@ export default function App() {
               canSendGoal={canSendGoal}
               canSetInitialPose={canSetInitialPose}
               initialPoseBusy={initialPoseBusy}
+              navigationGoalBusy={navigationGoalBusy}
               initialPoseMessage={lastInitialPoseMessage}
               initialPoseError={lastInitialPoseError}
+              navigationGoalMessage={lastNavigationGoalMessage}
+              navigationGoalError={lastNavigationGoalError}
               sendGoalReason={sendGoalReason}
               setInitialPoseReason={setInitialPoseReason}
               onSetInitialPose={handleSetInitialPose}
