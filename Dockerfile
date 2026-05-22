@@ -27,7 +27,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             libprotobuf-dev \
             protobuf-compiler \
             ros-humble-rosidl-default-generators \
-            ros-humble-octomap-server \
         && ok=1 \
         && break; \
         dpkg --configure -a || true; \
