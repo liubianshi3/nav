@@ -66,6 +66,16 @@ def test_ground_segmentation_node_keeps_classification_frame_separate_from_outpu
     assert "segmenter_->classify(classification_xyz)" in node
 
 
+def test_navigation_overrides_obstacle_cloud_to_robot_local_frame():
+    launch = _read("src/a2_bringup/launch/jt128_3d_navigation.launch.py")
+
+    ground_seg_block = launch[
+        launch.index('package="a2_ground_segmentation_cpp"') :
+        launch.index("# ── Collision monitor")
+    ]
+    assert '"target_frame": "base_link"' in ground_seg_block
+
+
 def test_traversability_obstacle_cloud_self_filters_before_nav2_obstacle_layer():
     script = _read("src/a2_system/scripts/traversability_to_obstacle_cloud.py")
     launch = _read("src/a2_bringup/launch/nav2_3d.launch.py")

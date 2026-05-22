@@ -263,7 +263,11 @@ def generate_launch_description():
                 name="ground_segmentation",
                 parameters=[
                     f"{get_package_share_directory('a2_ground_segmentation_cpp')}/config/ground_segmentation_cpp.yaml",
-                    {"use_sim_time": LaunchConfiguration("use_sim_time")},
+                    {
+                        # Nav2 local_costmap/collision_monitor need robot-local obstacle observations.
+                        "target_frame": "base_link",
+                        "use_sim_time": LaunchConfiguration("use_sim_time"),
+                    },
                 ],
                 output="screen",
             ),
