@@ -1435,7 +1435,7 @@ button:disabled {
 
 .diag-log-viewer {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
@@ -1487,8 +1487,11 @@ button:disabled {
 }
 
 .diag-log-entries {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 96px;
+  max-height: clamp(160px, 34vh, 360px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px 0 10px;
   font-family: var(--mono);
   font-size: 10px;
@@ -1637,6 +1640,10 @@ button:disabled {
 
   .diag-panel.diag-collapsed {
     height: 42px;
+  }
+
+  .diag-log-entries {
+    max-height: 120px;
   }
 
   .diag-collapsed-bar {
