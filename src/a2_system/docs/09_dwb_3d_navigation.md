@@ -135,7 +135,7 @@ The `collision_monitor` (from `nav2_collision_monitor` package) applies two safe
 | Polygon | Dimensions (forward/side/rear) | Action |
 |---|---|---|
 | `PolygonStop` | 0.5m / 0.4m / 0.3m | Full stop (≥3 obstacle points inside) |
-| `PolygonSlow` | 0.9m / 0.7m / 0.5m | Slow to 30% (≥2 obstacle points inside) |
+| `PolygonSlow` | 0.9m / 0.7m / 0.5m | Live-validation profile keeps speed at 100% while visualizing the slowdown zone |
 
 Dual safety channels: `collision_monitor` for spatial safety + `nav_health_monitor` for
 system-level diagnostics (sets `max_speed_scale` on degraded state).

@@ -719,6 +719,17 @@ def test_3d_navigation_algorithm_contract_is_smac2d_plus_dwb():
     assert controller["plugin"] == "dwb_core::DWBLocalPlanner"
 
 
+def test_live_validation_collision_monitor_does_not_slow_navigation_commands():
+    root = Path(__file__).resolve().parents[3]
+    config = yaml.safe_load(
+        (root / "src/a2_system/config/collision_monitor_live_validation.yaml").read_text(encoding="utf-8")
+    )
+    polygon_slow = config["collision_monitor"]["ros__parameters"]["PolygonSlow"]
+
+    assert polygon_slow["action_type"] == "slowdown"
+    assert polygon_slow["slowdown_ratio"] == 1.0
+
+
 def test_jt128_hesai_config_matches_sdk2_schema():
     root = Path(__file__).resolve().parents[3]
     config = yaml.safe_load(

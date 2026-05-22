@@ -34,7 +34,7 @@ collision_monitor:
       points: [1.75, 0.70, 1.75, -0.70, 0.75, -0.70, 0.75, 0.70]
       action_type: "slowdown"
       max_points: 50000
-      slowdown_ratio: 0.3
+      slowdown_ratio: 1.0
       visualize: true
       polygon_pub_topic: "polygon_slowdown"
       enabled: true
