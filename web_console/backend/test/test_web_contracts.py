@@ -730,6 +730,33 @@ def test_live_validation_collision_monitor_does_not_slow_navigation_commands():
     assert polygon_slow["slowdown_ratio"] == 1.0
 
 
+def test_a2_live_navigation_speed_defaults_match_field_validated_limits():
+    root = Path(__file__).resolve().parents[3]
+    motion_limits = yaml.safe_load((root / "src/a2_system/config/motion_limits.yaml").read_text(encoding="utf-8"))
+    nav2_3d = yaml.safe_load((root / "src/a2_system/config/nav2_3d.yaml").read_text(encoding="utf-8"))
+    compose_source = (root / "docker-compose.a2.yml").read_text(encoding="utf-8")
+
+    control = motion_limits["a2_control_bridge"]["ros__parameters"]
+    controller = nav2_3d["controller_server"]["ros__parameters"]["FollowPath"]
+    smoother = nav2_3d["velocity_smoother"]["ros__parameters"]
+
+    assert control["max_linear_x"] == 1.0
+    assert control["max_linear_y"] == 0.45
+    assert control["max_yaw_rate"] == 1.2
+    assert control["cmd_timeout_sec"] == 1.0
+
+    assert controller["max_vel_x"] == 0.9
+    assert controller["max_vel_y"] == 0.45
+    assert controller["max_vel_theta"] == 1.5
+    assert controller["max_speed_xy"] == 0.9
+    assert smoother["max_velocity"] == [0.9, 0.45, 1.5]
+
+    assert "A2_CONTROL_MAX_LINEAR_X: ${A2_CONTROL_MAX_LINEAR_X:-1.0}" in compose_source
+    assert "A2_CONTROL_MAX_LINEAR_Y: ${A2_CONTROL_MAX_LINEAR_Y:-0.45}" in compose_source
+    assert "A2_CONTROL_MAX_YAW_RATE: ${A2_CONTROL_MAX_YAW_RATE:-1.2}" in compose_source
+    assert "A2_CONTROL_CMD_TIMEOUT_SEC: ${A2_CONTROL_CMD_TIMEOUT_SEC:-1.0}" in compose_source
+
+
 def test_jt128_hesai_config_matches_sdk2_schema():
     root = Path(__file__).resolve().parents[3]
     config = yaml.safe_load(
