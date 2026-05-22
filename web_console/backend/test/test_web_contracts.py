@@ -225,6 +225,25 @@ def test_web_systemd_service_targets_current_a2_source_workspace():
     assert "WorkingDirectory=${WORKSPACE}/web_console" in suite_source
 
 
+def test_a2_deploy_scripts_target_current_docker_workspace():
+    repo_root = Path(__file__).resolve().parents[3]
+    expected_workspace = "/home/unitree/ws/device-navigation"
+    stale_workspace = "/home/unitree/a2_system_ws"
+    paths = [
+        repo_root / "scripts/deploy_to_a2.sh",
+        repo_root / "scripts/start_a2_console.sh",
+        repo_root / "scripts/start_a2_closed_loop.sh",
+        repo_root / "scripts/start_a2_real1.sh",
+        repo_root / "README.md",
+        repo_root / "docker/README.md",
+    ]
+
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert stale_workspace not in source
+        assert expected_workspace in source
+
+
 def test_docker_config_uses_raw_camera_when_compressed_topic_is_absent():
     config = load_config(Path(__file__).resolve().parents[1] / "config.docker.yaml")
 

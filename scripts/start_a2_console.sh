@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REMOTE_HOST="${REMOTE_HOST:-a2}"
-REMOTE_WS="${REMOTE_WS:-/home/unitree/a2_system_ws}"
+REMOTE_WS="${REMOTE_WS:-/home/unitree/ws/device-navigation}"
 REMOTE_USER_HOST="${REMOTE_USER_HOST:-${REMOTE_HOST}}"
 DO_DEPLOY="${DO_DEPLOY:-1}"
 BUILD_WEB="${BUILD_WEB:-1}"

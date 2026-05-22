@@ -3,7 +3,7 @@
 This package is intended to be built on the A2 host from the runnable workspace:
 
 ```bash
-cd /home/unitree/a2_system_ws
+cd /home/unitree/ws/device-navigation
 ./docker/build_real_image.sh
 ```
 
@@ -44,17 +44,17 @@ docker run -d --name a2-system-ws-dev --restart unless-stopped \
   -e A2_DOCKER_START_MODE=auto \
   -e A2_JT128_INTERFACE=net1 \
   -e A2_SDK_INTERFACE=eth0 \
-  -v /home/unitree/a2_system_ws/runtime/maps:/opt/a2_system_ws/runtime/maps \
-  -v /home/unitree/a2_system_ws/runtime/logs:/opt/a2_system_ws/runtime/logs \
-  -v /home/unitree/a2_system_ws/runtime/routes:/opt/a2_system_ws/runtime/routes \
-  -v /home/unitree/a2_system_ws/runtime/reports:/opt/a2_system_ws/runtime/reports \
+  -v /home/unitree/ws/device-navigation/runtime/maps:/opt/a2_system_ws/runtime/maps \
+  -v /home/unitree/ws/device-navigation/runtime/logs:/opt/a2_system_ws/runtime/logs \
+  -v /home/unitree/ws/device-navigation/runtime/routes:/opt/a2_system_ws/runtime/routes \
+  -v /home/unitree/ws/device-navigation/runtime/reports:/opt/a2_system_ws/runtime/reports \
   a2-system-ws:dev
 ```
 
 Or with Compose:
 
 ```bash
-cd /home/unitree/a2_system_ws
+cd /home/unitree/ws/device-navigation
 docker compose -f docker-compose.a2.yml up -d --build
 ```
 

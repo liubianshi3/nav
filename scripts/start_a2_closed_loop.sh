@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REMOTE_USER_HOST="${REMOTE_USER_HOST:-a2}"
-REMOTE_WS="${REMOTE_WS:-/home/unitree/a2_system_ws}"
+REMOTE_WS="${REMOTE_WS:-/home/unitree/ws/device-navigation}"
 MODE="auto"
 MAP_ID=""
 LIDAR_IFACE="${A2_JT128_INTERFACE:-net1}"
