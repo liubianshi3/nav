@@ -19,12 +19,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_config
+from .diagnostics import build_diagnostics, read_logs
 from .grpc_server import GrpcServer
 from .models import (
     DashboardSnapshot,
+    DiagnosticsSnapshot,
     GaitControlCommand,
     InitialPoseRequest,
     LightStatusPayload,
+    LogEntry,
     ManualVelocityCommand,
     MapMediaListing,
     NavigationGoalRequest,
@@ -177,6 +180,38 @@ def create_app(config_path: str | None = None) -> FastAPI:
         health = node.get_health_dict()
         health["ros_thread_alive"] = bool(ros_runtime.thread and ros_runtime.thread.is_alive())
         return health
+
+    @app.get("/api/diagnostics", response_model=DiagnosticsSnapshot)
+    async def get_diagnostics():
+        data_start_monotonic = time.monotonic()
+        node = ros_runtime.node
+        if node is None:
+            raise HTTPException(status_code=503, detail="ROS runtime 未启动")
+        ros_thread_alive = bool(ros_runtime.thread and ros_runtime.thread.is_alive())
+        snapshot = node.build_snapshot(ros_thread_alive=ros_thread_alive)
+        stack_status = stack_controller.status()
+        return build_diagnostics(
+            snapshot,
+            stack_status,
+            data_start_monotonic=data_start_monotonic,
+            log_file=stack_status.log_file,
+        )
+
+    @app.get("/api/logs", response_model=list[LogEntry])
+    async def get_logs(
+        source: str = "all",
+        tail: int = 200,
+        level: str = "all",
+        search: str = "",
+    ):
+        stack_status = stack_controller.status()
+        return read_logs(
+            stack_status.log_file,
+            source=source,
+            tail=tail,
+            level=level,
+            search=search,
+        )
 
     @app.get("/api/snapshot", response_model=DashboardSnapshot)
     async def get_snapshot():

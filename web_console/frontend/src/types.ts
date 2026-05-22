@@ -404,3 +404,39 @@ export interface BackendEvent<T> {
   type: string;
   payload: T;
 }
+
+export interface DiagnosticItem {
+  key: string;
+  label: string;
+  state: string;
+  reason: string;
+  evidence: string[];
+  suggestion: string;
+}
+
+export interface DiagnosticSummary {
+  severity: string;
+  title: string;
+  reason: string;
+  evidence: string[];
+  suggestion: string;
+}
+
+export interface DiagnosticsSnapshot {
+  summary: DiagnosticSummary;
+  navigation: DiagnosticItem[];
+  mapping: DiagnosticItem[];
+  mode: string;
+  diagnostics_generated_at: string;
+  data_age_sec: number;
+  snapshot_available: boolean;
+  logs_available: boolean;
+}
+
+export interface LogEntry {
+  level: string;
+  source: string;
+  category: string;
+  message: string;
+  time: string;
+}

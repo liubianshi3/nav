@@ -424,3 +424,39 @@ class DashboardSnapshot(BaseModel):
     health: SystemHealth = Field(default_factory=SystemHealth)
     battery: BatterySnapshot = Field(default_factory=BatterySnapshot)
     recovery: RecoveryStatus = Field(default_factory=RecoveryStatus)
+
+
+class DiagnosticItem(BaseModel):
+    key: str
+    label: str
+    state: str = "unknown"
+    reason: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    suggestion: str = ""
+
+
+class DiagnosticSummary(BaseModel):
+    severity: str = "ok"
+    title: str = ""
+    reason: str = ""
+    evidence: list[str] = Field(default_factory=list)
+    suggestion: str = ""
+
+
+class DiagnosticsSnapshot(BaseModel):
+    summary: DiagnosticSummary = Field(default_factory=DiagnosticSummary)
+    navigation: list[DiagnosticItem] = Field(default_factory=list)
+    mapping: list[DiagnosticItem] = Field(default_factory=list)
+    mode: str = "stopped"
+    diagnostics_generated_at: str = ""
+    data_age_sec: float = 0.0
+    snapshot_available: bool = False
+    logs_available: bool = False
+
+
+class LogEntry(BaseModel):
+    level: str = "INFO"
+    source: str = ""
+    category: str = "system"
+    message: str = ""
+    time: str = ""

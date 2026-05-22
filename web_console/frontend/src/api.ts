@@ -1,10 +1,12 @@
 import type {
   DashboardSnapshot,
+  DiagnosticsSnapshot,
   GaitControlCommand,
   GaitControlResponse,
   InitialPoseRequestPayload,
   InitialPoseResult,
   LightStatusPayload,
+  LogEntry,
   ManualControlResponse,
   ManualVelocityCommand,
   MapMediaListing,
@@ -267,4 +269,21 @@ export async function debugSetLight(payload: SetLightRequestPayload): Promise<Se
 
 export async function debugGetLightStatus(deviceId: string): Promise<LightStatusPayload> {
   return handleJson<LightStatusPayload>(await fetch(`/api/debug/light/status?device_id=${encodeURIComponent(deviceId)}`));
+}
+
+export async function fetchDiagnostics(): Promise<DiagnosticsSnapshot> {
+  return handleJson<DiagnosticsSnapshot>(await fetch("/api/diagnostics"));
+}
+
+export async function fetchLogs(
+  source: string = "all",
+  tail: number = 200,
+  level: string = "all",
+  search: string = "",
+): Promise<LogEntry[]> {
+  const params = new URLSearchParams({ source, tail: String(tail), level });
+  if (search) {
+    params.set("search", search);
+  }
+  return handleJson<LogEntry[]>(await fetch(`/api/logs?${params.toString()}`));
 }

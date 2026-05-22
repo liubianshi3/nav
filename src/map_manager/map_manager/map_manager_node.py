@@ -116,6 +116,24 @@ class MapManagerNode(Node):
         self.octomap_projection_timeout_sec = float(
             self.declare_parameter("octomap_projection_timeout_sec", 30.0).value
         )
+        self.projection_backend = str(
+            self.declare_parameter("projection_backend", "ltu").value
+        )
+        self.projection_fallback_backend = str(
+            self.declare_parameter("projection_fallback_backend", "legacy").value
+        )
+        self.ltu_max_slope_ugv = float(
+            self.declare_parameter("ltu_max_slope_ugv", 0.26).value
+        )
+        self.ltu_slope_estimation_size = int(
+            self.declare_parameter("ltu_slope_estimation_size", 2).value
+        )
+        self.ltu_minimum_z = float(
+            self.declare_parameter("ltu_minimum_z", 1.0).value
+        )
+        self.ltu_minimum_occupancy = int(
+            self.declare_parameter("ltu_minimum_occupancy", 10).value
+        )
         self.octomap_binary_stale_sec = float(
             self.declare_parameter("octomap_binary_stale_sec", 90.0).value
         )
@@ -350,6 +368,9 @@ class MapManagerNode(Node):
             ),
             "pointcloud_topic_3d": metadata_override.get("pointcloud_topic_3d", selected_topic),
             "robot_clear_world_points": metadata_override.get("robot_clear_world_points", []),
+            "projection_backend_requested": metadata_override.get("projection_backend_requested"),
+            "projection_backend_used": metadata_override.get("projection_backend_used"),
+            "projection_warning": metadata_override.get("projection_warning"),
             "artifacts": artifacts,
         }
         with (map_dir / "metadata.yaml").open("w", encoding="utf-8") as handle:
@@ -386,6 +407,39 @@ class MapManagerNode(Node):
             and age_sec <= self.octomap_binary_stale_sec
         )
 
+    def _find_ltu_projection_helper(self) -> str:
+        candidates = []
+        env_override = os.environ.get("A2_LTU_OCTOMAP_TO_2D_HELPER", "").strip()
+        if env_override:
+            candidates.append(env_override)
+        workspace = os.environ.get("A2_WORKSPACE", "").strip()
+        if workspace:
+            workspace_path = Path(workspace)
+            candidates.append(
+                str(
+                    workspace_path
+                    / "install"
+                    / "a2_system"
+                    / "lib"
+                    / "a2_system"
+                    / "ltu_octomap_to_2d_grid_cpp"
+                )
+            )
+            candidates.append(
+                str(workspace_path / "build" / "a2_system" / "ltu_octomap_to_2d_grid_cpp")
+            )
+        path_helper = shutil.which("ltu_octomap_to_2d_grid_cpp")
+        if path_helper:
+            candidates.append(path_helper)
+        candidates.append("/opt/a2_system_ws/install/a2_system/lib/a2_system/ltu_octomap_to_2d_grid_cpp")
+        for candidate in candidates:
+            if candidate and Path(candidate).is_file():
+                return candidate
+        raise RuntimeError(
+            "ltu_octomap_to_2d_grid_cpp not found. "
+            "Set A2_WORKSPACE or A2_LTU_OCTOMAP_TO_2D_HELPER."
+        )
+
     def _find_octomap_projection_script(self) -> str:
         candidates = []
         env_override = os.environ.get("A2_OCTOMAP_TO_2D_SCRIPT", "").strip()
@@ -415,20 +469,40 @@ class MapManagerNode(Node):
                 return None, None
             return int(parts[0]), int(parts[1])
 
-    def write_octomap_bundle(self, map_dir: Path) -> tuple[list[dict], dict]:
-        octomap_src = self.octomap_binary_path
-        if not octomap_src.exists():
-            raise RuntimeError(f"octomap binary not found: {octomap_src}")
+    def _build_ltu_projection_command(
+        self, octomap_path: Path, map_dir: Path, pcd_output: Path
+    ) -> list[str]:
+        helper = self._find_ltu_projection_helper()
+        cmd = [
+            helper,
+            str(octomap_path),
+            "--output",
+            str(map_dir),
+            "--max-slope-ugv",
+            str(self.ltu_max_slope_ugv),
+            "--slope-estimation-size",
+            str(self.ltu_slope_estimation_size),
+            "--minimum-z",
+            str(self.ltu_minimum_z),
+            "--minimum-occupancy",
+            str(self.ltu_minimum_occupancy),
+            "--border-padding",
+            str(self.octomap_border_padding),
+            "--pcd-output",
+            str(pcd_output),
+        ]
+        for clear_point in self.current_robot_clear_world_points():
+            cmd.extend(["--clear-world-point", clear_point])
+        return cmd
 
-        octomap_dst = map_dir / octomap_src.name
-        shutil.copy2(octomap_src, octomap_dst)
-
+    def _build_legacy_projection_command(
+        self, octomap_path: Path, map_dir: Path, pcd_output: Path
+    ) -> list[str]:
         projection_script = self._find_octomap_projection_script()
-        pcd_output = map_dir / "pointcloud_map_3d.pcd"
         cmd = [
             sys.executable,
             projection_script,
-            str(octomap_dst),
+            str(octomap_path),
             "--output",
             str(map_dir),
             "--resolution",
@@ -444,9 +518,12 @@ class MapManagerNode(Node):
             "--pcd-output",
             str(pcd_output),
         ]
-        clear_world_points = self.current_robot_clear_world_points()
-        for clear_point in clear_world_points:
+        for clear_point in self.current_robot_clear_world_points():
             cmd.extend(["--clear-world-point", clear_point])
+        return cmd
+
+    def _run_projection(self, cmd: list[str], backend_name: str) -> subprocess.CompletedProcess:
+        self.get_logger().info(f"Running {backend_name} projection: {' '.join(cmd[:3])}...")
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
@@ -454,17 +531,76 @@ class MapManagerNode(Node):
             text=True,
             timeout=self.octomap_projection_timeout_sec,
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"octomap projection failed rc={result.returncode}: {result.stdout.strip()}"
-            )
+        if result.stdout:
+            for line in result.stdout.strip().splitlines():
+                self.get_logger().info(f"[{backend_name}] {line}")
+        return result
+
+    def _run_projection_with_fallback(
+        self, octomap_path: Path, map_dir: Path, pcd_output: Path
+    ) -> tuple[str, str | None]:
+        backend = self.projection_backend
+        fallback = self.projection_fallback_backend
+        warning = None
+
+        if backend == "ltu":
+            try:
+                cmd = self._build_ltu_projection_command(octomap_path, map_dir, pcd_output)
+                result = self._run_projection(cmd, "ltu")
+                if result.returncode == 0 and (map_dir / "map.yaml").exists():
+                    return "ltu", None
+                warning = f"LTU projection failed rc={result.returncode}"
+                self.get_logger().warn(
+                    f"{warning}, falling back to {fallback} octomap_to_2d_grid"
+                )
+            except Exception as exc:
+                warning = f"LTU projection error: {exc}"
+                self.get_logger().warn(
+                    f"{warning}, falling back to {fallback} octomap_to_2d_grid"
+                )
+            if fallback == "legacy":
+                cmd = self._build_legacy_projection_command(octomap_path, map_dir, pcd_output)
+                result = self._run_projection(cmd, "legacy")
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"legacy projection also failed rc={result.returncode}: {result.stdout.strip()}"
+                    )
+                return "legacy", warning
+            raise RuntimeError(warning)
+
+        if backend == "legacy":
+            cmd = self._build_legacy_projection_command(octomap_path, map_dir, pcd_output)
+            result = self._run_projection(cmd, "legacy")
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"legacy projection failed rc={result.returncode}: {result.stdout.strip()}"
+                )
+            return "legacy", None
+
+        raise RuntimeError(f"unsupported projection_backend: {backend}")
+
+    def write_octomap_bundle(self, map_dir: Path) -> tuple[list[dict], dict]:
+        octomap_src = self.octomap_binary_path
+        if not octomap_src.exists():
+            raise RuntimeError(f"octomap binary not found: {octomap_src}")
+
+        octomap_dst = map_dir / octomap_src.name
+        shutil.copy2(octomap_src, octomap_dst)
+
+        pcd_output = map_dir / "pointcloud_map_3d.pcd"
+        backend_used, projection_warning = self._run_projection_with_fallback(
+            octomap_dst, map_dir, pcd_output
+        )
 
         map_yaml_path = map_dir / "map.yaml"
-        if not map_yaml_path.exists() or not pcd_output.exists():
-            raise RuntimeError("octomap projection did not produce map.yaml and pointcloud_map_3d.pcd")
+        if not map_yaml_path.exists():
+            raise RuntimeError("projection did not produce map.yaml")
+        if not pcd_output.exists():
+            raise RuntimeError("projection did not produce pointcloud_map_3d.pcd")
 
         map_yaml = yaml.safe_load(map_yaml_path.read_text(encoding="utf-8")) or {}
         width, height = self._read_pgm_size(map_dir / "map.pgm")
+        clear_world_points = self.current_robot_clear_world_points()
         artifacts = [
             {
                 "kind": "occupancy_grid_2d",
@@ -484,6 +620,13 @@ class MapManagerNode(Node):
                 "resolution": self.octomap_projection_resolution,
             },
         ]
+        for extra_name, extra_kind in [
+            ("height_map.pgm", "height_map_2d"),
+            ("slope_map.pgm", "slope_map_2d"),
+            ("map_quality_report.yaml", "quality_report"),
+        ]:
+            if (map_dir / extra_name).exists():
+                artifacts.append({"kind": extra_kind, "path": extra_name})
         metadata_override = {
             "source_topic": "/projected_map",
             "width": width,
@@ -491,7 +634,11 @@ class MapManagerNode(Node):
             "resolution": float(map_yaml.get("resolution", self.octomap_projection_resolution)),
             "pointcloud_topic_3d": "/octomap_binary",
             "robot_clear_world_points": clear_world_points,
+            "projection_backend_requested": self.projection_backend,
+            "projection_backend_used": backend_used,
         }
+        if projection_warning:
+            metadata_override["projection_warning"] = projection_warning
         return artifacts, metadata_override
 
     def current_robot_clear_world_points(self) -> list[str]:

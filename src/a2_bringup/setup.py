@@ -46,6 +46,7 @@ setup(
             "rviz/a2_jt128_perception.rviz",
             "rviz/a2_bag_perception_validation.rviz",
             "rviz/simple_car_jt128_perception.rviz",
+            "rviz/a2_jt128_nav_tuning.rviz",
         ]),
     ],
     install_requires=["setuptools"],

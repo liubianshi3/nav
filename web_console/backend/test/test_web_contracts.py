@@ -9,6 +9,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.config import load_config
+from backend.diagnostics import build_diagnostics, read_logs
 from backend.direct_navigation import compute_direct_velocity_command
 from backend.utils import extrapolate_pose2d_from_odom
 from backend.models import (
@@ -18,7 +19,9 @@ from backend.models import (
     ManualVelocityCommand,
     MapMediaEntry,
     MapMediaListing,
+    StackStatus,
     TaskRouteStatus,
+    TextStatus,
     VirtualObstacleListing,
     VirtualObstacleZone,
     StartNavigationRequest,
@@ -39,6 +42,49 @@ def test_dashboard_snapshot_contains_camera_contract():
     assert isinstance(snapshot.camera, CameraFrame)
     assert snapshot.camera.available is False
     assert snapshot.health.camera_received is False
+
+
+def test_diagnostics_explain_unitree_agent_ipc_boundary_not_dds():
+    snapshot = DashboardSnapshot()
+    snapshot.map.loaded = True
+    snapshot.map.width = 20
+    snapshot.map.height = 20
+    snapshot.map.resolution = 0.1
+    snapshot.pose.available = True
+    snapshot.pose.stale = False
+    snapshot.pose.x = 0.5
+    snapshot.pose.y = 0.5
+    snapshot.status.localization_ok = True
+    snapshot.status.ndt_healthy = True
+    snapshot.status.safety_status = TextStatus(state="ready", ready=True, reason="clear")
+    snapshot.status.control_status = TextStatus(state="timeout", ready=False, reason="ipc_unavailable")
+    snapshot.status.sdk_status = TextStatus(state="waiting", ready=False, reason="waiting_for_agent_state")
+
+    diagnostics = build_diagnostics(snapshot, StackStatus(mode="navigation"))
+    control_item = next(item for item in diagnostics.navigation if item.key == "control_bridge")
+
+    assert diagnostics.summary.severity == "error"
+    assert "unitree_agent" in control_item.suggestion
+    assert "UDS" in control_item.suggestion or "IPC" in control_item.suggestion
+    assert "DDS" not in control_item.suggestion
+    assert "SDK bridge" not in control_item.suggestion
+
+
+def test_diagnostics_logs_classify_unitree_agent_ipc_as_control(tmp_path):
+    log_file = tmp_path / "stack.log"
+    log_file.write_text(
+        "[unitree_agent] IPC unavailable while handling cmd_vel_safe\n"
+        "[WARN] [1710000000.0] [a2_control_bridge]: ipc_unavailable on cmd_vel_safe\n"
+        "[map_manager] saved map demo\n",
+        encoding="utf-8",
+    )
+
+    entries = read_logs(str(log_file), source="control")
+
+    assert len(entries) == 2
+    assert entries[0].source == "unitree_agent"
+    assert entries[0].category == "control"
+    assert entries[1].source == "a2_control_bridge"
 
 
 def test_default_config_exposes_camera_topics():

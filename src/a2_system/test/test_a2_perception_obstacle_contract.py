@@ -83,3 +83,13 @@ def test_map_projection_clears_short_goal_corridor_around_current_pose():
 
     radius = float(_yaml_scalar(config, "octomap_clear_current_pose_radius"))
     assert radius >= 1.20
+
+
+def test_map_manager_projection_backend_uses_ltu_with_legacy_fallback():
+    config = _read("src/a2_system/config/map_manager.yaml")
+
+    assert _yaml_scalar(config, "projection_backend") == "ltu"
+    assert _yaml_scalar(config, "projection_fallback_backend") == "legacy"
+    assert float(_yaml_scalar(config, "ltu_max_slope_ugv")) > 0.0
+    assert int(_yaml_scalar(config, "ltu_slope_estimation_size")) >= 1
+    assert int(_yaml_scalar(config, "ltu_minimum_occupancy")) >= 1

@@ -325,6 +325,12 @@ button:disabled {
   font-family: var(--mono);
 }
 
+.scene-main-row {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
 .scene-main-grid {
   position: relative;
   display: grid;
@@ -332,6 +338,8 @@ button:disabled {
   gap: 16px;
   height: 100%;
   padding: 72px 48px 56px;
+  flex: 1;
+  min-width: 0;
 }
 
 .scene-main-grid-with-media {
@@ -1224,6 +1232,320 @@ button:disabled {
   font-family: var(--mono);
 }
 
+.diag-panel {
+  width: 360px;
+  min-width: 360px;
+  max-width: 360px;
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--panel-border);
+  background: rgba(248, 251, 255, 0.94);
+  box-shadow: 8px 0 24px rgba(15, 23, 42, 0.06);
+  color: #102134;
+  font-size: 12px;
+  z-index: 20;
+}
+
+.diag-panel.diag-collapsed {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+}
+
+.diag-collapsed-bar {
+  display: flex;
+  height: 100%;
+  cursor: pointer;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.diag-collapsed-arrow {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.diag-collapsed-dot,
+.diag-item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.diag-header,
+.diag-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.diag-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.diag-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.diag-refresh-btn,
+.diag-collapse-btn,
+.diag-log-btn,
+.diag-log-tab {
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.diag-refresh-btn,
+.diag-collapse-btn,
+.diag-log-btn {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.diag-summary {
+  padding: 10px 12px;
+  border-left: 4px solid;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.62);
+  flex-shrink: 0;
+}
+
+.diag-summary-title {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.diag-summary-reason,
+.diag-summary-suggestion,
+.diag-detail-row {
+  color: #475569;
+  line-height: 1.45;
+}
+
+.diag-summary-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.diag-evidence-chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  color: #334155;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.diag-log-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.diag-log-tab {
+  background: #e2e8f0;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.diag-log-tab.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.diag-checklist {
+  overflow-y: auto;
+  flex-shrink: 1;
+  min-height: 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.diag-section-title {
+  padding: 6px 12px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.diag-item {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.diag-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-left: 3px solid;
+}
+
+.diag-item-header:hover {
+  background: rgba(219, 234, 254, 0.7);
+}
+
+.diag-item-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diag-item-state {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.diag-item-toggle {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.diag-item-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px 9px 24px;
+  background: rgba(241, 245, 249, 0.72);
+}
+
+.diag-log-viewer {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+.diag-log-header {
+  padding: 6px 10px 0;
+}
+
+.diag-log-header .diag-section-title {
+  padding: 0;
+}
+
+.diag-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.diag-auto-scroll {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.diag-log-filters {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 6px;
+  flex-shrink: 0;
+}
+
+.diag-log-filter-select,
+.diag-log-search {
+  min-width: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #fff;
+  color: #102134;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.diag-log-search {
+  flex: 1;
+}
+
+.diag-log-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.diag-log-empty {
+  padding: 18px;
+  color: #64748b;
+  text-align: center;
+}
+
+.diag-log-entry {
+  display: flex;
+  gap: 6px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.diag-log-entry:hover {
+  background: rgba(219, 234, 254, 0.7);
+}
+
+.diag-log-error .diag-log-level {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.diag-log-warn .diag-log-level {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.diag-log-info .diag-log-level {
+  color: #64748b;
+}
+
+.diag-log-level {
+  width: 42px;
+  flex-shrink: 0;
+}
+
+.diag-log-source {
+  max-width: 116px;
+  overflow: hidden;
+  color: #64748b;
+  flex-shrink: 0;
+  text-overflow: ellipsis;
+}
+
+.diag-log-msg {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 1500px) {
   .scene-main-grid-with-media {
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -1268,6 +1590,12 @@ button:disabled {
   .function-menu-panel {
     width: min(380px, calc(100% - 72px));
   }
+
+  .diag-panel {
+    width: 320px;
+    min-width: 320px;
+    max-width: 320px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1291,6 +1619,29 @@ button:disabled {
   .scene-main-grid,
   .scene-main-grid-with-media {
     padding: 112px 16px 74px;
+  }
+
+  .scene-main-row {
+    flex-direction: column;
+  }
+
+  .diag-panel,
+  .diag-panel.diag-collapsed {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .diag-panel.diag-collapsed {
+    height: 42px;
+  }
+
+  .diag-collapsed-bar {
+    flex-direction: row;
+    justify-content: center;
   }
 
   .scene-bottom-strip {

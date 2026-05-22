@@ -6,6 +6,7 @@ import {
   cancelNavigationGoal,
   deleteMapObstacle,
   deleteTaskRoute,
+  fetchDiagnostics,
   fetchHealth,
   fetchMapObstacles,
   fetchMaps,
@@ -54,10 +55,12 @@ import {
   SystemStatusSection,
 } from "./components/StatusSidebar";
 import { LightDebugPanel } from "./components/LightDebugPanel";
+import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { useBackendSocket } from "./hooks/useBackendSocket";
 import type {
   BackendEvent,
   DashboardSnapshot,
+  DiagnosticsSnapshot,
   GaitControlCommand,
   ManualVelocityCommand,
   MotionAuthorizationStatus,
@@ -299,6 +302,8 @@ export default function App() {
   const [obstacleBusy, setObstacleBusy] = useState(false);
   const [obstacleLabel, setObstacleLabel] = useState("");
   const [obstacleRadius, setObstacleRadius] = useState("0.60");
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsSnapshot | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -389,6 +394,25 @@ export default function App() {
           setSnapshot((current) => ({ ...current, health }));
         })
         .catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const refreshDiagnostics = async () => {
+    try {
+      const data = await fetchDiagnostics();
+      setDiagnostics(data);
+      setDiagnosticsError(null);
+    } catch (error) {
+      setDiagnostics(null);
+      setDiagnosticsError(error instanceof Error ? error.message : "无法获取诊断数据");
+    }
+  };
+
+  useEffect(() => {
+    void refreshDiagnostics();
+    const interval = window.setInterval(() => {
+      void refreshDiagnostics();
     }, 2500);
     return () => window.clearInterval(interval);
   }, []);
@@ -1328,44 +1352,54 @@ export default function App() {
             <PoseSection pose={snapshot.pose} />
           </FunctionMenuPanel>
 
-          <div className={`scene-main-grid ${showMediaDockNow ? "scene-main-grid-with-media" : ""}`}>
-            <div className="scene-main-view">
-              {effectiveViewMode === "3d" ? (
-                <Suspense fallback={<ThreeViewLoadingCard />}>
-                  <PointCloudCanvas3D
-                    pointcloud={snapshot.pointcloud.loaded ? snapshot.pointcloud : null}
-                    selectedMap={viewerSelectedMap}
-                    selectedPointcloudPath={viewerSelectedPointcloudPath}
+          <div className="scene-main-row">
+            <DiagnosticsPanel
+              diagnostics={diagnostics}
+              diagnosticsError={diagnosticsError}
+              onRefresh={() => {
+                void refreshDiagnostics();
+              }}
+            />
+
+            <div className={`scene-main-grid ${showMediaDockNow ? "scene-main-grid-with-media" : ""}`}>
+              <div className="scene-main-view">
+                {effectiveViewMode === "3d" ? (
+                  <Suspense fallback={<ThreeViewLoadingCard />}>
+                    <PointCloudCanvas3D
+                      pointcloud={snapshot.pointcloud.loaded ? snapshot.pointcloud : null}
+                      selectedMap={viewerSelectedMap}
+                      selectedPointcloudPath={viewerSelectedPointcloudPath}
+                      pose={snapshot.pose.available ? snapshot.pose : null}
+                      obstacles={obstacles}
+                      selectedGoal={selectedGoal}
+                      activeGoal={snapshot.navigation.goal}
+                      onSelectGoal={setSelectedGoal}
+                    />
+                  </Suspense>
+                ) : (
+                  <MapCanvas
+                    map={snapshot.map.loaded ? snapshot.map : null}
                     pose={snapshot.pose.available ? snapshot.pose : null}
                     obstacles={obstacles}
                     selectedGoal={selectedGoal}
                     activeGoal={snapshot.navigation.goal}
+                    disabled={!canSendGoal}
                     onSelectGoal={setSelectedGoal}
                   />
-                </Suspense>
-              ) : (
-                <MapCanvas
-                  map={snapshot.map.loaded ? snapshot.map : null}
-                  pose={snapshot.pose.available ? snapshot.pose : null}
-                  obstacles={obstacles}
-                  selectedGoal={selectedGoal}
-                  activeGoal={snapshot.navigation.goal}
-                  disabled={!canSendGoal}
-                  onSelectGoal={setSelectedGoal}
-                />
-              )}
-            </div>
-
-            {showMediaDockNow ? (
-              <div className="scene-media-dock">
-                <MediaDock
-                  camera={snapshot.camera}
-                  selectedMap={selectedMap}
-                  selectedPointcloudPath={selectedPointcloudPath}
-                  onSelectPointcloudPath={setSelectedPointcloudPath}
-                />
+                )}
               </div>
-            ) : null}
+
+              {showMediaDockNow ? (
+                <div className="scene-media-dock">
+                  <MediaDock
+                    camera={snapshot.camera}
+                    selectedMap={selectedMap}
+                    selectedPointcloudPath={selectedPointcloudPath}
+                    onSelectPointcloudPath={setSelectedPointcloudPath}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="scene-bottom-strip">

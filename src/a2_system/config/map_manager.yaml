@@ -22,6 +22,12 @@ map_manager:
     octomap_clear_base_frame: base_link
     octomap_clear_tf_timeout_sec: 0.2
     octomap_projection_timeout_sec: 30.0
+    projection_backend: ltu
+    projection_fallback_backend: legacy
+    ltu_max_slope_ugv: 0.26
+    ltu_slope_estimation_size: 2
+    ltu_minimum_z: 1.0
+    ltu_minimum_occupancy: 10
     active_map_topic: /a2/map_manager/active_map
     mode_topic: /a2/system_mode
     default_mode: mapping
