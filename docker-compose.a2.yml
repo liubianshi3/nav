@@ -18,7 +18,7 @@ services:
       - /run/a2:/run/a2
 
   a2-system-ws:
-    container_name: ${A2_CONTAINER_NAME:-a2-system-ws-dev}
+    container_name: ${A2_CONTAINER_NAME:-a2-nav:dev}
     image: ${A2_DOCKER_IMAGE:-a2-nav:dev}
     init: true
     build:
