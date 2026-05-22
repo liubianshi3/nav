@@ -24,7 +24,7 @@ add_custom_command(
     "${UNITREE_AGENT_PROTO_SRCS}"
     "${UNITREE_AGENT_PROTO_HDRS}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${PROTO_GEN_DIR}/a2"
-  COMMAND "${Protobuf_PROTOC_EXECUTABLE}" --cpp_out="${PROTO_GEN_DIR}" -I "${PROTO_ROOT}" "${UNITREE_AGENT_PROTO}"
+  COMMAND "${Protobuf_PROTOC_EXECUTABLE}" "--cpp_out=${PROTO_GEN_DIR}" -I "${PROTO_ROOT}" "${UNITREE_AGENT_PROTO}"
   DEPENDS "${UNITREE_AGENT_PROTO}"
   COMMENT "Generating protobuf bindings for unitree_agent IPC"
   VERBATIM
