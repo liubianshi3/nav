@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 
 import type { MapSnapshot, NavigationGoal, RobotPose, VirtualObstacleZone } from "../types";
@@ -20,6 +20,28 @@ interface ViewState {
   panY: number;
 }
 
+function defaultView(): ViewState {
+  return { zoom: 1.2, panX: 32, panY: 32 };
+}
+
+function fitMapToCanvas(canvas: HTMLCanvasElement, map: MapSnapshot): ViewState {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (width <= 0 || height <= 0 || map.width <= 0 || map.height <= 0) {
+    return defaultView();
+  }
+
+  const padding = Math.min(96, Math.max(32, Math.min(width, height) * 0.06));
+  const availableWidth = Math.max(64, width - padding * 2);
+  const availableHeight = Math.max(64, height - padding * 2);
+  const zoom = Math.min(12, Math.max(0.2, Math.min(availableWidth / map.width, availableHeight / map.height)));
+  return {
+    zoom,
+    panX: (width - map.width * zoom) / 2,
+    panY: (height - map.height * zoom) / 2,
+  };
+}
+
 export function MapCanvas({
   map,
   pose,
@@ -39,13 +61,18 @@ export function MapCanvas({
     panX: 0,
     panY: 0,
   });
-  const [view, setView] = useState<ViewState>({ zoom: 1.2, panX: 32, panY: 32 });
+  const [view, setView] = useState<ViewState>(defaultView);
   const [hoverText, setHoverText] = useState("未悬停地图");
   const viewRef = useRef(view);
 
-  const resetView = () => {
-    setView({ zoom: 1.2, panX: 32, panY: 32 });
-  };
+  const resetView = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (canvas && map?.loaded) {
+      setView(fitMapToCanvas(canvas, map));
+      return;
+    }
+    setView(defaultView());
+  }, [map]);
 
   const zoomBy = (factor: number) => {
     setView((current) => ({
@@ -104,7 +131,23 @@ export function MapCanvas({
     if (map?.loaded) {
       resetView();
     }
-  }, [map?.loaded, map?.width, map?.height, map?.resolution]);
+  }, [map?.loaded, map?.width, map?.height, map?.resolution, resetView]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !map?.loaded) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      setView(fitMapToCanvas(canvas, map));
+    });
+    resizeObserver.observe(canvas);
+    setView(fitMapToCanvas(canvas, map));
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [map?.loaded, map?.width, map?.height, map?.resolution, resetView]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

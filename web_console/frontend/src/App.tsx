@@ -662,7 +662,7 @@ export default function App() {
                   : null;
 
   const effectiveViewMode = useMemo<"2d" | "3d">(() => {
-    if (viewMode === "2d" && snapshot.map.loaded) {
+    if (viewMode === "2d") {
       return "2d";
     }
     if (viewMode === "3d" && has3DViewerData) {
@@ -1144,7 +1144,6 @@ export default function App() {
               type="button"
               className={`view-switch ${effectiveViewMode === "2d" && viewMode === "2d" ? "view-switch-active" : ""}`}
               onClick={() => setViewMode("2d")}
-              disabled={!snapshot.map.loaded}
             >
               投影2D
             </button>

@@ -992,6 +992,26 @@ def test_frontend_map_signature_tracks_projected_map_yaml():
     assert "map.map_yaml ??" in maps_signature
 
 
+def test_frontend_projected_2d_view_can_be_selected_before_map_snapshot_loads():
+    root = Path(__file__).resolve().parents[3]
+    app = (root / "web_console/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    projected_button = app[app.index("投影2D") - 260 : app.index("投影2D") + 80]
+    assert 'onClick={() => setViewMode("2d")}' in projected_button
+    assert "disabled={!snapshot.map.loaded}" not in projected_button
+    assert 'if (viewMode === "2d")' in app
+
+
+def test_frontend_projected_2d_map_fits_to_canvas_on_reset_and_resize():
+    root = Path(__file__).resolve().parents[3]
+    map_canvas = (root / "web_console/frontend/src/components/MapCanvas.tsx").read_text(encoding="utf-8")
+
+    assert "function fitMapToCanvas" in map_canvas
+    assert "ResizeObserver" in map_canvas
+    assert "setView(fitMapToCanvas(canvas, map))" in map_canvas
+    assert "Math.min(12" in map_canvas
+
+
 def test_initial_pose_readiness_waits_for_localization_pose_not_odom_fallback():
     root = Path(__file__).resolve().parents[3]
     bridge = (root / "web_console/backend/ros_bridge.py").read_text(encoding="utf-8")
