@@ -147,10 +147,10 @@ check_bridge_maps_text() {
   local name="$1"
   local pid="$2"
   local maps_text="$3"
-  if grep -q "libddsc.so.0" <<<"$maps_text"; then
-    fail "${name} pid=${pid} loaded libddsc.so.0"
+  if grep -Eq "/opt/unitree_robotics/.*/libddsc(|xx)?\\.so(\\.|$)" <<<"$maps_text"; then
+    fail "${name} pid=${pid} loaded Unitree DDS from /opt/unitree_robotics"
   else
-    pass "${name} pid=${pid} has not loaded libddsc.so.0"
+    pass "${name} pid=${pid} has not loaded Unitree DDS"
   fi
 }
 
@@ -250,10 +250,10 @@ check_unitree_agent() {
       fail "cannot read /proc/${pid}/maps for unitree_agent; run as root on the robot host"
       continue
     fi
-    if grep -q "libddsc.so.0" <<<"$maps_text"; then
-      pass "unitree_agent pid=${pid} loaded libddsc.so.0"
+    if grep -Eq "/opt/unitree_robotics/.*/libddsc(|xx)?\\.so(\\.|$)" <<<"$maps_text"; then
+      pass "unitree_agent pid=${pid} loaded Unitree DDS from /opt/unitree_robotics"
     else
-      fail "unitree_agent pid=${pid} has not loaded libddsc.so.0"
+      fail "unitree_agent pid=${pid} has not loaded Unitree DDS from /opt/unitree_robotics"
     fi
   done <<<"$pids"
 }
@@ -286,10 +286,10 @@ check_unitree_agent_in_container() {
       fail "cannot read /proc/${pid}/maps for unitree_agent in container ${container}"
       continue
     fi
-    if grep -q "libddsc.so.0" <<<"$maps_text"; then
-      pass "unitree_agent@${container} pid=${pid} loaded libddsc.so.0"
+    if grep -Eq "/opt/unitree_robotics/.*/libddsc(|xx)?\\.so(\\.|$)" <<<"$maps_text"; then
+      pass "unitree_agent@${container} pid=${pid} loaded Unitree DDS from /opt/unitree_robotics"
     else
-      fail "unitree_agent@${container} pid=${pid} has not loaded libddsc.so.0"
+      fail "unitree_agent@${container} pid=${pid} has not loaded Unitree DDS from /opt/unitree_robotics"
     fi
   done <<<"$pids"
 }
