@@ -56,7 +56,9 @@ controller_server:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.12
-      yaw_goal_tolerance: 0.15
+      # Web point-goal navigation cares about reaching the selected position.
+      # Tight final yaw alignment made the A2 spin in place after arrival.
+      yaw_goal_tolerance: 3.14
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: false

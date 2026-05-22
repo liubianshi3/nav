@@ -245,7 +245,7 @@ export function PointCloudCanvas3D({
       onSelectGoalRef.current({
         x: world.x,
         y: world.y,
-        yaw: 0,
+        yaw: lastRobotPoseRef.current.yaw,
         frame_id: "map",
       });
     };

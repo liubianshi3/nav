@@ -91,6 +91,25 @@ def test_diagnostics_explain_ndt_waiting_for_initialpose_not_generic_tf():
     assert any("relocalization_state=waiting_seed" in evidence for evidence in item.evidence)
 
 
+def test_nav2_3d_point_goal_does_not_force_final_heading_alignment():
+    root = Path(__file__).resolve().parents[3]
+    nav2_3d = yaml.safe_load((root / "src/a2_system/config/nav2_3d.yaml").read_text(encoding="utf-8"))
+
+    goal_checker = nav2_3d["controller_server"]["ros__parameters"]["general_goal_checker"]
+
+    assert goal_checker["yaw_goal_tolerance"] >= math.pi - 0.01
+
+
+def test_3d_point_selection_preserves_current_robot_yaw():
+    root = Path(__file__).resolve().parents[3]
+    source = (root / "web_console/frontend/src/components/PointCloudCanvas3D.tsx").read_text(encoding="utf-8")
+
+    selection_block = source[source.index("onSelectGoalRef.current({") : source.index("});", source.index("onSelectGoalRef.current({"))]
+
+    assert "yaw: lastRobotPoseRef.current.yaw" in selection_block
+    assert "yaw: 0" not in selection_block
+
+
 def test_diagnostics_explain_unitree_agent_ipc_boundary_not_dds():
     snapshot = DashboardSnapshot()
     snapshot.map.loaded = True
