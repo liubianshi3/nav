@@ -26,6 +26,7 @@ def _launch_setup(context, *args, **kwargs):
     raw_imu_topic = LaunchConfiguration("raw_imu_topic").perform(context)
     imu_topic = LaunchConfiguration("imu_topic").perform(context)
     start_imu_si_converter = _as_bool(LaunchConfiguration("start_imu_si_converter").perform(context))
+    start_flattened_odom_tf = _as_bool(LaunchConfiguration("start_flattened_odom_tf").perform(context))
     imu_acceleration_scale = float(LaunchConfiguration("imu_acceleration_scale").perform(context))
     imu_angular_velocity_scale = float(LaunchConfiguration("imu_angular_velocity_scale").perform(context))
     dlio_config = LaunchConfiguration("dlio_config").perform(context)
@@ -106,23 +107,6 @@ def _launch_setup(context, *args, **kwargs):
                             ("save_pcd", "/jt128/dlio/save_pcd"),
                         ],
                     ),
-                    Node(
-                        package="a2_system",
-                        executable="odometry_tf_broadcaster.py",
-                        name="jt128_dlio_odom_tf_broadcaster",
-                        output="screen",
-                        parameters=[
-                            {
-                                "odom_topic": "/jt128/dlio/odom",
-                                "parent_frame": "odom",
-                                "child_frame": "base_link",
-                                "use_msg_frame_ids": False,
-                                "flatten_z": True,
-                                "planarize_orientation": True,
-                                "use_sim_time": use_sim_time,
-                            }
-                        ],
-                    ),
                 ]
             )
         except PackageNotFoundError:
@@ -135,6 +119,27 @@ def _launch_setup(context, *args, **kwargs):
                     )
                 )
             )
+
+    if start_dlio and start_flattened_odom_tf:
+        actions.append(
+            Node(
+                package="a2_system",
+                executable="odometry_tf_broadcaster.py",
+                name="jt128_dlio_odom_tf_broadcaster",
+                output="screen",
+                parameters=[
+                    {
+                        "odom_topic": "/jt128/dlio/odom",
+                        "parent_frame": "odom",
+                        "child_frame": "base_link",
+                        "use_msg_frame_ids": False,
+                        "flatten_z": True,
+                        "planarize_orientation": True,
+                        "use_sim_time": use_sim_time,
+                    }
+                ],
+            )
+        )
 
     if start_watchdog and start_dlio:
         actions.append(
@@ -240,6 +245,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_watchdog", default_value="true"),
             DeclareLaunchArgument("start_pointcloud_previews", default_value="true"),
             DeclareLaunchArgument("start_imu_si_converter", default_value="true"),
+            DeclareLaunchArgument("start_flattened_odom_tf", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("pointcloud_topic", default_value="/jt128/front/points"),
             DeclareLaunchArgument("raw_imu_topic", default_value="/jt128/front/imu"),

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# LEGACY 2D/real1 bringup path. The current JT128 3D-first entrypoint is
+# src/a2_system/tools/start_jt128_3d_closed_loop.sh or scripts/start_a2_closed_loop.sh.
+
 WORKSPACE="${A2_WORKSPACE:-$HOME/ws/device-navigation}"
 IFACE="${A2_NETWORK_INTERFACE:-eth0}"
 MAP_YAML="${A2_MAP_YAML:-${WORKSPACE}/runtime/maps/test_map_20260423_1059/map.yaml}"

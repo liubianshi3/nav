@@ -393,9 +393,11 @@ setsid bash -lc "
   source /opt/ros/humble/setup.bash
   source '${WORKSPACE}/install/setup.bash'
 	  $(export_child_ros_env)
+	  # Static sensor/body TF is already owned by dlio_mapping.launch.py's jt128_static_tf_manager.
+	  # Do not start a second static_tf_manager from the navigation launch.
 	  ros2 launch a2_bringup jt128_3d_navigation.launch.py \
     map_id:='${MAP_ID}' \
-    start_static_tf:=true \
+    start_static_tf:=false \
     start_robot_state:=${START_ROBOT_STATE} \
     start_safety:=${START_SAFETY} \
     enable_nav2_3d:=${ENABLE_NAV2_3D} \

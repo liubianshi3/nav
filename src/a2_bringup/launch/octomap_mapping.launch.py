@@ -39,7 +39,7 @@ def generate_launch_description():
                 default_value=(
                     "[0.0, 0.0, 1.0, "
                     "1.0, 0.0, 0.0, "
-                    "0.0, -1.0, 0.0]"
+                    "0.0, 1.0, 0.0]"
                 ),
             ),
             Node(

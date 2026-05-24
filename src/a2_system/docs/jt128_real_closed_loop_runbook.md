@@ -473,7 +473,8 @@ A2_WORKSPACE=/home/unitree/a2_system_ws src/a2_system/tools/stop_jt128_stack.sh
 | `src/a2_system/config/hesai_correction/` | 两个 JT128 CSV 文件必须存在 | 无 correction 时驱动会禁止解析点云 |
 | `src/a2_bringup/launch/jt128_driver.launch.py` | 启动时复制 `hesai_correction` 到 runtime driver config dir | 保证 driver 能找到 CSV |
 | `src/a2_bringup/launch/dlio_mapping.launch.py` | DLIO 输入 `/jt128/front/points`、`/jt128/front/imu` | 本次实际传感器 topic |
-| `src/a2_bringup/launch/dlio_mapping.launch.py` | odom TF broadcaster: `odom -> base_link` | NDT/Nav2 需要 TF |
+| `src/a2_bringup/launch/dlio_mapping.launch.py` | 默认发布压平版 `odom -> base_link`（`start_flattened_odom_tf:=true`）；`start_jt128_dlio_mapping.sh --start-octomap` 路径会设 `start_flattened_odom_tf:=false` | 避免与 `octomap_mapping.launch.py` 内 `octomap_mapping_node` 发布的完整 3D TF 冲突；非 OctoMap / 直接 DLIO mapping 路径仍有压平 TF |
+| `src/a2_bringup/launch/octomap_mapping.launch.py` | `octomap_mapping_node` 发布完整 3D `odom -> base_link` TF（`publish_tf: true`） | 3D 建图时由 OctoMap 节点持有 TF，`dlio_mapping.launch.py` 压平 TF 同时被禁用 |
 | `src/a2_bringup/launch/jt128_3d_navigation.launch.py` | `ndt_odom_topic: /jt128/dlio/odom` | NDT 初值来自 DLIO |
 | `src/a2_bringup/launch/jt128_3d_navigation.launch.py` | safety `map_topic: /map` | safety 使用 projected OccupancyGrid |
 | `src/a2_bringup/launch/jt128_3d_navigation.launch.py` | safety `map_representation: occupancy_grid_2d` | 避免把 pointcloud topic 当 2D map |

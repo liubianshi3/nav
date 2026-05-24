@@ -361,12 +361,6 @@ start_stack_mode() {
     args+=("--no-global-traversability-layer")
   fi
 
-  if [[ "$ENABLE_GLOBAL_TRAVERSABILITY_LAYER" == "true" ]]; then
-    args+=("--enable-global-traversability-layer")
-  else
-    args+=("--no-global-traversability-layer")
-  fi
-
   log "Starting ${MODE} stack through ${STACK_SCRIPT}"
   "$STACK_SCRIPT" "${args[@]}"
   write_web_state "$MODE" "Started ${MODE} through start_jt128_3d_closed_loop.sh"

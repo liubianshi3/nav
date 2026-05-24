@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# LEGACY 2D/real1 bringup path. The current JT128 3D-first entrypoint is
+# src/a2_system/tools/start_jt128_3d_closed_loop.sh or scripts/start_a2_closed_loop.sh.
+
 REMOTE_HOST="${REMOTE_HOST:-a2}"
 REMOTE_WS="${REMOTE_WS:-/home/unitree/ws/device-navigation}"
 REMOTE_USER_HOST="${REMOTE_USER_HOST:-${REMOTE_HOST}}"

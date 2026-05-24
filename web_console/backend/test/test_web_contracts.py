@@ -886,18 +886,18 @@ def test_dlio_mapping_launch_uses_si_imu_converter():
     assert 'os.environ.get("A2_WORKSPACE"' in launch
 
 
-def test_jt128_lidar_and_imu_axes_are_configured_separately():
+def test_jt128_lidar_extrinsic_matches_unitree_a2_sdk_structural_matrix():
     root = Path(__file__).resolve().parents[3]
     dlio_config = (root / "src/a2_system/config/dlio_jt128.yaml").read_text(encoding="utf-8")
     extrinsics_config = (root / "src/a2_system/config/jt128_extrinsics.yaml").read_text(encoding="utf-8")
 
     assert "extrinsics/baselink2imu/R: [0.0, 0.0, 1.0," in dlio_config
     assert "extrinsics/baselink2lidar/R: [0.0, 0.0, 1.0," in dlio_config
-    assert "0.0, -1.0, 0.0]" in dlio_config
-    assert "The JT128 point cloud axes differ from the internal IMU axes" in dlio_config
+    assert "0.0, 1.0, 0.0]" in dlio_config
+    assert "JT128 point cloud axes: raw Z forward, raw X left, raw Y up" in dlio_config
     assert "rotation_matrix: [0.0, 0.0, 1.0," in extrinsics_config
-    assert "0.0, -1.0, 0.0]" in extrinsics_config
-    assert "jt128_internal_imu" in extrinsics_config
+    assert "0.0, 1.0, 0.0]" in extrinsics_config
+    assert "unitree_a2_sdk_lidar_design_extrinsics" in extrinsics_config
 
 
 def test_jt128_dlio_watchdog_does_not_stop_mapping_on_single_speed_spike():

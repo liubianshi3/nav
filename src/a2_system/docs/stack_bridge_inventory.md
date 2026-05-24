@@ -60,7 +60,7 @@ Generated from the current repository layout on 2026-05-18.
 | `pointcloud_to_laserscan` | 3D pointcloud -> 2D scan | Legacy 2D SLAM/Nav2 compatibility |
 | `traversability_to_obstacle_cloud.py` | traversability grid -> obstacle pointcloud | Feeds local obstacles into Nav2/collision workflows |
 | `odometry_to_pose_covariance.py` | odometry -> pose-with-covariance | Autoware NDT initial guess bridge when enabled |
-| `odometry_tf_broadcaster.py` | odometry -> TF | Publishes flattened `odom -> base_link` for DLIO mapping path |
+| `odometry_tf_broadcaster.py` | odometry -> TF | Publishes flattened `odom -> base_link`; enabled by default in `dlio_mapping.launch.py` (`start_flattened_odom_tf:=true`); disabled automatically when OctoMap is active so that `octomap_mapping_node` (in `octomap_mapping.launch.py`) owns the full 3D TF |
 | `imu_to_si_converter.py` | raw lidar IMU units -> SI IMU | Normalizes JT128 IMU input for DLIO |
 
 ## Main Sequence

@@ -348,21 +348,7 @@ class OctomapMappingNode(Node):
         odom_to_base.transform.translation.z = msg.pose.pose.position.z
         odom_to_base.transform.rotation = msg.pose.pose.orientation
 
-        base_to_lidar = TransformStamped()
-        base_to_lidar.header.stamp = msg.header.stamp
-        base_to_lidar.header.frame_id = base_frame
-        base_to_lidar.child_frame_id = self.lidar_frame
-        base_to_lidar.transform.translation.x = self.lidar_to_base_translation[0]
-        base_to_lidar.transform.translation.y = self.lidar_to_base_translation[1]
-        base_to_lidar.transform.translation.z = self.lidar_to_base_translation[2]
-        (
-            base_to_lidar.transform.rotation.x,
-            base_to_lidar.transform.rotation.y,
-            base_to_lidar.transform.rotation.z,
-            base_to_lidar.transform.rotation.w,
-        ) = self.lidar_to_base_quaternion
-
-        self.tf_broadcaster.sendTransform([odom_to_base, base_to_lidar])
+        self.tf_broadcaster.sendTransform(odom_to_base)
 
     def _nearest_odom_delta(self, stamp: float) -> float | None:
         if not self.odom_stamps:

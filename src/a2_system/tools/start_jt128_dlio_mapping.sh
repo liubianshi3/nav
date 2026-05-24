@@ -348,6 +348,10 @@ EFFECTIVE_START_OCTOMAP=false
 if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
   EFFECTIVE_START_OCTOMAP=true
 fi
+START_FLATTENED_ODOM_TF=true
+if [[ "$EFFECTIVE_START_OCTOMAP" == "true" ]]; then
+  START_FLATTENED_ODOM_TF=false
+fi
 
 LOG_FILE="${LOG_DIR}/jt128_dlio_mapping_$(date +%Y%m%d_%H%M%S).log"
 log "Starting JT128 DLIO mapping launch"
@@ -363,6 +367,7 @@ nohup bash -lc "
     start_driver:=true \
     start_dlio:=${START_DLIO} \
     start_map_manager:=true \
+    start_flattened_odom_tf:=${START_FLATTENED_ODOM_TF} \
     map_root:='${MAP_ROOT}' \
     use_sim_time:=false
 " >"$LOG_FILE" 2>&1 &
