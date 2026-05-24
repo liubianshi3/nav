@@ -188,6 +188,8 @@ void dlio::OdomNode::getParams() {
   dlio::declare_param(this, "frames/lidar", this->lidar_frame, "lidar");
   dlio::declare_param(this, "frames/imu", this->imu_frame, "imu");
 
+  dlio::declare_param(this, "publish_tf", this->publish_tf_, true);
+
   // Deskew Flag
   dlio::declare_param(this, "pointcloud/deskew", this->deskew_, true);
 
@@ -382,22 +384,24 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
   this->path_pub->publish(this->path_ros);
 
   // transform: odom to baselink
-  geometry_msgs::msg::TransformStamped transformStamped;
+  if (this->publish_tf_) {
+    geometry_msgs::msg::TransformStamped transformStamped;
 
-  transformStamped.header.stamp = this->imu_stamp;
-  transformStamped.header.frame_id = this->odom_frame;
-  transformStamped.child_frame_id = this->baselink_frame;
+    transformStamped.header.stamp = this->imu_stamp;
+    transformStamped.header.frame_id = this->odom_frame;
+    transformStamped.child_frame_id = this->baselink_frame;
 
-  transformStamped.transform.translation.x = this->state.p[0];
-  transformStamped.transform.translation.y = this->state.p[1];
-  transformStamped.transform.translation.z = this->state.p[2];
+    transformStamped.transform.translation.x = this->state.p[0];
+    transformStamped.transform.translation.y = this->state.p[1];
+    transformStamped.transform.translation.z = this->state.p[2];
 
-  transformStamped.transform.rotation.w = this->state.q.w();
-  transformStamped.transform.rotation.x = this->state.q.x();
-  transformStamped.transform.rotation.y = this->state.q.y();
-  transformStamped.transform.rotation.z = this->state.q.z();
+    transformStamped.transform.rotation.w = this->state.q.w();
+    transformStamped.transform.rotation.x = this->state.q.x();
+    transformStamped.transform.rotation.y = this->state.q.y();
+    transformStamped.transform.rotation.z = this->state.q.z();
 
-  br->sendTransform(transformStamped);
+    br->sendTransform(transformStamped);
+  }
 
   // Sensor extrinsic TFs are owned by static_tf_manager on /tf_static.
   // DLIO still uses extrinsics internally for deskewing and point cloud transforms.

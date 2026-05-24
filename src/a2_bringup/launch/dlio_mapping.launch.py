@@ -27,6 +27,7 @@ def _launch_setup(context, *args, **kwargs):
     imu_topic = LaunchConfiguration("imu_topic").perform(context)
     start_imu_si_converter = _as_bool(LaunchConfiguration("start_imu_si_converter").perform(context))
     start_flattened_odom_tf = _as_bool(LaunchConfiguration("start_flattened_odom_tf").perform(context))
+    dlio_publish_tf = _as_bool(LaunchConfiguration("dlio_publish_tf").perform(context))
     imu_acceleration_scale = float(LaunchConfiguration("imu_acceleration_scale").perform(context))
     imu_angular_velocity_scale = float(LaunchConfiguration("imu_angular_velocity_scale").perform(context))
     dlio_config = LaunchConfiguration("dlio_config").perform(context)
@@ -83,7 +84,13 @@ def _launch_setup(context, *args, **kwargs):
                         executable="dlio_odom_node",
                         name="jt128_dlio_odom",
                         output="screen",
-                        parameters=[dlio_config, {"use_sim_time": use_sim_time}],
+                        parameters=[
+                            dlio_config,
+                            {
+                                "use_sim_time": use_sim_time,
+                                "publish_tf": dlio_publish_tf,
+                            },
+                        ],
                         remappings=[
                             ("pointcloud", pointcloud_topic),
                             ("imu", imu_topic),
@@ -246,6 +253,7 @@ def generate_launch_description():
             DeclareLaunchArgument("start_pointcloud_previews", default_value="true"),
             DeclareLaunchArgument("start_imu_si_converter", default_value="true"),
             DeclareLaunchArgument("start_flattened_odom_tf", default_value="true"),
+            DeclareLaunchArgument("dlio_publish_tf", default_value="true"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("pointcloud_topic", default_value="/jt128/front/points"),
             DeclareLaunchArgument("raw_imu_topic", default_value="/jt128/front/imu"),

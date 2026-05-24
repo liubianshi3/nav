@@ -10,6 +10,7 @@ UNITREE_SLAM_SERVICE="${A2_UNITREE_SLAM_SERVICE:-unitree_slam.service}"
 START_WEB=1
 DRIVER_ONLY=0
 ALLOW_MISSING_DLIO=0
+DLIO_PUBLISH_TF="${A2_DLIO_PUBLISH_TF:-true}"
 OCTOMAP_REQUESTED=true
 MAP_ROOT="${A2_MAP_ROOT:-${WORKSPACE}/runtime/maps}"
 LOG_DIR="${WORKSPACE}/runtime/logs"
@@ -25,7 +26,7 @@ esac
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [--iface net1] [--driver-only] [--no-web] [--allow-missing-dlio] [--no-octomap] [--start-octomap]
+  $(basename "$0") [--iface net1] [--driver-only] [--no-web] [--allow-missing-dlio] [--no-octomap] [--start-octomap] [--dlio-publish-tf true|false]
 
 Starts the JT128 + DLIO mapping stack:
   - stops Unitree native SLAM/DWA and old 2D mapping/localization interference
@@ -39,12 +40,36 @@ Notes:
   - normal mapping mode starts OctoMap by default (pass --no-octomap to skip)
   - --no-octomap disables OctoMap launch (used by navigation mode to save CPU)
   - --start-octomap explicitly enables OctoMap launch (default for standalone mapping)
+  - --dlio-publish-tf controls whether DLIO publishes odom -> base_link TF; mapping uses true, navigation uses false
   - --driver-only, or missing DLIO with --allow-missing-dlio, disables both DLIO and OctoMap
 
 Install DLIO first when needed:
   ${WORKSPACE}/install/a2_system/share/a2_system/install_dlio_ros2.sh
 EOF
 }
+
+die() {
+  printf '[ERROR] %s\n' "$*" >&2
+  exit 1
+}
+
+normalize_bool_arg() {
+  local name="$1"
+  local value="$2"
+  case "${value,,}" in
+    true|1|yes|on)
+      printf 'true'
+      ;;
+    false|0|no|off)
+      printf 'false'
+      ;;
+    *)
+      die "${name} must be true or false, got: ${value}"
+      ;;
+  esac
+}
+
+DLIO_PUBLISH_TF="$(normalize_bool_arg A2_DLIO_PUBLISH_TF "$DLIO_PUBLISH_TF")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,6 +97,11 @@ while [[ $# -gt 0 ]]; do
       OCTOMAP_REQUESTED=true
       shift
       ;;
+    --dlio-publish-tf)
+      [[ $# -ge 2 ]] || die "--dlio-publish-tf requires true or false"
+      DLIO_PUBLISH_TF="$(normalize_bool_arg --dlio-publish-tf "$2")"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -83,6 +113,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$DRIVER_ONLY" -eq 0 && "$OCTOMAP_REQUESTED" == "true" && "$DLIO_PUBLISH_TF" != "true" ]]; then
+  die "--start-octomap requires --dlio-publish-tf true because OctoMap does not publish odom -> base_link TF"
+fi
+
+if [[ "$DRIVER_ONLY" -eq 0 && "$OCTOMAP_REQUESTED" == "false" && "$DLIO_PUBLISH_TF" == "true" ]]; then
+  die "--no-octomap requires --dlio-publish-tf false because flattened odom TF will publish odom -> base_link"
+fi
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -97,11 +135,6 @@ export_child_ros_env() {
   if [[ -n "${CYCLONEDDS_URI:-}" ]]; then
     printf 'export CYCLONEDDS_URI=%q\n' "${CYCLONEDDS_URI}"
   fi
-}
-
-die() {
-  printf '[ERROR] %s\n' "$*" >&2
-  exit 1
 }
 
 require_cmd() {
@@ -348,9 +381,15 @@ EFFECTIVE_START_OCTOMAP=false
 if [[ "$START_DLIO" == "true" && "$OCTOMAP_REQUESTED" == "true" ]]; then
   EFFECTIVE_START_OCTOMAP=true
 fi
+if [[ "$EFFECTIVE_START_OCTOMAP" == "true" && "$DLIO_PUBLISH_TF" != "true" ]]; then
+  die "--start-octomap requires --dlio-publish-tf true because OctoMap does not publish odom -> base_link TF"
+fi
 START_FLATTENED_ODOM_TF=true
 if [[ "$EFFECTIVE_START_OCTOMAP" == "true" ]]; then
   START_FLATTENED_ODOM_TF=false
+fi
+if [[ "$START_DLIO" == "true" && "$DLIO_PUBLISH_TF" == "true" && "$START_FLATTENED_ODOM_TF" == "true" ]]; then
+  die "dlio_publish_tf and start_flattened_odom_tf cannot both be true because both publish odom -> base_link TF"
 fi
 
 LOG_FILE="${LOG_DIR}/jt128_dlio_mapping_$(date +%Y%m%d_%H%M%S).log"
@@ -368,6 +407,7 @@ nohup bash -lc "
     start_dlio:=${START_DLIO} \
     start_map_manager:=true \
     start_flattened_odom_tf:=${START_FLATTENED_ODOM_TF} \
+    dlio_publish_tf:=${DLIO_PUBLISH_TF} \
     map_root:='${MAP_ROOT}' \
     use_sim_time:=false
 " >"$LOG_FILE" 2>&1 &
@@ -382,6 +422,7 @@ jt128_ip: ${JT128_IP}
 start_dlio: ${START_DLIO}
 requested_start_octomap: ${REQUEST_START_OCTOMAP}
 effective_start_octomap: ${EFFECTIVE_START_OCTOMAP}
+dlio_publish_tf: ${DLIO_PUBLISH_TF}
 map_root: ${MAP_ROOT}
 started_at: $(date --iso-8601=seconds)
 EOF

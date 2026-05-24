@@ -271,7 +271,7 @@ class OctomapMappingNode(Node):
         self.self_filter_max_z = float(self.declare_parameter("self_filter_max_z", 0.80).value)
         self.min_range_m = float(self.declare_parameter("min_range_m", 0.20).value)
         self.max_range_m = float(self.declare_parameter("max_range_m", 12.0).value)
-        self.publish_tf = _bool_value(self.declare_parameter("publish_tf", True).value)
+        self.publish_tf = _bool_value(self.declare_parameter("publish_tf", False).value)
         self.base_frame = str(self.declare_parameter("base_frame", "base_link").value)
         self.lidar_frame = str(self.declare_parameter("lidar_frame", "jt128_front_link").value)
         self.lidar_to_base_quaternion = _quaternion_from_rotation_matrix(

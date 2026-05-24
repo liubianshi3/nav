@@ -371,10 +371,13 @@ if [[ ! -x "$DLIO_MAPPING_SCRIPT" ]]; then
   DLIO_MAPPING_SCRIPT="${WORKSPACE}/src/a2_system/tools/start_jt128_dlio_mapping.sh"
 fi
 [[ -x "$DLIO_MAPPING_SCRIPT" ]] || die "DLIO mapping script not found: ${DLIO_MAPPING_SCRIPT}"
-"$DLIO_MAPPING_SCRIPT" \
-  --iface "$LIDAR_IFACE" \
-  --no-web \
-  --start-octomap
+DLIO_MAPPING_ARGS=(--iface "$LIDAR_IFACE" --no-web)
+if [[ "$MODE" == "mapping" ]]; then
+  DLIO_MAPPING_ARGS+=(--start-octomap --dlio-publish-tf true)
+else
+  DLIO_MAPPING_ARGS+=(--no-octomap --dlio-publish-tf false)
+fi
+"$DLIO_MAPPING_SCRIPT" "${DLIO_MAPPING_ARGS[@]}"
 
 start_web
 

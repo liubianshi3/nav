@@ -311,6 +311,8 @@ private:
   std::string version_;
   int num_threads_;
 
+  bool publish_tf_;
+
   bool deskew_;
 
   double gravity_;
