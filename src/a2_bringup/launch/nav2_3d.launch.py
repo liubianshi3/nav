@@ -1,12 +1,62 @@
 import os
+import tempfile
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def _as_bool(value) -> bool:
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _write_nav2_3d_params(base_params_path: str, enable_global_traversability_layer: bool) -> str:
+    with open(base_params_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    global_costmap_params = config["global_costmap"]["global_costmap"]["ros__parameters"]
+    if enable_global_traversability_layer:
+        global_costmap_params["plugins"] = [
+            "static_layer",
+            "global_traversability_layer",
+            "inflation_layer",
+        ]
+    else:
+        global_costmap_params["plugins"] = ["static_layer", "inflation_layer"]
+
+    fd, params_path = tempfile.mkstemp(prefix="a2_nav2_3d_", suffix=".yaml")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+
+    return params_path
+
+
+def _launch_nav2_navigation(context, *, nav2_share: str, a2_system_share: str):
+    enable_global_traversability_layer = _as_bool(
+        LaunchConfiguration("enable_global_traversability_layer").perform(context)
+    )
+    nav2_params_file = _write_nav2_3d_params(
+        os.path.join(a2_system_share, "config", "nav2_3d.yaml"),
+        enable_global_traversability_layer,
+    )
+
+    return [
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(f"{nav2_share}/launch/navigation_launch.py"),
+            launch_arguments={
+                "use_sim_time": LaunchConfiguration("use_sim_time"),
+                "params_file": nav2_params_file,
+                "autostart": "true",
+                "use_composition": "False",
+                "use_respawn": "False",
+            }.items(),
+        )
+    ]
 
 
 def generate_launch_description():
@@ -179,14 +229,13 @@ def generate_launch_description():
         ),
 
         # Nav2 planning/control stack. Localization is provided by NDT + EKF.
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(f"{nav2_share}/launch/navigation_launch.py"),
-            launch_arguments={
-                "use_sim_time": use_sim_time,
-                "params_file": f"{a2_system_share}/config/nav2_3d.yaml",
-                "autostart": "true",
-                "use_composition": "False",
-                "use_respawn": "False",
-            }.items(),
+        # Generate a small runtime params file so the optional global
+        # traversability layer is only instantiated when its producer is enabled.
+        OpaqueFunction(
+            function=_launch_nav2_navigation,
+            kwargs={
+                "nav2_share": nav2_share,
+                "a2_system_share": a2_system_share,
+            },
         ),
     ])

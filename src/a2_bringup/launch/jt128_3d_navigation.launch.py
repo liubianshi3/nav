@@ -122,7 +122,7 @@ def generate_launch_description():
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument(
                 "ndt_odom_topic",
-                default_value="/jt128/dlio/odom",
+                default_value="/odometry/local",
                 description="Odometry topic used by ndt_adapter for NDT initial guesses.",
             ),
             DeclareLaunchArgument("enable_nav2_3d", default_value="true",

@@ -106,22 +106,34 @@ class TestErrorRecoveryPublishesEmptyOutput(unittest.TestCase):
 
 
 class TestConfigLayerIsStaticLayer(unittest.TestCase):
-    def test_global_costmap_uses_static_layer_for_traversability(self):
+    def test_global_traversability_layer_is_opt_in_static_layer(self):
         import yaml
         path = _WS / "src" / "a2_system" / "config" / "nav2_3d.yaml"
         self.assertTrue(path.exists(), f"nav2_3d.yaml not found: {path}")
         config = yaml.safe_load(path.read_text())
         gc = config.get("global_costmap", {}).get("global_costmap", {}).get("ros__parameters", {})
         plugins = gc.get("plugins", [])
-        self.assertIn("global_traversability_layer", plugins,
-                      "global_traversability_layer must be in global_costmap plugins")
+        self.assertNotIn(
+            "global_traversability_layer",
+            plugins,
+            "default global_costmap plugins must not instantiate optional traversability layer",
+        )
         tl = gc.get("global_traversability_layer", {})
-        self.assertEqual(tl.get("plugin"), "nav2_costmap_2d::StaticLayer",
-                         "global_traversability_layer must use StaticLayer")
-        self.assertIn("subscribe_to_updates", tl,
-                      "StaticLayer must have subscribe_to_updates")
-        self.assertEqual(tl.get("topic"), "/a2/global_traversability/costmap",
-                         "StaticLayer must subscribe to costmap topic not PointCloud2")
+        self.assertEqual(
+            tl.get("plugin"),
+            "nav2_costmap_2d::StaticLayer",
+            "global_traversability_layer must use StaticLayer when enabled",
+        )
+        self.assertIn(
+            "subscribe_to_updates",
+            tl,
+            "StaticLayer must have subscribe_to_updates",
+        )
+        self.assertEqual(
+            tl.get("topic"),
+            "/a2/global_traversability/costmap",
+            "StaticLayer must subscribe to costmap topic not PointCloud2",
+        )
 
     def test_no_obstacle_layer_observation_sources(self):
         import yaml

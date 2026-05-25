@@ -43,6 +43,31 @@ class TestLaunchDefaults(unittest.TestCase):
             "nav2_3d.launch.py global_traversability_config must point to integrator YAML",
         )
 
+    def test_nav2_3d_launch_rewrites_optional_layer_plugins(self):
+        path = _WS / "src" / "a2_bringup" / "launch" / "nav2_3d.launch.py"
+        self.assertTrue(path.exists(), f"file not found: {path}")
+        text = path.read_text()
+        self.assertIn(
+            "_write_nav2_3d_params",
+            text,
+            "nav2_3d.launch.py must generate runtime params for optional traversability layer",
+        )
+        self.assertIn(
+            '"global_traversability_layer"',
+            text,
+            "nav2_3d.launch.py must be able to add global_traversability_layer when enabled",
+        )
+        self.assertIn(
+            '["static_layer", "inflation_layer"]',
+            text,
+            "nav2_3d.launch.py must keep default global_costmap plugins minimal",
+        )
+        self.assertIn(
+            "OpaqueFunction",
+            text,
+            "nav2_3d.launch.py must evaluate enable_global_traversability_layer at launch runtime",
+        )
+
 
 class TestStackScript(unittest.TestCase):
     def test_stack_script_safety_default_and_opt_in(self):

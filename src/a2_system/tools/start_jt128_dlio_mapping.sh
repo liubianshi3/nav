@@ -392,6 +392,11 @@ if [[ "$START_DLIO" == "true" && "$DLIO_PUBLISH_TF" == "true" && "$START_FLATTEN
   die "dlio_publish_tf and start_flattened_odom_tf cannot both be true because both publish odom -> base_link TF"
 fi
 
+START_MAPPING_COMPONENTS=false
+if [[ "$EFFECTIVE_START_OCTOMAP" == "true" ]]; then
+  START_MAPPING_COMPONENTS=true
+fi
+
 LOG_FILE="${LOG_DIR}/jt128_dlio_mapping_$(date +%Y%m%d_%H%M%S).log"
 log "Starting JT128 DLIO mapping launch"
 nohup bash -lc "
@@ -405,7 +410,8 @@ nohup bash -lc "
   ros2 launch a2_bringup dlio_mapping.launch.py \
     start_driver:=true \
     start_dlio:=${START_DLIO} \
-    start_map_manager:=true \
+    start_dlio_map:=${START_MAPPING_COMPONENTS} \
+    start_map_manager:=${START_MAPPING_COMPONENTS} \
     start_flattened_odom_tf:=${START_FLATTENED_ODOM_TF} \
     dlio_publish_tf:=${DLIO_PUBLISH_TF} \
     map_root:='${MAP_ROOT}' \
@@ -422,6 +428,7 @@ jt128_ip: ${JT128_IP}
 start_dlio: ${START_DLIO}
 requested_start_octomap: ${REQUEST_START_OCTOMAP}
 effective_start_octomap: ${EFFECTIVE_START_OCTOMAP}
+start_mapping_components: ${START_MAPPING_COMPONENTS}
 dlio_publish_tf: ${DLIO_PUBLISH_TF}
 map_root: ${MAP_ROOT}
 started_at: $(date --iso-8601=seconds)
@@ -490,14 +497,20 @@ log "  ros2 topic hz /jt128/front/imu"
 log "  ros2 topic hz /jt128/front/points_preview"
 if [[ "$START_DLIO" == "true" ]]; then
   log "  ros2 topic info /jt128/dlio/odom"
-  log "  ros2 topic info /jt128/dlio/map_points"
-  log "  ros2 topic hz /jt128/dlio/map_points_preview"
-  log "  ros2 topic info /octomap_binary"
-  log "  ros2 topic info /octomap_full"
-  log "  ros2 topic info /projected_map"
-  log "  ls -lh ${MAP_ROOT}/octomap_live.bt"
+  if [[ "$START_MAPPING_COMPONENTS" == "true" ]]; then
+    log "  ros2 topic info /jt128/dlio/map_points"
+    log "  ros2 topic hz /jt128/dlio/map_points_preview"
+    log "  ros2 topic info /octomap_binary"
+    log "  ros2 topic info /octomap_full"
+    log "  ros2 topic info /projected_map"
+    log "  ls -lh ${MAP_ROOT}/octomap_live.bt"
+    log "Save PCD:"
+    log "  ros2 service call /map_manager/manage_map a2_interfaces/srv/ManageMap \"{command: save, map_id: jt128_test}\""
+  else
+    log "  ros2 topic hz /odometry/local"
+    log "  ros2 node list | rg 'jt128_dlio_odom_tf_broadcaster|ekf_local_filter_node'"
+    log "  Mapping components disabled: dlio_map_node, map_manager, and OctoMap are not started."
+  fi
 else
-  log "  DLIO disabled -> OctoMap is also disabled in this mode"
+  log "  DLIO disabled -> OctoMap and mapping components are also disabled in this mode"
 fi
-log "Save PCD:"
-log "  ros2 service call /map_manager/manage_map a2_interfaces/srv/ManageMap \"{command: save, map_id: jt128_test}\""

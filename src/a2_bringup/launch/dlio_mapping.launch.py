@@ -18,6 +18,7 @@ def _launch_setup(context, *args, **kwargs):
     del args, kwargs
     a2_system_share = get_package_share_directory("a2_system")
     start_dlio = _as_bool(LaunchConfiguration("start_dlio").perform(context))
+    start_dlio_map = _as_bool(LaunchConfiguration("start_dlio_map").perform(context))
     start_map_manager = _as_bool(LaunchConfiguration("start_map_manager").perform(context))
     start_watchdog = _as_bool(LaunchConfiguration("start_watchdog").perform(context))
     start_pointcloud_previews = _as_bool(LaunchConfiguration("start_pointcloud_previews").perform(context))
@@ -102,6 +103,10 @@ def _launch_setup(context, *args, **kwargs):
                             ("deskewed", "/jt128/dlio/pointcloud/deskewed"),
                         ],
                     ),
+                ]
+            )
+            if start_dlio_map:
+                actions.append(
                     Node(
                         package="direct_lidar_inertial_odometry",
                         executable="dlio_map_node",
@@ -113,9 +118,8 @@ def _launch_setup(context, *args, **kwargs):
                             ("map", "/jt128/dlio/map_points"),
                             ("save_pcd", "/jt128/dlio/save_pcd"),
                         ],
-                    ),
-                ]
-            )
+                    )
+                )
         except PackageNotFoundError:
             actions.append(
                 LogInfo(
@@ -136,7 +140,7 @@ def _launch_setup(context, *args, **kwargs):
                 output="screen",
                 parameters=[
                     {
-                        "odom_topic": "/jt128/dlio/odom",
+                        "odom_topic": "/odometry/local",
                         "parent_frame": "odom",
                         "child_frame": "base_link",
                         "use_msg_frame_ids": False,
@@ -193,7 +197,7 @@ def _launch_setup(context, *args, **kwargs):
                 ],
             )
         )
-        if start_dlio:
+        if start_dlio and start_dlio_map:
             actions.append(
                 Node(
                     package="a2_system",
@@ -248,6 +252,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("start_driver", default_value="true"),
             DeclareLaunchArgument("start_dlio", default_value="true"),
+            DeclareLaunchArgument("start_dlio_map", default_value="true"),
             DeclareLaunchArgument("start_map_manager", default_value="true"),
             DeclareLaunchArgument("start_watchdog", default_value="true"),
             DeclareLaunchArgument("start_pointcloud_previews", default_value="true"),
