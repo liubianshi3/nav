@@ -1,11 +1,14 @@
 import math
 import copy
+import time
+from collections import deque
+from dataclasses import dataclass
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
-from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
@@ -129,6 +132,14 @@ def should_publish_periodic_guess(elapsed_sec: float | None, period_sec: float, 
         return True
     return elapsed_sec >= period_sec
 
+
+@dataclass
+class OdomSample:
+    msg_stamp: Time
+    receive_mono_sec: float
+    transform: np.ndarray
+
+
 class A2NdtAdapter(Node):
     def __init__(self):
         super().__init__('a2_ndt_adapter')
@@ -154,6 +165,8 @@ class A2NdtAdapter(Node):
         self.declare_parameter('score_threshold', 2.3)
         self.declare_parameter('score_min_is_good', True)
         self.declare_parameter('odom_timeout_sec', 1.0)
+        self.declare_parameter('odom_buffer_sec', 3.0)
+        self.declare_parameter('max_ndt_odom_delta_sec', 0.15)
         self.declare_parameter('score_timeout_sec', 12.0)
         self.declare_parameter('max_score_pose_delta_sec', 2.0)
         self.declare_parameter('max_map_to_odom_translation_step', 1.0)
@@ -188,6 +201,9 @@ class A2NdtAdapter(Node):
         self.last_odom_stamp = None
         self.last_odom_msg_stamp = None
         self.last_odom_receive_time = None
+        self.odom_buffer = deque()
+        self.last_ndt_odom_delta_sec = float("inf")
+        self.last_ndt_odom_match_reason = "no_match"
         self.last_iteration_num = None
         self.cached_map = None
         self.cached_map_frame = self.get_parameter('map_frame').value
@@ -241,8 +257,17 @@ class A2NdtAdapter(Node):
         self.last_odom_receive_time = self.get_clock().now()
         self.last_odom_msg_stamp = Time.from_msg(msg.header.stamp)
         self.last_odom_msg = msg
-        self.last_odom_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
+        odom_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
+        self.last_odom_to_base = odom_to_base
         self.last_odom_stamp = self.last_odom_msg_stamp
+        self.odom_buffer.append(
+            OdomSample(
+                msg_stamp=self.last_odom_msg_stamp,
+                receive_mono_sec=time.monotonic(),
+                transform=odom_to_base,
+            )
+        )
+        self.prune_odom_buffer()
         if not self._received_first_odom:
             self._received_first_odom = True
             self.get_logger().info(
@@ -262,20 +287,43 @@ class A2NdtAdapter(Node):
         pose_receive_time = self.get_clock().now()
         self.last_pose_stamp = pose_receive_time
         if self.last_odom_to_base is None:
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "odom_unavailable"
             self.publish_status(False, "rejected", "ndt_pose_without_odom")
-            self.get_logger().warn("NDT pose rejected: no odom available", throttle_duration_sec=2.0)
+            self.get_logger().warn(
+                "NDT pose rejected: no odom available",
+                throttle_duration_sec=2.0,
+            )
             return
-        if not self.odom_is_fresh():
-            age = (self.get_clock().now() - self.last_odom_stamp).nanoseconds * 1e-9 if self.last_odom_stamp else -1
-            self.publish_status(False, "rejected", "odom_stale")
-            self.get_logger().warn(f"NDT pose rejected: odom stale ({age:.1f}s old)", throttle_duration_sec=2.0)
+
+        pose_stamp = Time.from_msg(msg.header.stamp)
+        if pose_stamp.nanoseconds == 0:
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "ndt_pose_zero_stamp"
+            self.publish_status(False, "rejected", "ndt_pose_zero_stamp")
+            self.get_logger().warn(
+                "NDT pose rejected: zero header.stamp cannot be synchronized with odom",
+                throttle_duration_sec=2.0,
+            )
             return
+
         if not self.score_is_fresh():
-            age = (self.get_clock().now() - self.last_score_stamp).nanoseconds * 1e-9 if self.last_score_stamp else -1
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "not_checked_score_stale"
+            age = (
+                (self.get_clock().now() - self.last_score_stamp).nanoseconds * 1e-9
+                if self.last_score_stamp
+                else -1
+            )
             self.publish_status(False, "rejected", "score_stale")
-            self.get_logger().warn(f"NDT pose rejected: score stale ({age:.1f}s old)", throttle_duration_sec=2.0)
+            self.get_logger().warn(
+                f"NDT pose rejected: score stale ({age:.1f}s old)",
+                throttle_duration_sec=2.0,
+            )
             return
         if not self.current_score_is_acceptable():
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "not_checked_score_unacceptable"
             self.publish_status(False, "rejected", "score_below_threshold")
             threshold = float(self.get_parameter('score_threshold').value)
             self.get_logger().warn(
@@ -283,6 +331,56 @@ class A2NdtAdapter(Node):
                 throttle_duration_sec=0.5,
             )
 
+            return
+
+        if not self.score_pose_delta_is_bounded(pose_receive_time):
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "not_checked_score_pose_delta"
+            delta = self.score_pose_delta_sec(pose_receive_time)
+            self.publish_status(False, "rejected", "score_pose_delta_too_large")
+            self.get_logger().warn(
+                f"NDT pose rejected: score/pose receive-time delta too large ({delta:.3f}s)",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        # odom_is_fresh() checks whether the odom stream is alive using the
+        # latest receive time. The buffer lookup below checks whether this NDT
+        # pose stamp has a time-aligned odom msg. Both are required: a live
+        # stream may not cover an old NDT stamp, and a historical sample does
+        # not prove the stream is still alive.
+        if not self.odom_is_fresh():
+            self.last_ndt_odom_delta_sec = float("inf")
+            self.last_ndt_odom_match_reason = "not_checked_odom_stale"
+            age = self.age_sec(self.last_odom_receive_time)
+            self.publish_status(False, "rejected", "odom_stale")
+            self.get_logger().warn(
+                f"NDT pose rejected: odom stale ({age:.1f}s old)",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        odom_sample, odom_delta_sec, match_reason = (
+            self.find_nearest_odom_sample_by_stamp(pose_stamp)
+        )
+        self.last_ndt_odom_delta_sec = odom_delta_sec
+        self.last_ndt_odom_match_reason = match_reason
+        if odom_sample is None:
+            self.publish_status(False, "rejected", "odom_buffer_empty")
+            self.get_logger().warn(
+                "NDT pose rejected: no odom samples in buffer",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        max_delta = float(self.get_parameter("max_ndt_odom_delta_sec").value)
+        if odom_delta_sec > max_delta:
+            self.publish_status(False, "rejected", "odom_ndt_stamp_delta_too_large")
+            self.get_logger().warn(
+                f"NDT pose rejected: nearest odom delta "
+                f"{odom_delta_sec:.3f}s > {max_delta:.3f}s",
+                throttle_duration_sec=2.0,
+            )
             return
 
         if self.cached_map_points.size > 0:
@@ -302,7 +400,7 @@ class A2NdtAdapter(Node):
                 return
 
         map_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
-        candidate_map_to_odom = map_to_base @ np.linalg.inv(self.last_odom_to_base)
+        candidate_map_to_odom = map_to_base @ np.linalg.inv(odom_sample.transform)
         is_bounded = True
         if self.has_seed:
             if self.awaiting_first_ndt_fix:
@@ -363,6 +461,7 @@ class A2NdtAdapter(Node):
             return
 
         map_to_base = pose_to_matrix(msg.pose.pose.position, msg.pose.pose.orientation)
+        odom_transform = self.last_odom_to_base
         if self.cached_map_points.size > 0:
             px = float(msg.pose.pose.position.x)
             py = float(msg.pose.pose.position.y)
@@ -378,7 +477,33 @@ class A2NdtAdapter(Node):
                 )
                 return
 
-        self.map_to_odom = map_to_base @ np.linalg.inv(self.last_odom_to_base)
+        # Known limitation: many /initialpose tools publish a zero stamp. To
+        # preserve operator compatibility, that path still uses latest odom and
+        # carries the same sync risk if the robot is moving. For non-zero
+        # initialpose stamps, prefer the odom buffer and reject if no matched
+        # sample is close enough.
+        initial_pose_stamp = Time.from_msg(msg.header.stamp)
+        if initial_pose_stamp.nanoseconds == 0:
+            self.get_logger().warn(
+                "initialpose_zero_stamp_using_latest_odom_known_sync_risk",
+                throttle_duration_sec=2.0,
+            )
+        else:
+            odom_sample, odom_delta_sec, match_reason = (
+                self.find_nearest_odom_sample_by_stamp(initial_pose_stamp)
+            )
+            max_delta = float(self.get_parameter("max_ndt_odom_delta_sec").value)
+            if odom_sample is None or odom_delta_sec > max_delta:
+                self.publish_status(False, "rejected", "initialpose_odom_stamp_delta_too_large")
+                self.get_logger().warn(
+                    f"Initial pose rejected: nearest odom match {match_reason} "
+                    f"delta {odom_delta_sec:.3f}s > {max_delta:.3f}s",
+                    throttle_duration_sec=2.0,
+                )
+                return
+            odom_transform = odom_sample.transform
+
+        self.map_to_odom = map_to_base @ np.linalg.inv(odom_transform)
         self.has_seed = True
         self.awaiting_first_ndt_fix = True
         self.get_logger().info("Initial pose set, seeding NDT.")
@@ -617,6 +742,30 @@ class A2NdtAdapter(Node):
         age = self.age_sec(self.last_odom_receive_time)
         return age <= float(self.get_parameter('odom_timeout_sec').value)
 
+    def prune_odom_buffer(self, now_mono_sec=None):
+        now_mono_sec = time.monotonic() if now_mono_sec is None else float(now_mono_sec)
+        cutoff = now_mono_sec - float(self.get_parameter('odom_buffer_sec').value)
+        while self.odom_buffer and self.odom_buffer[0].receive_mono_sec < cutoff:
+            self.odom_buffer.popleft()
+
+    def find_nearest_odom_sample_by_stamp(self, target_stamp: Time):
+        """Return nearest odom by msg stamp; cleanup is by monotonic receive time.
+
+        This minimal fix uses nearest-neighbor matching, which leaves discrete
+        sampling error. At 1 m/s, 20 ms is about 2 cm; at 1 rad/s, 20 ms is
+        about 1.1 deg. If more damping is needed later, add two-sided odom
+        LERP + SLERP interpolation here.
+        """
+        if not self.odom_buffer:
+            return None, float("inf"), "odom_buffer_empty"
+
+        best = min(
+            self.odom_buffer,
+            key=lambda sample: abs((sample.msg_stamp - target_stamp).nanoseconds),
+        )
+        delta_sec = abs((best.msg_stamp - target_stamp).nanoseconds) * 1e-9
+        return best, delta_sec, "ok"
+
     def score_is_fresh(self) -> bool:
         if self.last_score_stamp is None:
             return False
@@ -756,13 +905,18 @@ class A2NdtAdapter(Node):
             f"state={state}",
             f"ready={str(bool(ready)).lower()}",
             f"reason={reason}",
-            f"matcher=autoware_ndt",
+            "matcher=autoware_ndt",
             f"score={score:.3f}",
             f"score_threshold={float(self.get_parameter('score_threshold').value):.3f}",
             f"last_score_age={self.age_sec(self.last_score_stamp):.3f}",
             f"last_pose_age={self.age_sec(self.last_pose_stamp):.3f}",
             f"last_initial_guess_age={self.age_sec(self.last_initial_guess_publish_time):.3f}",
             f"last_score_pose_delta_sec={self.score_pose_delta_sec():.3f}",
+            f"last_ndt_odom_delta_sec={self.last_ndt_odom_delta_sec:.3f}",
+            f"last_ndt_odom_match_reason={self.last_ndt_odom_match_reason}",
+            f"max_ndt_odom_delta_sec="
+            f"{float(self.get_parameter('max_ndt_odom_delta_sec').value):.3f}",
+            f"odom_buffer_size={len(self.odom_buffer)}",
             f"odom_receive_age={self.age_sec(self.last_odom_receive_time):.3f}",
             f"odom_stamp_skew_sec={self.odom_stamp_skew_sec():.3f}",
             f"iteration_num={self.last_iteration_num if self.last_iteration_num is not None else -1}",

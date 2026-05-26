@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from a2_ndt_adapter.pose_math import (
     choose_periodic_initial_guess_stamp,
@@ -194,43 +195,204 @@ def test_seeded_odom_tracking_classifies_low_score_properly():
     assert reason == "score_below_threshold"
 
 
-def test_out_of_bounds_pose_rejection():
-    import rclpy
+def _stamp(sec: int, nanosec: int = 0):
+    from builtin_interfaces.msg import Time as TimeMsg
+
+    stamp = TimeMsg()
+    stamp.sec = sec
+    stamp.nanosec = nanosec
+    return stamp
+
+
+def _odom_msg(sec: int, x: float, nanosec: int = 0):
+    from nav_msgs.msg import Odometry
+
+    msg = Odometry()
+    msg.header.stamp = _stamp(sec, nanosec)
+    msg.pose.pose.position.x = x
+    msg.pose.pose.orientation.w = 1.0
+    return msg
+
+
+def _pose_msg(x: float, y: float = 0.0, sec: int | None = None, nanosec: int = 0):
     from geometry_msgs.msg import PoseWithCovarianceStamped
+
+    msg = PoseWithCovarianceStamped()
+    if sec is not None:
+        msg.header.stamp = _stamp(sec, nanosec)
+    msg.pose.pose.position.x = x
+    msg.pose.pose.position.y = y
+    msg.pose.pose.orientation.w = 1.0
+    return msg
+
+
+def _make_node():
+    import rclpy
     from a2_ndt_adapter.ndt_adapter_node import A2NdtAdapter
+
     if not rclpy.ok():
         rclpy.init()
+    return A2NdtAdapter()
+
+
+def _destroy_node(node):
+    import rclpy
+
+    node.destroy_node()
+    if rclpy.ok():
+        rclpy.shutdown()
+
+
+def _fresh_acceptable_score(node):
+    node.last_score = 3.0
+    node.last_score_stamp = node.get_clock().now()
+
+
+def test_nearest_odom_sample_selection():
+    from rclpy.time import Time
+
+    node = _make_node()
     try:
-        node = A2NdtAdapter()
+        node.on_odom(_odom_msg(1, 1.0))
+        node.on_odom(_odom_msg(2, 2.0))
+
+        sample, delta_sec, reason = node.find_nearest_odom_sample_by_stamp(
+            Time.from_msg(_stamp(1, 20_000_000))
+        )
+
+        assert reason == "ok"
+        assert delta_sec == pytest.approx(0.02)
+        assert sample.transform[0, 3] == pytest.approx(1.0)
+    finally:
+        _destroy_node(node)
+
+
+def test_rejects_when_nearest_odom_stamp_delta_too_large():
+    node = _make_node()
+    statuses = []
+    node.publish_status = (
+        lambda ready, state, reason: statuses.append((ready, state, reason))
+    )
+    try:
+        node.on_odom(_odom_msg(1, 1.0))
+        _fresh_acceptable_score(node)
+
+        node.on_ndt_pose(_pose_msg(10.0, sec=1, nanosec=250_000_000))
+
+        assert statuses[-1] == (False, "rejected", "odom_ndt_stamp_delta_too_large")
+        assert node.last_ndt_odom_delta_sec == pytest.approx(0.25)
+        assert np.allclose(node.map_to_odom, np.eye(4))
+    finally:
+        _destroy_node(node)
+
+
+def test_map_to_odom_uses_synchronized_odom_not_latest_odom():
+    node = _make_node()
+    try:
+        node.on_odom(_odom_msg(1, 1.0))
+        node.on_odom(_odom_msg(2, 2.0))
+        _fresh_acceptable_score(node)
+
+        node.on_ndt_pose(_pose_msg(10.0, sec=1))
+
+        assert node.has_seed
+        assert node.map_to_odom[0, 3] == pytest.approx(9.0)
+    finally:
+        _destroy_node(node)
+
+
+def test_zero_ndt_pose_stamp_rejects_without_updating_map_to_odom():
+    node = _make_node()
+    statuses = []
+    node.publish_status = (
+        lambda ready, state, reason: statuses.append((ready, state, reason))
+    )
+    try:
+        node.on_odom(_odom_msg(1, 1.0))
+        _fresh_acceptable_score(node)
+
+        node.on_ndt_pose(_pose_msg(10.0))
+
+        assert statuses[-1] == (False, "rejected", "ndt_pose_zero_stamp")
+        assert not node.has_seed
+        assert np.allclose(node.map_to_odom, np.eye(4))
+    finally:
+        _destroy_node(node)
+
+
+def test_score_pose_delta_too_large_fails_before_buffer_update():
+    from rclpy.duration import Duration
+
+    node = _make_node()
+    statuses = []
+    node.publish_status = (
+        lambda ready, state, reason: statuses.append((ready, state, reason))
+    )
+    try:
+        node.on_odom(_odom_msg(1, 1.0))
+        node.last_score = 3.0
+        node.last_score_stamp = node.get_clock().now() - Duration(seconds=3.0)
+
+        node.on_ndt_pose(_pose_msg(10.0, sec=1))
+
+        assert statuses[-1] == (False, "rejected", "score_pose_delta_too_large")
+        assert not node.has_seed
+        assert np.allclose(node.map_to_odom, np.eye(4))
+    finally:
+        _destroy_node(node)
+
+
+def test_odom_buffer_cleanup_uses_monotonic_receive_time_not_msg_stamp():
+    from rclpy.time import Time
+    from a2_ndt_adapter.ndt_adapter_node import OdomSample
+
+    node = _make_node()
+    try:
+        future_stamp_old_receive = Time.from_msg(_stamp(999))
+        older_stamp_recent_receive = Time.from_msg(_stamp(1))
+        old_transform = np.eye(4)
+        recent_transform = np.eye(4)
+        recent_transform[0, 3] = 7.0
+        node.odom_buffer.append(OdomSample(future_stamp_old_receive, 90.0, old_transform))
+        node.odom_buffer.append(OdomSample(older_stamp_recent_receive, 100.0, recent_transform))
+
+        node.prune_odom_buffer(now_mono_sec=100.0)
+
+        assert len(node.odom_buffer) == 1
+        assert node.odom_buffer[0].msg_stamp == older_stamp_recent_receive
+        assert node.odom_buffer[0].transform[0, 3] == 7.0
+    finally:
+        _destroy_node(node)
+
+
+def test_out_of_bounds_pose_rejection():
+    node = _make_node()
+    statuses = []
+    node.publish_status = (
+        lambda ready, state, reason: statuses.append((ready, state, reason))
+    )
+    try:
         node.cached_map_points = np.array([
             [0.0, 0.0, 0.0],
             [10.0, 10.0, 0.0]
         ], dtype=np.float32)
-        node.last_odom_to_base = np.eye(4)
-        node.last_odom_stamp = node.get_clock().now()
-        node.last_score_stamp = node.get_clock().now()
-        node.last_score = 3.0
+        node.on_odom(_odom_msg(1, 0.0))
+        _fresh_acceptable_score(node)
 
-        msg = PoseWithCovarianceStamped()
-        msg.pose.pose.position.x = 20.0
-        msg.pose.pose.position.y = 5.0
-        msg.pose.pose.orientation.w = 1.0
+        msg = _pose_msg(20.0, y=5.0, sec=1)
 
         node.on_initial_pose(msg)
         assert not node.has_seed
 
         node.map_to_odom = np.eye(4)
+        statuses.clear()
         node.on_ndt_pose(msg)
+        assert statuses[-1] == (False, "rejected", "out_of_map")
         assert np.allclose(node.map_to_odom, np.eye(4))
 
-        msg_in = PoseWithCovarianceStamped()
-        msg_in.pose.pose.position.x = 8.0
-        msg_in.pose.pose.position.y = 5.0
-        msg_in.pose.pose.orientation.w = 1.0
+        msg_in = _pose_msg(8.0, y=5.0)
 
         node.on_initial_pose(msg_in)
         assert node.has_seed
     finally:
-        if rclpy.ok():
-            rclpy.shutdown()
-
+        _destroy_node(node)
